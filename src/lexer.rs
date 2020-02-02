@@ -14,47 +14,36 @@ pub enum Token
 #[derive(Clone)]
 pub enum Const
 {
-    Int(i32),
-    Float(f32)
+    Number(f32)
 }
 
-pub fn lex (path:&String) -> VecDeque<Token>
+pub fn lex (program:&str) -> VecDeque<Token>
 {
-    let program:String;
     let mut pos:usize = 0;
     let mut tokens = VecDeque::new();
 
-    let res = std::fs::read_to_string(&path);
-    match res
-    {
-        Ok(p) => program = p,
-        Err(_) => {
-            eprintln!("Program not found at {}", &path);
-            panic!();
-        }
-    }
-
     while pos < program.len()
     {
-        let (token, len) = get_token(&program, pos);
+        let (token, len) = get_token(program, pos);
         pos = pos + len;
         match token
         {
             Token::Nil => (),
+            Token::Eof => break,
             _ => tokens.push_back(token)
         }
     }
 
-    tokens.push_back(Token::Eof);
+    // tokens.push_back(Token::Eof);
 
-    println!("tokens: {:?}", tokens);
+    // println!("tokens: {:?}", tokens);
     tokens
 }
 
-fn get_token (program:&String, pos:usize) -> (Token, usize)
+fn get_token (program:&str, pos:usize) -> (Token, usize)
 {
     let mut len:usize = 1;
-    let bytes = &program.as_bytes();
+    let bytes = program.as_bytes();
 
     macro_rules! get_char {
         () => { //TODO is this ok ?
@@ -67,7 +56,7 @@ fn get_token (program:&String, pos:usize) -> (Token, usize)
     }
     macro_rules! read_cursor {
         () => {
-            String::from(&program[(pos as usize)..((pos + len) as usize)])
+            &program[pos..(pos + len)]
         }
     }
     
@@ -80,7 +69,7 @@ fn get_token (program:&String, pos:usize) -> (Token, usize)
                 if !c.is_lowercase() { break; }
                 len += 1;
             }
-            Token::Id(read_cursor!())
+            Token::Id(String::from(read_cursor!()))
         },
         c if c.is_numeric() => {
             let mut is_float = false;
@@ -96,11 +85,7 @@ fn get_token (program:&String, pos:usize) -> (Token, usize)
                 } else if !c.is_numeric() { break; }
                 len += 1;
             }
-            if is_float {
-                Token::Const(Const::Float(read_cursor!().parse().unwrap()))
-            } else {
-                Token::Const(Const::Int(read_cursor!().parse().unwrap()))
-            }
+            Token::Const(Const::Number(read_cursor!().parse().unwrap()))
         },
         c if c.is_operator() => {
             loop
@@ -109,8 +94,9 @@ fn get_token (program:&String, pos:usize) -> (Token, usize)
                 if !c.is_operator() { break; }
                 len += 1;
             }
-            Token::Op(read_cursor!())
-        }
+            Token::Op(String::from(read_cursor!()))
+        },
+        EOF => Token::Eof,
         _ => Token::Nil
     };
 

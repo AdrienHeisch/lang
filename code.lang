@@ -1,4 +1,5 @@
-var a = 1
-var b = 2
-b += 2
-a += 6
+var a = 2
+var b = a
+a = 4.12
+var c = a * 3.5 + b
+c *= 53.17

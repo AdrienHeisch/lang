@@ -2,19 +2,39 @@ use crate::parser::Expr;
 use crate::lexer::Const;
 use std::collections::VecDeque;
 use std::collections::HashMap;
-use /* crate::interpreter:: */dynamic::Dynamic;
+use dynamic::Dynamic;
+use std::any::TypeId;
 
-// mod dynamic;
+macro_rules! copy {
+    ($b:expr, $f:ident, $($param:expr),+) => {
+        match $b.id()
+        {
+            t if t == TypeId::of::<i32>() => $f::<i32>($($param),+),
+            t if t == TypeId::of::<f32>() => $f::<f32>($($param),+),
+            _ => {
+                eprintln!("Invalid type");
+                panic!();
+            }
+        }
+    };
+}
 
-// macro_rules! types_equal {
-//     ($T:ident, $V:ident) => {
-//         TypeId::of::<$T>() == TypeId::of::<$V>()
-//     };
-// }
+macro_rules! dyn_box_to_string {
+    ($bx:expr) => {
+        match $bx.id()
+        {
+            t if t == TypeId::of::<i32>() => $bx.downcast_ref::<i32>().unwrap().to_string(),
+            t if t == TypeId::of::<f32>() => $bx.downcast_ref::<f32>().unwrap().to_string(),
+            _ => {
+                eprintln!("Invalid type");
+                panic!();
+            }
+        }
+    };
+}
 
 const MEMORY_SIZE:usize = 8;
 
-// type Value<'l> = &'l Dynamic;
 trait ValueType : Copy + 'static {}
 impl ValueType for i32 {}
 impl ValueType for f32 {}
@@ -26,7 +46,7 @@ struct Memory
     vars:HashMap<String, usize>
 }
 
-impl<'l> Memory
+impl Memory
 {
     fn new () -> Memory
     {
@@ -39,14 +59,24 @@ impl<'l> Memory
 
     fn def_value () -> Box<Dynamic> { Dynamic::new(0) }
 
-    fn get_var<T:ValueType> (&self, id:String) -> Box<Dynamic>
+    fn get_var (&self, id:String) -> Box<Dynamic>
     {
-        Dynamic::new(*(&self.ram[self.get_var_address(id)]).as_ref().downcast_ref::<T>().unwrap())
+        let bx = &self.ram[self.get_var_address(id)];
+        match bx.id()
+        {
+            t if t == TypeId::of::<i32>() => Dynamic::new(*bx.downcast_ref::<i32>().unwrap()),
+            t if t == TypeId::of::<f32>() => Dynamic::new(*bx.downcast_ref::<f32>().unwrap()),
+            _ => {
+                eprintln!("Invalid type");
+                panic!();
+            }
+        }
     }
 
     fn set_var<T:ValueType> (&mut self, id:String, value:T) -> ()
     {
-        *(&mut self.ram[self.get_var_address(id)]).as_mut().downcast_mut::<T>().unwrap() = value;
+        // *(&mut self.ram[self.get_var_address(id)]).as_mut().downcast_mut::<T>().unwrap() = value;
+        self.ram[self.get_var_address(id)] = Dynamic::new(value);
     }
     
     fn get_free_address (&self) -> usize
@@ -81,10 +111,11 @@ impl<'l> Memory
         }
     }
 
+    #[allow(dead_code)]
     fn print_memory (&self) -> ()
     {
         for (id, _) in &self.vars {
-            let v = *(&self.ram[self.get_var_address(id.clone())]).as_ref().downcast_ref::<i32>().unwrap();
+            let v = dyn_box_to_string!(*(&self.ram[self.get_var_address(id.clone())]));
             println!("{} = {}", id, v);
         }
     }
@@ -99,9 +130,8 @@ pub fn interpret (exprs:VecDeque<Expr>)
         expr(&mut mem, &e);
     }
 
-    println!("vars:   {:?}", mem.vars);
-    // println!("mem:    {:?}", mem.ram);
-    mem.print_memory();
+    // println!("vars:   {:?}", mem.vars);
+    // mem.print_memory();
 }
 
 fn expr (mem:&mut Memory, e:&Expr) -> Box<Dynamic>
@@ -112,11 +142,10 @@ fn expr (mem:&mut Memory, e:&Expr) -> Box<Dynamic>
         Expr::Const(cst) => {
             match cst
             {
-                Const::Int(i) =>        Dynamic::new(i),
-                Const::Float(f) =>      Dynamic::new(f)
+                Const::Number(n) => Dynamic::new(n),
             }
         },
-        Expr::Id(id) => mem.get_var::<i32>(id),
+        Expr::Id(id) => mem.get_var/* ::<i32> */(id),
         Expr::Var(id, assign_expr) => {
             if mem.vars.contains_key(&id) 
             {
@@ -125,14 +154,9 @@ fn expr (mem:&mut Memory, e:&Expr) -> Box<Dynamic>
             }
             let address = mem.get_free_address();
             mem.vars.insert(id.clone(), address);
-            // let v = match *e
-            // {
-            //     Expr::Invalid => panic!(),
-            //     e => expr(mem, &e)
-            // }
-            use std::any::TypeId;
-            #[allow(unused_variables)]
-            match expr(mem, &*assign_expr).id()
+            let v = copy!(expr(mem, &*assign_expr), assign, mem, &Expr::Id(id), &*assign_expr);
+            v
+            /* match expr(mem, &*assign_expr).id()
             {
                 t if t == TypeId::of::<i32>() => assign::<i32>(mem, &Expr::Id(id), &*assign_expr),
                 t if t == TypeId::of::<f32>() => assign::<f32>(mem, &Expr::Id(id), &*assign_expr),
@@ -140,10 +164,9 @@ fn expr (mem:&mut Memory, e:&Expr) -> Box<Dynamic>
                     eprintln!("Invalid type");
                     panic!();
                 }
-            }
-            
+            } */
         },
-        Expr::BinOp(op, e1, e2) => operation(mem, op, &*e1, &*e2),
+        Expr::BinOp(op, e1, e2) => operation(mem, &op, &*e1, &*e2),
         // Expr::EParent(e): expr(e),
         /* Expr::Invalid */e => {
             eprintln!("Invalid expression : {:?}", e);
@@ -152,27 +175,27 @@ fn expr (mem:&mut Memory, e:&Expr) -> Box<Dynamic>
     }
 }
 
-fn operation (mem:&mut Memory, op:String, e1:&Expr, e2:&Expr) -> Box<Dynamic>
+fn operation (mem:&mut Memory, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic> //TODO FIX OPERATIONS PRECEDENCE (* and +)
 {
     let expr1 = expr(mem, e1);
     let expr2 = expr(mem, e2);
     match (expr1, expr2)
     {
-        (expr1, expr2) if expr1.is::<i32>() && expr2.is::<i32>() => { //TODO match types instead of using guards (Dynamic.id)
-            let e1_val = *expr1.downcast_ref::<i32>().unwrap();
-            let e2_val = *expr2.downcast_ref::<i32>().unwrap();
+        (expr1, expr2) if expr1.is::<f32>() && expr2.is::<f32>() => { //TODO match types instead of using guards (Dynamic.id)
+            let e1_val = *expr1.downcast_ref::<f32>().unwrap();
+            let e2_val = *expr2.downcast_ref::<f32>().unwrap();
             match &op[..]
             {
                 "+" => Dynamic::new(e1_val + e2_val),
                 "-" => Dynamic::new(e1_val - e2_val),
                 "*" => Dynamic::new(e1_val * e2_val),
                 "/" => Dynamic::new(e1_val / e2_val),
-                // "=" => assign::<i32>(mem, e1, e2),
+                "=" => assign::<f32>(mem, e1, e2),
                 _ => {
                     let last_char = if let Some(c) = op.chars().nth(op.len() - 1) { c } else { ' ' };
                     if op.len() > 1 && last_char == '=' {
-                        let value:i32 = *operation(mem, op[0..op.len() - 1].to_string(), e1, e2).downcast_ref().unwrap();
-                        assign::<i32>(mem, e1, &Expr::Const(Const::Int(value)))
+                        let value:f32 = *operation(mem, &op[0..op.len() - 1], e1, e2).downcast_ref().unwrap();
+                        assign::<f32>(mem, e1, &Expr::Const(Const::Number(value)))
                     } else {
                         eprintln!("Invalid operator : {}", op);
                         panic!()
@@ -202,13 +225,3 @@ fn assign<T:ValueType> (mem:&mut Memory, to:&Expr, from:&Expr) -> Box<Dynamic>
     }
     value
 }
-
-// fn unwrap_value<T> (value:ValueAny) -> T where T:ValueType
-// {
-//     unsafe { *std::mem::transmute::<ValueAny, Value<T>>(value) }
-//     // if let Some(i) = value.downcast_ref::<T>() {
-//     //     *i
-//     // } else {
-//     //     panic!()
-//     // }
-// }

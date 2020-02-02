@@ -42,11 +42,11 @@ pub fn parse (tokens:&VecDeque<Token>) -> VecDeque<Expr>
     loop
     {
         let expr = parse_expr(&mut tk_iter);
-        if let None = tk_iter.peek() { break; }
         exprs.push_back(expr);
+        if let None = tk_iter.peek() { break; }
     }
 
-    println!("exprs:  {:?}", exprs);
+    // println!("exprs:  {:?}", exprs);
     exprs
 }
 
@@ -54,9 +54,9 @@ fn parse_expr (tokens:&mut TkIter) -> Expr
 {
     return match next!(tokens)
     {
-        Token::Const(c) => parse_expr_next(tokens, Expr::Const(c.clone())), //TODO clone ?
+        Token::Const(c) => parse_expr_next(tokens, Expr::Const(c.clone())), //TODO Copy would be better than Clone
         Token::Id(id) => {
-            parse_structure(tokens, id.clone())
+            parse_structure(tokens, id)
         },
         _ => Expr::Invalid
     }
@@ -74,9 +74,9 @@ fn parse_expr_next (tokens:&mut TkIter, e:Expr) -> Expr
     }
 }
 
-fn parse_structure (tokens:&mut TkIter, id:String) -> Expr
+fn parse_structure (tokens:&mut TkIter, id:&str) -> Expr
 {
-    return match &id[..]
+    return match id
     {
         "var" => {
             match next!(tokens)
@@ -101,22 +101,22 @@ fn parse_structure (tokens:&mut TkIter, id:String) -> Expr
     }
 }
 
-fn make_binop (op:&String, e1:Expr, e:Expr) -> Expr //TODO avoid &String (use &str)
+fn make_binop (op:&str, e1:Expr, e:Expr) -> Expr
 {
     return match e
     {
         Expr::BinOp(op_, e2, e3) => {
             if priorities(op) <= priorities(&op_) {
-                Expr::BinOp(op_.clone(), Box::new(make_binop(op, e1, *e2)), e3)//Box::new((*e3).clone()))
+                Expr::BinOp(op_.clone(), Box::new(make_binop(op, e1, *e2)), e3)
             } else {
-                Expr::BinOp(op.clone(), Box::new(e1), e3)
+                Expr::BinOp(String::from(op), Box::new(e1), e3)
             }
         },
-        _ => Expr::BinOp(op.clone(), Box::new(e1), Box::new(e))
+        _ => Expr::BinOp(String::from(op), Box::new(e1), Box::new(e))
     }
 }
 
-fn priorities (op:&String) -> i32
+fn priorities (op:&str) -> i32
 {
     macro_rules! map(
         { $($key:expr => $value:expr),+ } => {
@@ -130,8 +130,8 @@ fn priorities (op:&String) -> i32
         };
     );
 
-    let map = map!{ "*" => 1, "/" => 1, "+" => 2, "-" => 2, "=" => 9 };
-    if let Some(p) = map.get(op as &str) {
+    let map = map!{ "*" => 1, "/" => 1, "+" => 2, "-" => 2, "=" => 9 }; //TODO can't do this every time
+    if let Some(p) = map.get(op) {
         *p
     } else {
         eprintln!("Invalid operator : {}", op);
