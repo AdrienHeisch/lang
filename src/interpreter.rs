@@ -59,7 +59,7 @@ impl Memory
 
     fn def_value () -> Box<Dynamic> { Dynamic::new(0) }
 
-    fn get_var (&self, id:String) -> Box<Dynamic>
+    fn get_var (&self, id:&String) -> Box<Dynamic>
     {
         let bx = &self.ram[self.get_var_address(id)];
         match bx.id()
@@ -73,7 +73,7 @@ impl Memory
         }
     }
 
-    fn set_var<T:ValueType> (&mut self, id:String, value:T) -> ()
+    fn set_var<T:ValueType> (&mut self, id:&String, value:T) -> ()
     {
         // *(&mut self.ram[self.get_var_address(id)]).as_mut().downcast_mut::<T>().unwrap() = value;
         self.ram[self.get_var_address(id)] = Dynamic::new(value);
@@ -101,9 +101,9 @@ impl Memory
         panic!();
     }
 
-    fn get_var_address (&self, id:String) -> usize
+    fn get_var_address (&self, id:&String) -> usize
     {
-        if let Some(address) = self.vars.get(&id) {
+        if let Some(address) = self.vars.get(id) {
             *address
         } else {
             eprintln!("Invalid identifier : {}", id);
@@ -114,10 +114,13 @@ impl Memory
     #[allow(dead_code)]
     fn print_memory (&self) -> ()
     {
-        for (id, _) in &self.vars {
-            let v = dyn_box_to_string!(*(&self.ram[self.get_var_address(id.clone())]));
-            println!("{} = {}", id, v);
+        // println!("vars:   {:?}", self.vars);
+        let mut mem_str = String::default();
+        for (id, _) in &self.vars
+        {
+            mem_str = format!("{}{} => {}, ", mem_str, id, dyn_box_to_string!(*(&self.ram[self.get_var_address(id)])));
         }
+        println!("{}", mem_str);
     }
 }
 
@@ -130,8 +133,7 @@ pub fn interpret (exprs:VecDeque<Expr>)
         expr(&mut mem, &e);
     }
 
-    // println!("vars:   {:?}", mem.vars);
-    // mem.print_memory();
+    mem.print_memory();
 }
 
 fn expr (mem:&mut Memory, e:&Expr) -> Box<Dynamic>
@@ -145,7 +147,7 @@ fn expr (mem:&mut Memory, e:&Expr) -> Box<Dynamic>
                 Const::Number(n) => Dynamic::new(n),
             }
         },
-        Expr::Id(id) => mem.get_var/* ::<i32> */(id),
+        Expr::Id(id) => mem.get_var(&id),
         Expr::Var(id, assign_expr) => {
             if mem.vars.contains_key(&id) 
             {
@@ -216,7 +218,7 @@ fn assign<T:ValueType> (mem:&mut Memory, to:&Expr, from:&Expr) -> Box<Dynamic>
     match to
     {
         Expr::Id(id) => {
-            mem.set_var::<T>(id.clone(), *(&value).as_ref().downcast_ref::<T>().unwrap());
+            mem.set_var::<T>(id, *(&value).as_ref().downcast_ref::<T>().unwrap());
         },
         _ => {
             eprintln!("Can't assign {:?} to {:?}", from, to);
