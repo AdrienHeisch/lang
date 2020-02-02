@@ -14,7 +14,8 @@ pub enum Token
 #[derive(Clone)]
 pub enum Const
 {
-    Int(i32)
+    Int(i32),
+    Float(f32)
 }
 
 pub fn lex (path:&String) -> VecDeque<Token>
@@ -46,25 +47,24 @@ pub fn lex (path:&String) -> VecDeque<Token>
 
     tokens.push_back(Token::Eof);
 
-    println!("{:?}", tokens);
-
+    println!("tokens: {:?}", tokens);
     tokens
 }
 
 fn get_token (program:&String, pos:usize) -> (Token, usize)
 {
-    let mut len:usize = 1; //TODO should be 1
+    let mut len:usize = 1;
     let bytes = &program.as_bytes();
 
     macro_rules! get_char {
-        () => {
+        () => { //TODO is this ok ?
             if pos + len < bytes.len() {
                 bytes[pos + len] as char
             } else {
                 EOF
             }
         }
-    } //TODO is this ok ?
+    }
     macro_rules! read_cursor {
         () => {
             String::from(&program[(pos as usize)..((pos + len) as usize)])
@@ -83,13 +83,24 @@ fn get_token (program:&String, pos:usize) -> (Token, usize)
             Token::Id(read_cursor!())
         },
         c if c.is_numeric() => {
+            let mut is_float = false;
             loop
             {
                 let c = get_char!();
-                if !c.is_numeric() { break; }
+                if c == '.' {
+                    if !is_float {
+                        is_float = true;
+                    } else {
+                        unexpected_char(c);
+                    }
+                } else if !c.is_numeric() { break; }
                 len += 1;
             }
-            Token::Const(Const::Int(read_cursor!().parse().unwrap()))
+            if is_float {
+                Token::Const(Const::Float(read_cursor!().parse().unwrap()))
+            } else {
+                Token::Const(Const::Int(read_cursor!().parse().unwrap()))
+            }
         },
         c if c.is_operator() => {
             loop
@@ -104,6 +115,12 @@ fn get_token (program:&String, pos:usize) -> (Token, usize)
     };
 
     (out, len)
+}
+
+fn unexpected_char (c:char)
+{
+    eprintln!("Unexpected char : {}", c.to_string());
+    panic!();
 }
 
 trait CharExt

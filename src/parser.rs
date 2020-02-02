@@ -42,23 +42,16 @@ pub fn parse (tokens:&VecDeque<Token>) -> VecDeque<Expr>
     loop
     {
         let expr = parse_expr(&mut tk_iter);
-        println!("expr:{:?}", expr);
-        /* match expr
-        {
-            Expr::Invalid => break,
-            _ => ()
-        } */
         if let None = tk_iter.peek() { break; }
         exprs.push_back(expr);
     }
 
-    println!("exprs:{:?}", exprs);
+    println!("exprs:  {:?}", exprs);
     exprs
 }
 
 fn parse_expr (tokens:&mut TkIter) -> Expr
 {
-    println!("token:{:?}", tokens.peek());
     return match next!(tokens)
     {
         Token::Const(c) => parse_expr_next(tokens, Expr::Const(c.clone())), //TODO clone ?
@@ -93,12 +86,11 @@ fn parse_structure (tokens:&mut TkIter, id:String) -> Expr
                         id.clone(),
                         Box::new(match peek!(tokens)
                         { 
-                            Token::Op(op) => {
-                                println!("{}", op);
+                            Token::Op(op) if &op[..] == "=" => {
                                 next!(tokens);
                                 parse_expr(tokens)
                             } 
-                            _ =>  Expr::Invalid
+                            _ => Expr::Invalid
                         })
                     )
                 }
