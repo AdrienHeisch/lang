@@ -112,7 +112,7 @@ impl Memory for StaticMemory
         {
             ram: {
                 let mut vec = Vec::with_capacity(MEMORY_SIZE_IN_BYTES);
-                vec.resize(MEMORY_SIZE_IN_BYTES, 0);
+                vec.resize(MEMORY_SIZE_IN_BYTES, u8::default());
                 vec
             },
             allocation_map: [false; MEMORY_SIZE_IN_BYTES],
@@ -146,7 +146,7 @@ impl Memory for StaticMemory
 
     fn set_var (&mut self, id:&String, value:&Box<Dynamic>) -> ()
     {
-        let var = if let Some(var) = self.vars.get(id) {
+        let mut var = if let Some(var) = self.vars.get(id) {
             *var
         } else {
             let var = Variable
@@ -165,7 +165,13 @@ impl Memory for StaticMemory
                 self.access_mut(var.ptr).copy_from_slice(&value.downcast_ref::<f32>().unwrap().to_ne_bytes()[0..4])
             },
             t if t == TypeId::of::<String>() => {
-                self.access_mut(var.ptr).copy_from_slice(value.downcast_ref::<String>().unwrap().as_bytes()) //FIXME crash if string have different lengths
+                let bytes = value.downcast_ref::<String>().unwrap().as_bytes();
+                let len = bytes.len();
+                if len != var.ptr.len {
+                    self.realloc(&mut var, len);
+                    self.vars.insert(id.clone(), var);
+                }
+                self.access_mut(var.ptr).copy_from_slice(bytes)
             },
             t => {
                 invalid_type_error!(t);
@@ -201,12 +207,25 @@ impl StaticMemory
                 pos += 1;
             }
             let mut is_valid = true;
-            for b in &self.allocation_map[pos..(pos + len)] {
-                if *b { is_valid = false; break; }
+            let mut next_pos_found = false;
+            for i in pos..(pos + len)
+            {
+                if self.allocation_map[i] {
+                    is_valid = false;
+                } else if !is_valid
+                {
+                    pos = i;
+                    next_pos_found = true;
+                    break;
+                }
             }
             if is_valid {
                 ptr_option = Some(Pointer { pos, len });
                 break;
+            }
+            if !next_pos_found
+            {
+                pos += len;
             }
         }
 
@@ -222,6 +241,20 @@ impl StaticMemory
             eprintln!("OUT OF MEMORY !");
             panic!()
         }
+    }
+
+    fn free (&mut self, ptr:Pointer) -> () //TODO shift everything to the right so there is always free memory on the left ?
+    {
+        for i in (ptr.pos)..(ptr.pos + ptr.len) {
+            self.ram[i] = u8::default();
+            self.allocation_map[i] = false;
+        }
+    }
+
+    fn realloc (&mut self, var:&mut Variable, new_len:usize) -> ()
+    {
+        self.free(var.ptr);
+        var.ptr = self.alloc(new_len);
     }
 
     fn access (&self, ptr:Pointer) -> &[u8]

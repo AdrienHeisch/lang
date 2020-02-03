@@ -1,1 +1,3 @@
 var a = "salut"
+var b = a
+    a = "ssaalluutt"

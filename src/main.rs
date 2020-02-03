@@ -4,7 +4,10 @@ mod interpreter;
 
 use std::time::{ Instant, Duration };
 
-fn main () //TODO make lexer, parser and interpreter objects with state
+//TODO allow calling on any string
+//TODO add tests
+//TODO make lexer, parser and interpreter objects with state ?
+fn main ()
 {
     let path = "./code.lang";
     let program:String; 
