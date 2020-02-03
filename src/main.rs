@@ -1,7 +1,8 @@
 mod lexer;
 mod parser;
 mod interpreter;
-use std::time::{Instant, Duration};
+
+use std::time::{ Instant, Duration };
 
 fn main () //TODO make lexer, parser and interpreter objects with state
 {
@@ -19,7 +20,7 @@ fn main () //TODO make lexer, parser and interpreter objects with state
 
     // measure_n_times(program.as_ref(), 1000000);
 
-    let tokens = lexer::lex(program.as_str()); 
+    let tokens = lexer::lex(program.as_str());
     let exprs = parser::parse(&tokens);
     interpreter::interpret(exprs);
 }

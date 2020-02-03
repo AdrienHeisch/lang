@@ -14,7 +14,8 @@ pub enum Token
 #[derive(Clone)]
 pub enum Const
 {
-    Number(f32)
+    Number(f32),
+    Str(String)
 }
 
 pub fn lex (program:&str) -> VecDeque<Token>
@@ -36,15 +37,16 @@ pub fn lex (program:&str) -> VecDeque<Token>
 
     // tokens.push_back(Token::Eof);
 
-    // println!("tokens: {:?}", tokens);
+    println!("tokens: {:?}", tokens);
     tokens
 }
 
-fn get_token (program:&str, pos:usize) -> (Token, usize)
+fn get_token (program:&str, mut pos:usize) -> (Token, usize)
 {
     let mut len:usize = 1;
     let bytes = program.as_bytes();
 
+    // #region MACROS
     macro_rules! get_char {
         () => { //TODO is this ok ?
             if pos + len < bytes.len() {
@@ -52,13 +54,14 @@ fn get_token (program:&str, pos:usize) -> (Token, usize)
             } else {
                 EOF
             }
-        }
+        };
     }
     macro_rules! read_cursor {
         () => {
             &program[pos..(pos + len)]
-        }
+        };
     }
+    // #endregion
     
     let out = match bytes[pos] as char
     {
@@ -70,6 +73,18 @@ fn get_token (program:&str, pos:usize) -> (Token, usize)
                 len += 1;
             }
             Token::Id(String::from(read_cursor!()))
+        },
+        '"' => {
+            pos += 1;
+            loop
+            {
+                let c = get_char!();
+                if c == '"' { break; }
+                len += 1;
+            }
+            let tk = Token::Const(Const::Str(String::from(read_cursor!())));
+            len += 2;
+            tk
         },
         c if c.is_numeric() => {
             let mut is_float = false;

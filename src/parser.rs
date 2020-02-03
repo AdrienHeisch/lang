@@ -1,6 +1,5 @@
+use crate::lexer::{ Const, Token };
 use std::collections::VecDeque;
-use crate::lexer::Token;
-use crate::lexer::Const;
 
 #[derive(Debug)]
 #[derive(Clone)]
@@ -46,7 +45,7 @@ pub fn parse (tokens:&VecDeque<Token>) -> VecDeque<Expr>
         if let None = tk_iter.peek() { break; }
     }
 
-    // println!("exprs:  {:?}", exprs);
+    println!("exprs:  {:?}", exprs);
     exprs
 }
 
