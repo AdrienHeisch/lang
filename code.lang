@@ -1,3 +1,1 @@
-var a = "salut"
-var b = a
-    a = "ssaalluutt"
+var a = 2 + 3 * 4

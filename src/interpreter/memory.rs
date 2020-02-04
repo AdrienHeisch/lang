@@ -1,4 +1,5 @@
 pub mod dyn_memory;
+pub mod table_memory;
 pub mod static_memory;
 
 use dynamic::Dynamic;

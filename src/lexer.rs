@@ -18,6 +18,7 @@ pub enum Const
     Str(String)
 }
 
+//TODO define how strict the lexer should be (unexpected characters are currently ignored)
 pub fn lex (program:&str) -> VecDeque<Token>
 {
     let mut pos:usize = 0;
@@ -29,8 +30,8 @@ pub fn lex (program:&str) -> VecDeque<Token>
         pos = pos + len;
         match token
         {
-            Token::Nil => (),
             Token::Eof => break,
+            Token::Nil => (),
             _ => tokens.push_back(token)
         }
     }
@@ -63,7 +64,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
     }
     // #endregion
     
-    let out = match bytes[pos] as char
+    let token = match bytes[pos] as char
     {
         c if c.is_lowercase() => {
             loop
@@ -112,10 +113,22 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             Token::Op(String::from(read_cursor!()))
         },
         EOF => Token::Eof,
-        _ => Token::Nil
+        c if c.is_whitespace() => {
+            loop
+            {
+                let c = get_char!();
+                if !c.is_whitespace() { break; }
+                len += 1;
+            }
+            Token::Nil
+        },
+        c => {
+            unexpected_char(c);
+            Token::Nil
+        }
     };
 
-    (out, len)
+    (token, len)
 }
 
 fn unexpected_char (c:char)

@@ -8,6 +8,7 @@ use dynamic::Dynamic;
 use memory::{
     Memory,
     // dyn_memory::DynamicMemory as MemType,
+    // table_memory::TableMemory as MemType,
     static_memory::StaticMemory as MemType,
 };
 use std::collections::VecDeque;
@@ -21,6 +22,7 @@ pub fn interpret (exprs:VecDeque<Expr>)
         expr(&mut mem, &e);
     }
 
+    // #[cfg(not(features = "benchmark"))]
     mem.print_memory();
 }
 
@@ -87,8 +89,8 @@ fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
                 _ => {
                     let last_char = if let Some(c) = op.chars().nth(op.len() - 1) { c } else { ' ' };
                     if op.len() > 1 && last_char == '=' {
-                        let value:f32 = *operation(mem, &op[0..op.len() - 1], e1, e2).downcast_ref().unwrap();
-                        assign(mem, e1, &Expr::Const(Const::Number(value)))
+                        let value = operation(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<String>().unwrap().clone();
+                        assign(mem, e1, &Expr::Const(Const::Str(value)))
                     } else {
                         eprintln!("Invalid operator : {}", op);
                         panic!()

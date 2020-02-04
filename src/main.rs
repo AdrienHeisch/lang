@@ -4,13 +4,12 @@ mod interpreter;
 
 use std::time::{ Instant, Duration };
 
-//TODO allow calling on any string
 //TODO add tests
-//TODO make lexer, parser and interpreter objects with state ?
+//TODO use enums instead of typeids ?
 fn main ()
 {
     let path = "./code.lang";
-    let program:String; 
+    let program:String;
 
     match std::fs::read_to_string(path.to_string())
     {
@@ -21,9 +20,16 @@ fn main ()
         }
     }
 
-    // measure_n_times(program.as_ref(), 1000000);
+    // #[cfg(features = "benchmark")]
+    // measure_n_times(&program, 1000000);
 
-    let tokens = lexer::lex(program.as_str());
+    // #[cfg(not(features = "benchmark"))]
+    eval(&program);
+}
+
+fn eval (program:&str)
+{
+    let tokens = lexer::lex(program);
     let exprs = parser::parse(&tokens);
     interpreter::interpret(exprs);
 }
@@ -56,7 +62,7 @@ fn measure_n_times (program:&str, n:usize)
 fn measure_once (program:&str) -> (Duration, Duration, Duration)
 {
     let now = Instant::now();
-    let tokens = lexer::lex(program.as_ref());
+    let tokens = lexer::lex(program);
     let lex_time = now.elapsed();
     
     let now = Instant::now();

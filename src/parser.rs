@@ -100,18 +100,18 @@ fn parse_structure (tokens:&mut TkIter, id:&str) -> Expr
     }
 }
 
-fn make_binop (op:&str, e1:Expr, e:Expr) -> Expr
+fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
 {
-    return match e
+    return match er.clone()
     {
-        Expr::BinOp(op_, e2, e3) => {
+        Expr::BinOp(op_, el_, er_) => {
             if priorities(op) <= priorities(&op_) {
-                Expr::BinOp(op_.clone(), Box::new(make_binop(op, e1, *e2)), e3)
+                Expr::BinOp(op_.clone(), Box::new(make_binop(op, el, *el_)), er_)
             } else {
-                Expr::BinOp(String::from(op), Box::new(e1), e3)
+                Expr::BinOp(String::from(op), Box::new(el), Box::new(er))
             }
         },
-        _ => Expr::BinOp(String::from(op), Box::new(e1), Box::new(e))
+        _ => Expr::BinOp(String::from(op), Box::new(el), Box::new(er))
     }
 }
 

@@ -5,13 +5,13 @@ use std::{
     collections::HashMap
 };
 
-const MEMORY_SIZE:usize = 8;
+const MEMORY_SIZE:usize = 8; //TODO remove this, use a Vec<Box<Dynamic>>
 
 //array of pointers to dynamic values on heap
 #[derive(Debug)]
 pub struct DynamicMemory
 {
-    ram:[Box<Dynamic>;MEMORY_SIZE], //TODO any value ?
+    ram:[Box<Dynamic>;MEMORY_SIZE],
     vars:HashMap<String, usize>
 }
 
@@ -19,7 +19,7 @@ pub struct DynamicMemory
 macro_rules! invalid_type_error {
     ($id:expr) => {
         eprintln!("Invalid type id : {:?}", $id);
-        eprintln!("Valid type ids would be : {:?}", vec!(TypeId::of::<i32>(), TypeId::of::<f32>()));
+        eprintln!("Valid type ids would be : {:?}", vec!(TypeId::of::<f32>(), TypeId::of::<String>()));
         panic!();
     };
 }
@@ -28,8 +28,8 @@ macro_rules! clone_dynamic_box {
     ($bx:ident) => {
         match $bx.id()
         {
-            t if t == TypeId::of::<i32>() => Dynamic::new(*$bx.downcast_ref::<i32>().unwrap()),
             t if t == TypeId::of::<f32>() => Dynamic::new(*$bx.downcast_ref::<f32>().unwrap()),
+            t if t == TypeId::of::<String>() => Dynamic::new($bx.downcast_ref::<String>().unwrap().clone()),
             t => {
                 invalid_type_error!(t);
             }
@@ -41,8 +41,8 @@ macro_rules! dyn_box_to_string {
     ($bx:expr) => {
         match $bx.id()
         {
-            t if t == TypeId::of::<i32>() => $bx.downcast_ref::<i32>().unwrap().to_string(),
             t if t == TypeId::of::<f32>() => $bx.downcast_ref::<f32>().unwrap().to_string(),
+            t if t == TypeId::of::<String>() => $bx.downcast_ref::<String>().unwrap().clone(),
             t => {
                 invalid_type_error!(t);
             }

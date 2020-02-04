@@ -5,13 +5,14 @@ use std::{
     collections::HashMap
 };
 
-const MEMORY_SIZE_IN_BYTES:usize = 32;
+//IN BYTES
+const MEMORY_SIZE:usize = 32;
 
 #[derive(Debug)]
 pub struct StaticMemory
 {
     ram:Vec<u8>, //TODO any value ?
-    allocation_map:[bool; MEMORY_SIZE_IN_BYTES],
+    allocation_map:[bool; MEMORY_SIZE],
     vars:HashMap<String, Variable>
 }
 
@@ -111,11 +112,11 @@ impl Memory for StaticMemory
         StaticMemory
         {
             ram: {
-                let mut vec = Vec::with_capacity(MEMORY_SIZE_IN_BYTES);
-                vec.resize(MEMORY_SIZE_IN_BYTES, u8::default());
+                let mut vec = Vec::with_capacity(MEMORY_SIZE);
+                vec.resize(MEMORY_SIZE, u8::default());
                 vec
             },
-            allocation_map: [false; MEMORY_SIZE_IN_BYTES],
+            allocation_map: [false; MEMORY_SIZE],
             vars: HashMap::new()
         }
     }
@@ -198,6 +199,13 @@ impl StaticMemory
 
     fn alloc (&mut self, len:usize) -> Pointer
     {
+        macro_rules! out_of_mem_error {
+            () => {
+                eprintln!("OUT OF MEMORY !");
+                panic!();
+            };
+        }
+
         #[allow(unused_assignments)]
         let mut ptr_option = None;
         let mut pos = 0;
@@ -205,6 +213,9 @@ impl StaticMemory
         {
             while self.allocation_map[pos] {
                 pos += 1;
+                if pos + len > MEMORY_SIZE{
+                    out_of_mem_error!();
+                }
             }
             let mut is_valid = true;
             let mut next_pos_found = false;
@@ -236,10 +247,8 @@ impl StaticMemory
             }
             ptr
         } 
-        else
-        {
-            eprintln!("OUT OF MEMORY !");
-            panic!()
+        else {
+            out_of_mem_error!();
         }
     }
 
