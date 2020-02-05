@@ -15,7 +15,7 @@ pub struct StaticMemory
 {
     ram:[u8; MEMORY_SIZE],
     allocation_map:[bool; MEMORY_SIZE],
-    vars:HashMap<String, Variable>
+    scopes:Vec<Scope>
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -32,6 +32,8 @@ struct Pointer
     len:usize
 }
 
+type Scope = HashMap<String, Variable>;
+
 impl Memory for StaticMemory
 {
 
@@ -41,13 +43,22 @@ impl Memory for StaticMemory
         {
             ram: [u8::default(); MEMORY_SIZE],
             allocation_map: [false; MEMORY_SIZE],
-            vars: HashMap::new()
+            scopes: Vec::new()
         }
     }
 
     fn get_var (&self, id:&String) -> Box<Dynamic>
     {
-        let var = if let Some(var) = self.vars.get(id) {
+        let mut var_opt = None;
+        for scope in self.scopes.iter().rev()
+        {
+            var_opt = scope.get(id);
+            if let Some(_) = var_opt {
+                break;
+            }
+        }
+
+        let var = if let Some(var) = var_opt {
             *var
         } else {
             eprintln!("Unknown identifier : {}", id);
@@ -71,7 +82,16 @@ impl Memory for StaticMemory
 
     fn set_var (&mut self, id:&String, value:&Box<Dynamic>) -> ()
     {
-        let mut var = if let Some(var) = self.vars.get(id) {
+        let mut var_opt = None;
+        for scope in self.scopes.iter().rev()
+        {
+            var_opt = scope.get(id);
+            if let Some(_) = var_opt {
+                break;
+            }
+        }
+
+        let mut var = if let Some(var) = var_opt {
             *var
         } else {
             let var = Variable
@@ -79,7 +99,7 @@ impl Memory for StaticMemory
                 t: value.id(),
                 ptr: self.alloc(get_dyn_size!(value))
             };
-            self.vars.insert(id.clone(), var);
+            self.scopes.last_mut().unwrap().insert(id.clone(), var);
             var
         };
         
@@ -94,7 +114,7 @@ impl Memory for StaticMemory
                 let len = bytes.len();
                 if len != var.ptr.len {
                     self.realloc(&mut var, len);
-                    self.vars.insert(id.clone(), var);
+                    self.scopes.last_mut().unwrap().insert(id.clone(), var);
                 }
                 self.access_mut(var.ptr).copy_from_slice(bytes)
             },
@@ -104,15 +124,39 @@ impl Memory for StaticMemory
         }
     }
 
+    fn open_scope (&mut self) -> ()
+    {
+        self.scopes.push(Scope::new());
+    }
+
+    fn close_scope (&mut self) -> ()
+    {
+        let scope = if let Some(scope) = self.scopes.pop() {
+            scope
+        } else {
+            eprintln!("There is no scope to close.");
+            panic!();
+        };
+
+        for (_, var) in scope
+        {
+            self.free(var.ptr);
+        }
+    }
+
     #[allow(dead_code)]
     fn print_memory (&self) -> ()
     {
         // self.vars.iter().map(|(k, v)| format!("{} => {:?}", k, v.ptr)).for_each(|s| print!("{}, ", s));
         // println!();
         let mut mem_str = String::default();
-        for (id, address) in &self.vars
+        for scope in self.scopes.iter().rev()
         {
-            mem_str = format!("{}{} => {:?} => {}\n", mem_str, id, address.ptr, dyn_box_to_string!(*(&self.get_var(id))));
+            for (id, address) in scope
+            {
+                mem_str = format!("{}{} => {:?} => {}\n", mem_str, id, address.ptr, dyn_box_to_string!(*(&self.get_var(&id))));
+            }
+            mem_str = format!("{}----------\n", mem_str);
         }
         print!("{}", mem_str);
         println!("raw: {:?}", self.ram);

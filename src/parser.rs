@@ -11,6 +11,7 @@ pub enum Expr
     BinOp(String, Box<Expr>, Box<Expr>),
     Parent(Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
+    Block(Vec<Expr>),
     End,
     Invalid
 }
@@ -35,9 +36,9 @@ macro_rules! peek {
     };
 }
 
-pub fn parse (tokens:&VecDeque<Token>) -> VecDeque<Expr>
+pub fn parse (tokens:&VecDeque<Token>) -> Expr
 {
-    let mut exprs:VecDeque<Expr> = VecDeque::new();
+    let mut exprs = Vec::new();
     let _tokens:VecDeque<&Token> = tokens.iter().collect();
     let mut tk_iter:TkIter = _tokens.iter().peekable();
 
@@ -46,13 +47,13 @@ pub fn parse (tokens:&VecDeque<Token>) -> VecDeque<Expr>
         match parse_expr(&mut tk_iter)
         {
             Expr::End => break,
-            expr => exprs.push_back(expr)
+            expr => exprs.push(expr)
         }
         if let None = tk_iter.peek() { break; }
     }
 
     println!("exprs:  {:?}\n", exprs);
-    exprs
+    Expr::Block(exprs)
 }
 
 fn parse_expr (tokens:&mut TkIter) -> Expr
@@ -63,14 +64,15 @@ fn parse_expr (tokens:&mut TkIter) -> Expr
         Token::Id(id) => {
             parse_structure(tokens, id)
         },
-        Token::ParentOpen => {
+        Token::DelimOpen('(') => {
             let e = parse_expr(tokens);
             match next!(tokens)
             {
-                Token::ParentClose => Expr::Parent(Box::new(parse_expr_next(tokens, e))),
+                Token::DelimClose(')') => Expr::Parent(Box::new(parse_expr_next(tokens, e))),
                 _ => Expr::Invalid
             }
         },
+        Token::DelimOpen('{') => Expr::Block(make_expr_list(tokens, '}')),
         Token::Eof => Expr::End,
         _ => Expr::Invalid
     }
@@ -84,30 +86,9 @@ fn parse_expr_next (tokens:&mut TkIter, e:Expr) -> Expr
             next!(tokens);
             make_binop(op, e, parse_expr(tokens))
         },
-        Token::ParentOpen => {
+        Token::DelimOpen('(') => {
             next!(tokens);
-            let mut expr_list:Vec<Expr> = Vec::new();
-            loop
-            {
-                match peek!(tokens)
-                {
-                    Token::Comma => {
-                        next!(tokens);
-                    },
-                    Token::ParentClose => {
-                        next!(tokens);
-                        break;
-                    },
-                    Token::Eof => {
-                        eprintln!("Unclosed parenthese.");
-                        panic!();
-                    },
-                    _ => {
-                        expr_list.push(parse_expr(tokens));
-                    }
-                }
-            }
-            Expr::Call(Box::new(e), expr_list)
+            Expr::Call(Box::new(e), make_expr_list(tokens, ')'))
         },
         _ => e
     }
@@ -176,6 +157,32 @@ fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
         },
         _ => Expr::BinOp(String::from(op), Box::new(el), Box::new(er))
     }
+}
+
+fn make_expr_list (tokens:&mut TkIter, close_on:char/* , separator:Option<Token> */) -> Vec<Expr> //TODO separator
+{
+    let mut expr_list:Vec<Expr> = Vec::new();
+    loop
+    {
+        match peek!(tokens)
+        {
+            Token::Comma => {
+                next!(tokens);
+            },
+            Token::DelimClose(c) if *c == close_on => {
+                next!(tokens);
+                break;
+            },
+            Token::Eof => {
+                eprintln!("Unclosed parenthese.");
+                panic!();
+            },
+            _ => {
+                expr_list.push(parse_expr(tokens));
+            }
+        }
+    }
+    expr_list
 }
 
 /* fn unexpected_expr (e:Expr)

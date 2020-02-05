@@ -7,7 +7,6 @@ mod macros;
 use std::time::{ Instant, Duration };
 
 //TODO find a name and push to github ?
-//TODO add scopes
 //TODO add tests
 //TODO use enums instead of typeids ?
 //TODO OR use custom types
@@ -35,8 +34,8 @@ fn main ()
 fn eval (program:&str)
 {
     let tokens = lexer::lex(program);
-    let exprs = parser::parse(&tokens);
-    interpreter::interpret(exprs);
+    let block = parser::parse(&tokens);
+    interpreter::interpret(block);
 }
 
 #[allow(dead_code)]

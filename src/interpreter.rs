@@ -11,19 +11,15 @@ use memory::{
     // table_memory::TableMemory as MemType,
     static_memory::StaticMemory as MemType,
 };
-use std::collections::VecDeque;
 
-pub fn interpret (exprs:VecDeque<Expr>)
+pub fn interpret (expr_:Expr)
 {
     let mut mem = MemType::new();
     
     // #[cfg(not(features = "benchmark"))]
     println!("Program stdout :");
     
-    for e in exprs
-    {
-        expr(&mut mem, &e);
-    }
+    expr(&mut mem, &expr_);
 
     // #[cfg(not(features = "benchmark"))]
     {
@@ -49,6 +45,21 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
         Expr::BinOp(op, e1, e2) => operation(mem, &op, &*e1, &*e2),
         Expr::Parent(e) => expr(mem, &*e),
         Expr::Call(e, args) => call(mem, &*e, &args),
+        Expr::Block(exprs) => {
+            mem.open_scope();
+            let out = if exprs.len() > 0
+            {
+                for i in 0..(exprs.len() - 1) {
+                    expr(mem, &exprs[i]);
+                }
+                expr(mem, exprs.iter().last().unwrap())
+            }
+            else {
+                Dynamic::new(Void)
+            };
+            mem.close_scope();
+            out
+        },
         Expr::End => Dynamic::new(Void),
         Expr::Invalid => {
             eprintln!("Invalid expression : {:?}", e);
@@ -140,6 +151,13 @@ fn call<T:Memory> (mem:&mut T, e:&Expr, args:&Vec<Expr>) -> Box<Dynamic>
                         print!("> ");
                         args.iter().for_each(|arg| print!("{}", crate::dyn_box_to_string!(expr(mem, arg))));
                         println!();
+                    }
+                    Dynamic::new(Void)
+                },
+                "printmem" => {
+                    // #[cfg(not(features = "benchmark"))]
+                    {
+                        mem.print_memory();
                     }
                     Dynamic::new(Void)
                 },

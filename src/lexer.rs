@@ -6,15 +6,14 @@ pub enum Token
     Id(String),
     Const(Const),
     Op(String),
-    ParentOpen, //TODO [, { 
-    ParentClose,
+    DelimOpen(char), //TODO [, {
+    DelimClose(char),
     Comma,
     Eof,
     Nil
 }
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Const
 {
     Number(f32),
@@ -38,7 +37,7 @@ pub fn lex (program:&str) -> VecDeque<Token>
             _ => tokens.push_back(token)
         }
     }
-
+    
     tokens.push_back(Token::Eof);
 
     println!("tokens: {:?}\n", tokens);
@@ -73,7 +72,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             loop
             {
                 let c = get_char!();
-                if !c.is_lowercase() { break; }
+                if !c.is_lowercase() { break; } //TODO allow _
                 len += 1;
             }
             Token::Id(String::from(read_cursor!()))
@@ -115,8 +114,8 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             len += 2;
             tk
         },
-        '(' => Token::ParentOpen,
-        ')' => Token::ParentClose,
+        c if c.is_delimiter_open() => Token::DelimOpen(c),
+        c if c.is_delimiter_close() => Token::DelimClose(c),
         ',' => Token::Comma,
         EOF => Token::Eof,
         c if c.is_whitespace() => {
@@ -146,6 +145,8 @@ fn unexpected_char (c:char)
 trait CharExt
 {
     fn is_operator (&self) -> bool;
+    fn is_delimiter_open (&self) -> bool;
+    fn is_delimiter_close (&self) -> bool;
 }
 
 impl CharExt for char
@@ -153,6 +154,16 @@ impl CharExt for char
     fn is_operator (&self) -> bool
     {
         *self == '=' || *self == '+' || *self == '-' || *self == '*' || *self == '/'
+    }
+
+    fn is_delimiter_open (&self) -> bool
+    {
+        *self == '(' || *self == '[' || *self == '{'
+    }
+
+    fn is_delimiter_close (&self) -> bool
+    {
+        *self == ')' || *self == ']' || *self == '}'
     }
 }
 

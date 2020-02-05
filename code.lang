@@ -1,4 +1,7 @@
 var a = (2 * (3) + 7)
 var b = "hey"
-print("a: ", a)
-print("b: ", b)
+
+var d = {
+    var c = 2 + 2
+    c + 1
+}
