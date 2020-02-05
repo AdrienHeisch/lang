@@ -2,10 +2,15 @@ mod lexer;
 mod parser;
 mod interpreter;
 
+mod macros;
+
 use std::time::{ Instant, Duration };
 
+//TODO find a name and push to github ?
+//TODO add scopes
 //TODO add tests
 //TODO use enums instead of typeids ?
+//TODO OR use custom types
 fn main ()
 {
     let path = "./code.lang";

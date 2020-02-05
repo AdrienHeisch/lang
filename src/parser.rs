@@ -9,6 +9,9 @@ pub enum Expr
     Id(String),
     Var(String, Box<Expr>),
     BinOp(String, Box<Expr>, Box<Expr>),
+    Parent(Box<Expr>),
+    Call(Box<Expr>, Vec<Expr>),
+    End,
     Invalid
 }
 
@@ -40,23 +43,35 @@ pub fn parse (tokens:&VecDeque<Token>) -> VecDeque<Expr>
 
     loop
     {
-        let expr = parse_expr(&mut tk_iter);
-        exprs.push_back(expr);
+        match parse_expr(&mut tk_iter)
+        {
+            Expr::End => break,
+            expr => exprs.push_back(expr)
+        }
         if let None = tk_iter.peek() { break; }
     }
 
-    println!("exprs:  {:?}", exprs);
+    println!("exprs:  {:?}\n", exprs);
     exprs
 }
 
 fn parse_expr (tokens:&mut TkIter) -> Expr
 {
-    return match next!(tokens)
+    match next!(tokens)
     {
-        Token::Const(c) => parse_expr_next(tokens, Expr::Const(c.clone())), //TODO Copy would be better than Clone
+        Token::Const(c) => parse_expr_next(tokens, Expr::Const(c.clone())), //TODO research Copy vs Clone
         Token::Id(id) => {
             parse_structure(tokens, id)
         },
+        Token::ParentOpen => {
+            let e = parse_expr(tokens);
+            match next!(tokens)
+            {
+                Token::ParentClose => Expr::Parent(Box::new(parse_expr_next(tokens, e))),
+                _ => Expr::Invalid
+            }
+        },
+        Token::Eof => Expr::End,
         _ => Expr::Invalid
     }
 }
@@ -68,6 +83,31 @@ fn parse_expr_next (tokens:&mut TkIter, e:Expr) -> Expr
         Token::Op(op) => {
             next!(tokens);
             make_binop(op, e, parse_expr(tokens))
+        },
+        Token::ParentOpen => {
+            next!(tokens);
+            let mut expr_list:Vec<Expr> = Vec::new();
+            loop
+            {
+                match peek!(tokens)
+                {
+                    Token::Comma => {
+                        next!(tokens);
+                    },
+                    Token::ParentClose => {
+                        next!(tokens);
+                        break;
+                    },
+                    Token::Eof => {
+                        eprintln!("Unclosed parenthese.");
+                        panic!();
+                    },
+                    _ => {
+                        expr_list.push(parse_expr(tokens));
+                    }
+                }
+            }
+            Expr::Call(Box::new(e), expr_list)
         },
         _ => e
     }
@@ -102,7 +142,30 @@ fn parse_structure (tokens:&mut TkIter, id:&str) -> Expr
 
 fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
 {
-    return match er.clone()
+    fn priorities (op:&str) -> i32
+    {
+        macro_rules! map(
+            { $($key:expr => $value:expr),+ } => {
+                {
+                    let mut m = ::std::collections::HashMap::new();
+                    $(
+                        m.insert($key, $value);
+                    )+
+                    m
+                }
+            };
+        );
+
+        let map = map!{ "*" => 1, "/" => 1, "+" => 2, "-" => 2, "=" => 9 }; //TODO can't do this every time -> lazy_static! ?
+        if let Some(p) = map.get(op) {
+            *p
+        } else {
+            eprintln!("Invalid operator : {}", op);
+            0
+        }
+    }
+
+    match er.clone()
     {
         Expr::BinOp(op_, el_, er_) => {
             if priorities(op) <= priorities(&op_) {
@@ -115,27 +178,10 @@ fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
     }
 }
 
-fn priorities (op:&str) -> i32
+/* fn unexpected_expr (e:Expr)
 {
-    macro_rules! map(
-        { $($key:expr => $value:expr),+ } => {
-            {
-                let mut m = ::std::collections::HashMap::new();
-                $(
-                    m.insert($key, $value);
-                )+
-                m
-            }
-        };
-    );
-
-    let map = map!{ "*" => 1, "/" => 1, "+" => 2, "-" => 2, "=" => 9 }; //TODO can't do this every time
-    if let Some(p) = map.get(op) {
-        *p
-    } else {
-        eprintln!("Invalid operator : {}", op);
-        0
-    }
-}
+    eprintln!("Unexpected expression : {:?}", e);
+    panic!();
+} */
 
 type TkIter<'l> = std::iter::Peekable<std::collections::vec_deque::Iter<'l, &'l crate::lexer::Token>>;

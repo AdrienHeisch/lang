@@ -1,3 +1,4 @@
+use crate::{invalid_type_error, dyn_box_to_string}; //MACROS
 use super::Memory;
 use dynamic::Dynamic;
 use std::{
@@ -19,42 +20,6 @@ struct Address
     t: TypeId,
     index:usize
 }
-
-// #region MACROS
-macro_rules! invalid_type_error {
-    ($id:expr) => {
-        eprintln!("Invalid type id : {:?}", $id);
-        eprintln!("Valid type ids would be : {:?}", vec!(TypeId::of::<i32>(), TypeId::of::<f32>()));
-        panic!();
-    };
-}
-
-/* macro_rules! clone_dynamic_box {
-    ($bx:ident) => {
-        match $bx.id()
-        {
-            t if t == TypeId::of::<i32>() => Dynamic::new(*$bx.downcast_ref::<i32>().unwrap()),
-            t if t == TypeId::of::<f32>() => Dynamic::new(*$bx.downcast_ref::<f32>().unwrap()),
-            t => {
-                invalid_type_error!(t);
-            }
-        }
-    };
-}
- */
-macro_rules! dyn_box_to_string {
-    ($bx:expr) => {
-        match $bx.id()
-        {
-            t if t == TypeId::of::<f32>() => $bx.downcast_ref::<f32>().unwrap().to_string(),
-            t if t == TypeId::of::<String>() => $bx.downcast_ref::<String>().unwrap().clone(),
-            t => {
-                invalid_type_error!(t);
-            }
-        }
-    };
-}
-// #endregion
 
 impl Memory for TableMemory
 {

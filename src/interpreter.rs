@@ -17,13 +17,19 @@ pub fn interpret (exprs:VecDeque<Expr>)
 {
     let mut mem = MemType::new();
     
+    // #[cfg(not(features = "benchmark"))]
+    println!("Program stdout :");
+    
     for e in exprs
     {
         expr(&mut mem, &e);
     }
 
     // #[cfg(not(features = "benchmark"))]
-    mem.print_memory();
+    {
+        println!("\nMemory state :");
+        mem.print_memory();
+    }
 }
 
 fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
@@ -41,21 +47,21 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
         Expr::Id(id) => mem.get_var(&id),
         Expr::Var(id, assign_expr) => assign(mem, &Expr::Id(id), &*assign_expr), //TODO should re assignation be allowed ?
         Expr::BinOp(op, e1, e2) => operation(mem, &op, &*e1, &*e2),
-        // Expr::EParent(e): expr(e),
-        /* Expr::Invalid */e => {
+        Expr::Parent(e) => expr(mem, &*e),
+        Expr::Call(e, args) => call(mem, &*e, &args),
+        Expr::End => Dynamic::new(Void),
+        Expr::Invalid => {
             eprintln!("Invalid expression : {:?}", e);
             panic!();
-        },
+        }
     }
 }
 
-fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic> //TODO FIX OPERATIONS PRECEDENCE (* and +)
+fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
 {
-    let expr1 = expr(mem, e1);
-    let expr2 = expr(mem, e2);
-    match (expr1, expr2)
+    match (expr(mem, e1), expr(mem, e2))
     {
-        (expr1, expr2) if expr1.is::<f32>() && expr2.is::<f32>() => { //TODO match types instead of using guards (Dynamic.id)
+        (expr1, expr2) if expr1.is::<f32>() && expr2.is::<f32>() => { //TODO match types instead of using guards (Dynamic.id) ?
             let e1_val = *expr1.downcast_ref::<f32>().unwrap();
             let e2_val = *expr2.downcast_ref::<f32>().unwrap();
             match &op[..]
@@ -64,7 +70,7 @@ fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
                 "-" => Dynamic::new(e1_val - e2_val),
                 "*" => Dynamic::new(e1_val * e2_val),
                 "/" => Dynamic::new(e1_val / e2_val),
-                //EXTRACT TO METHOD FROM HERE
+                //TODO EXTRACT TO METHOD FROM HERE ?
                 "=" => assign(mem, e1, e2),
                 _ => {
                     let last_char = if let Some(c) = op.chars().nth(op.len() - 1) { c } else { ' ' };
@@ -73,13 +79,13 @@ fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
                         assign(mem, e1, &Expr::Const(Const::Number(value)))
                     } else {
                         eprintln!("Invalid operator : {}", op);
-                        panic!()
+                        panic!();
                     }
                 }
                 //TO HERE
             }
         },
-        (expr1, expr2) if expr1.is::<String>() && expr2.is::<String>() => { //TODO match types instead of using guards (Dynamic.id)
+        (expr1, expr2) if expr1.is::<String>() && expr2.is::<String>() => {
             let e1_val = expr1.downcast_ref::<String>().unwrap();
             let e2_val = expr2.downcast_ref::<String>().unwrap();
             match &op[..]
@@ -93,14 +99,14 @@ fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
                         assign(mem, e1, &Expr::Const(Const::Str(value)))
                     } else {
                         eprintln!("Invalid operator : {}", op);
-                        panic!()
+                        panic!();
                     }
                 }
             }
         },
-        _ => {
-            eprintln!("Invalid operation !! : {}", op);
-            panic!()
+        (expr1, expr2) => {
+            eprintln!("Invalid operation : {} {} {}", crate::dyn_box_to_string!(&expr1), op, crate::dyn_box_to_string!(&expr2));
+            panic!();
         }
     }
 }
@@ -115,8 +121,39 @@ fn assign<T:Memory> (mem:&mut T, to:&Expr, from:&Expr) -> Box<Dynamic>
         },
         _ => {
             eprintln!("Can't assign {:?} to {:?}", from, to);
-            panic!()
+            panic!();
         }
     }
     value
 }
+
+fn call<T:Memory> (mem:&mut T, e:&Expr, args:&Vec<Expr>) -> Box<Dynamic>
+{
+    match e
+    {
+        Expr::Id(id) => {
+            match id.as_str()
+            {
+                "print" => {
+                    // #[cfg(not(features = "benchmark"))]
+                    {
+                        print!("> ");
+                        args.iter().for_each(|arg| print!("{}", crate::dyn_box_to_string!(expr(mem, arg))));
+                        println!();
+                    }
+                    Dynamic::new(Void)
+                },
+                id => {
+                    eprintln!("Unknown function identifier : {}", id);
+                    panic!();
+                }
+            }
+        },
+        e => {
+            eprintln!("Expected an identifier : {:?}", e);
+            panic!();
+        }
+    }
+}
+
+struct Void;

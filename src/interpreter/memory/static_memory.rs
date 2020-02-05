@@ -1,3 +1,4 @@
+use crate::{get_dyn_size, invalid_type_error, dyn_box_to_string}; //MACROS
 use super::Memory;
 use dynamic::Dynamic;
 use std::{
@@ -8,10 +9,11 @@ use std::{
 //IN BYTES
 const MEMORY_SIZE:usize = 32;
 
+//TODO look at C stack heap implementations (stack growing from the end)
 #[derive(Debug)]
 pub struct StaticMemory
 {
-    ram:Vec<u8>, //TODO any value ?
+    ram:[u8; MEMORY_SIZE],
     allocation_map:[bool; MEMORY_SIZE],
     vars:HashMap<String, Variable>
 }
@@ -30,80 +32,6 @@ struct Pointer
     len:usize
 }
 
-// #region MACROS
-macro_rules! invalid_type_error {
-    ($id:expr) => {
-        eprintln!("Invalid type id : {:?}", $id);
-        eprintln!("Valid type ids would be : {:?}", vec!(TypeId::of::<i32>(), TypeId::of::<f32>()));
-        panic!();
-    };
-}
-
-macro_rules! get_dyn_size {
-    ($bx:expr) => {
-        match $bx.id()
-        {
-            //☺
-            t if t == TypeId::of::<f32>() => std::mem::size_of::<f32>(),
-            t if t == TypeId::of::<String>() => $bx.downcast_ref::<String>().unwrap().as_bytes().len(),
-            t => {
-                invalid_type_error!(t);
-            }
-        }
-    };
-}
-
-/* macro_rules! call_on_dyn_box {
-    ($bx:expr, $f:ident) => {
-        match $bx.id()
-        {
-            //☺
-            t if t == TypeId::of::<f32>() => *$f::<f32>(*$bx.downcast_ref::<f32>().unwrap()),
-            t => {
-                invalid_type_error!(t);
-            }
-        }
-    };
-    ($bx:expr, $f:ident, $T2:ty) => {
-        match $bx.id()
-        {
-            //☺
-            t if t == TypeId::of::<f32>() => &$f::<f32, $T2>(*$bx.downcast_ref::<f32>().unwrap()),
-            t => {
-                invalid_type_error!(t);
-            }
-        }
-    };
-}
-
-macro_rules! clone_dynamic_box {
-    ($bx:ident) => {
-        match $bx.id()
-        {
-            //☺
-            t if t == TypeId::of::<f32>() => Dynamic::new(*$bx.downcast_ref::<f32>().unwrap()),
-            t => {
-                invalid_type_error!(t);
-            }
-        }
-    };
-} */
-
-macro_rules! dyn_box_to_string {
-    ($bx:expr) => {
-        match $bx.id()
-        {
-            //☺
-            t if t == TypeId::of::<f32>() => $bx.downcast_ref::<f32>().unwrap().to_string(),
-            t if t == TypeId::of::<String>() => $bx.downcast_ref::<String>().unwrap().clone(),
-            t => {
-                invalid_type_error!(t);
-            }
-        }
-    };
-}
-// #endregion
-
 impl Memory for StaticMemory
 {
 
@@ -111,11 +39,7 @@ impl Memory for StaticMemory
     {
         StaticMemory
         {
-            ram: {
-                let mut vec = Vec::with_capacity(MEMORY_SIZE);
-                vec.resize(MEMORY_SIZE, u8::default());
-                vec
-            },
+            ram: [u8::default(); MEMORY_SIZE],
             allocation_map: [false; MEMORY_SIZE],
             vars: HashMap::new()
         }
@@ -183,14 +107,16 @@ impl Memory for StaticMemory
     #[allow(dead_code)]
     fn print_memory (&self) -> ()
     {
+        // self.vars.iter().map(|(k, v)| format!("{} => {:?}", k, v.ptr)).for_each(|s| print!("{}, ", s));
+        // println!();
         let mut mem_str = String::default();
-        for (id, _) in &self.vars
+        for (id, address) in &self.vars
         {
-            mem_str = format!("{}{} => {}, ", mem_str, id, dyn_box_to_string!(*(&self.get_var(id))));
+            mem_str = format!("{}{} => {:?} => {}\n", mem_str, id, address.ptr, dyn_box_to_string!(*(&self.get_var(id))));
         }
-        println!("{}", mem_str);
+        print!("{}", mem_str);
         println!("raw: {:?}", self.ram);
-        println!("map: {:?}", self.allocation_map);
+        // println!("map: {:?}", self.allocation_map);
     }
 }
 

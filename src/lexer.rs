@@ -6,6 +6,9 @@ pub enum Token
     Id(String),
     Const(Const),
     Op(String),
+    ParentOpen, //TODO [, { 
+    ParentClose,
+    Comma,
     Eof,
     Nil
 }
@@ -36,9 +39,9 @@ pub fn lex (program:&str) -> VecDeque<Token>
         }
     }
 
-    // tokens.push_back(Token::Eof);
+    tokens.push_back(Token::Eof);
 
-    println!("tokens: {:?}", tokens);
+    println!("tokens: {:?}\n", tokens);
     tokens
 }
 
@@ -49,7 +52,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
 
     // #region MACROS
     macro_rules! get_char {
-        () => { //TODO is this ok ?
+        () => {
             if pos + len < bytes.len() {
                 bytes[pos + len] as char
             } else {
@@ -74,18 +77,6 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                 len += 1;
             }
             Token::Id(String::from(read_cursor!()))
-        },
-        '"' => {
-            pos += 1;
-            loop
-            {
-                let c = get_char!();
-                if c == '"' { break; }
-                len += 1;
-            }
-            let tk = Token::Const(Const::Str(String::from(read_cursor!())));
-            len += 2;
-            tk
         },
         c if c.is_numeric() => {
             let mut is_float = false;
@@ -112,6 +103,21 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             }
             Token::Op(String::from(read_cursor!()))
         },
+        '"' => {
+            pos += 1;
+            loop
+            {
+                let c = get_char!();
+                if c == '"' { break; }
+                len += 1;
+            }
+            let tk = Token::Const(Const::Str(String::from(read_cursor!())));
+            len += 2;
+            tk
+        },
+        '(' => Token::ParentOpen,
+        ')' => Token::ParentClose,
+        ',' => Token::Comma,
         EOF => Token::Eof,
         c if c.is_whitespace() => {
             loop
