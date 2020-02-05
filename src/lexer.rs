@@ -94,13 +94,22 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             Token::Const(Const::Number(read_cursor!().parse().unwrap()))
         },
         c if c.is_operator() => {
-            loop
+            match get_char!()
             {
-                let c = get_char!();
-                if !c.is_operator() { break; }
-                len += 1;
+                '/' => {
+                    while get_char!() != '\n' { len += 1; }
+                    Token::Nil
+                },
+                _ => { //OP
+                    loop
+                    {
+                        let c = get_char!();
+                        if !c.is_operator() { break; }
+                        len += 1;
+                    }
+                    Token::Op(String::from(read_cursor!()))
+                }
             }
-            Token::Op(String::from(read_cursor!()))
         },
         '"' => {
             pos += 1;

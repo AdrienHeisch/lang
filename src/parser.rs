@@ -53,6 +53,9 @@ pub fn parse (tokens:&VecDeque<Token>) -> Expr
     }
 
     println!("exprs:  {:?}\n", exprs);
+
+    // #[cfg(not(features = "benchmark"))]
+    exprs.push(Expr::Call(Box::new(Expr::Id(String::from("printmem"))), Vec::new()));
     Expr::Block(exprs)
 }
 

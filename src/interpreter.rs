@@ -20,12 +20,6 @@ pub fn interpret (expr_:Expr)
     println!("Program stdout :");
     
     expr(&mut mem, &expr_);
-
-    // #[cfg(not(features = "benchmark"))]
-    {
-        println!("\nMemory state :");
-        mem.print_memory();
-    }
 }
 
 fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
@@ -157,6 +151,7 @@ fn call<T:Memory> (mem:&mut T, e:&Expr, args:&Vec<Expr>) -> Box<Dynamic>
                 "printmem" => {
                     // #[cfg(not(features = "benchmark"))]
                     {
+                        println!("\nMemory state :");
                         mem.print_memory();
                     }
                     Dynamic::new(Void)
