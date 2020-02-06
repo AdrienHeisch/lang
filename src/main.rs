@@ -7,9 +7,9 @@ mod macros;
 use std::time::{ Instant, Duration };
 
 //TODO find a name and push to github ?
+//TODO use Result instead of panic! on error
 //TODO add tests
-//TODO use enums instead of typeids ?
-//TODO OR use custom types
+//TODO use enums instead of typeids OR use custom types
 fn main ()
 {
     let path = "./code.lang";

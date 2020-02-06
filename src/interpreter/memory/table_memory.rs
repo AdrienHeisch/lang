@@ -6,6 +6,9 @@ use std::{
     collections::HashMap
 };
 
+//DEPRECATED FOR NOW
+//TODO update
+
 #[derive(Debug)]
 pub struct TableMemory
 {

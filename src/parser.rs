@@ -1,8 +1,7 @@
 use crate::lexer::{ Const, Token };
 use std::collections::VecDeque;
 
-#[derive(Debug)]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum Expr
 {
     Const(Const),
@@ -12,8 +11,8 @@ pub enum Expr
     Parent(Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
     Block(Vec<Expr>),
-    End,
-    Invalid
+    If(Box<Expr>, Box<Expr>),
+    End
 }
 
 macro_rules! next {
@@ -36,6 +35,7 @@ macro_rules! peek {
     };
 }
 
+//DESIGN should blocks return last expression only if there is no semicolon like rust ?
 pub fn parse (tokens:&VecDeque<Token>) -> Expr
 {
     let mut exprs = Vec::new();
@@ -44,26 +44,51 @@ pub fn parse (tokens:&VecDeque<Token>) -> Expr
 
     loop
     {
-        match parse_expr(&mut tk_iter)
+        match parse_full_expr(&mut tk_iter)
         {
-            Expr::End => break,
+            // Expr::End => break,
             expr => exprs.push(expr)
         }
         if let None = tk_iter.peek() { break; }
     }
 
+    // #[cfg(not(features = "benchmark"))]
     println!("exprs:  {:?}\n", exprs);
 
     // #[cfg(not(features = "benchmark"))]
     exprs.push(Expr::Call(Box::new(Expr::Id(String::from("printmem"))), Vec::new()));
+
     Expr::Block(exprs)
+}
+
+fn parse_full_expr (tokens:&mut TkIter) -> Expr
+{
+    let expr = parse_expr(tokens);
+
+    let tk = peek!(tokens);
+    if *tk == Token::Semicolon {
+        next!(tokens);
+    } else
+    {
+        match expr
+        {
+            Expr::Block(_) => (),
+            Expr::End => (),
+            _ => {
+                eprintln!("Expected semicolon, got : {:?}", tk);
+                panic!();
+            }
+        }
+    }
+
+    expr
 }
 
 fn parse_expr (tokens:&mut TkIter) -> Expr
 {
     match next!(tokens)
     {
-        Token::Const(c) => parse_expr_next(tokens, Expr::Const(c.clone())), //TODO research Copy vs Clone
+        Token::Const(c) => parse_expr_next(tokens, Expr::Const(c.clone())), //RESEARCH Copy vs Clone
         Token::Id(id) => {
             parse_structure(tokens, id)
         },
@@ -72,12 +97,25 @@ fn parse_expr (tokens:&mut TkIter) -> Expr
             match next!(tokens)
             {
                 Token::DelimClose(')') => Expr::Parent(Box::new(parse_expr_next(tokens, e))),
-                _ => Expr::Invalid
+                _ => {
+                    eprintln!("Unclosed delimiter \"(\"");
+                    panic!();
+                }
             }
         },
-        Token::DelimOpen('{') => Expr::Block(make_expr_list(tokens, '}')),
+        Token::DelimOpen('{') => {
+            let mut exprs = Vec::new();
+            while *peek!(tokens) != Token::DelimClose('}') {
+                exprs.push(parse_full_expr(tokens));
+            }
+            next!(tokens);
+            Expr::Block(exprs)
+        },
         Token::Eof => Expr::End,
-        _ => Expr::Invalid
+        tk => {
+            eprintln!("Unexpected token : {:?}", tk);
+            panic!();
+        }
     }
 }
 
@@ -113,17 +151,29 @@ fn parse_structure (tokens:&mut TkIter, id:&str) -> Expr
                                 next!(tokens);
                                 parse_expr(tokens)
                             } 
-                            _ => Expr::Invalid
+                            tk => {
+                                eprintln!("Expected assign operator, got : {:?}", tk);
+                                panic!();
+                            }
                         })
                     )
                 }
-                _ => Expr::Invalid
+                tk => {
+                    eprintln!("Expected identifier, got : {:?}", tk);
+                    panic!();
+                }
             }
-        }
+        },
+        "if" => {
+            let cond = parse_expr(tokens);
+            let block = parse_expr(tokens);
+            Expr::If(Box::new(cond), Box::new(block))
+        },
         id => parse_expr_next(tokens, Expr::Id(String::from(id)))
     }
 }
 
+//FIXME broken precedence : a * (b) + c -> a * (b + c)
 fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
 {
     fn priorities (op:&str) -> i32
@@ -162,9 +212,9 @@ fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
     }
 }
 
-fn make_expr_list (tokens:&mut TkIter, close_on:char/* , separator:Option<Token> */) -> Vec<Expr> //TODO separator
+fn make_expr_list (tokens:&mut TkIter, close_on:char) -> Vec<Expr>
 {
-    let mut expr_list:Vec<Expr> = Vec::new();
+    let mut expr_list = Vec::new();
     loop
     {
         match peek!(tokens)

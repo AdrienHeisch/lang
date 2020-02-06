@@ -15,6 +15,7 @@ macro_rules! get_dyn_size {
             //☺
             t if t == std::any::TypeId::of::<f32>() => std::mem::size_of::<f32>(),
             t if t == std::any::TypeId::of::<String>() => $bx.downcast_ref::<String>().unwrap().as_bytes().len(),
+            t if t == std::any::TypeId::of::<bool>() => 1,
             t => {
                 invalid_type_error!(t);
             }
@@ -22,7 +23,7 @@ macro_rules! get_dyn_size {
     };
 }
 
-#[macro_export]
+/* #[macro_export]
 macro_rules! call_on_dyn_box {
     ($bx:expr, $f:ident) => {
         match $bx.id()
@@ -44,9 +45,9 @@ macro_rules! call_on_dyn_box {
             }
         }
     };
-}
+} */
 
-#[macro_export]
+/* #[macro_export]
 macro_rules! clone_dynamic_box {
     ($bx:ident) => {
         match $bx.id()
@@ -58,7 +59,7 @@ macro_rules! clone_dynamic_box {
             }
         }
     };
-}
+} */
 
 #[macro_export]
 macro_rules! dyn_box_to_string {
@@ -68,6 +69,7 @@ macro_rules! dyn_box_to_string {
             //☺
             t if t == std::any::TypeId::of::<f32>() => $bx.downcast_ref::<f32>().unwrap().to_string(),
             t if t == std::any::TypeId::of::<String>() => $bx.downcast_ref::<String>().unwrap().clone(),
+            t if t == std::any::TypeId::of::<bool>() => $bx.downcast_ref::<bool>().unwrap().to_string(),
             t => {
                 crate::invalid_type_error!(t);
             }

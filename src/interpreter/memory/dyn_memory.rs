@@ -3,6 +3,9 @@ use super::Memory;
 use dynamic::Dynamic;
 use std::collections::HashMap;
 
+//DEPRECATED FOR NOW
+//TODO update
+
 const MEMORY_SIZE:usize = 8; //TODO remove this, use a Vec<Dynamic>
 
 //array of pointers to dynamic values on heap

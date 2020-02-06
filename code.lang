@@ -1,7 +1,13 @@
-var a = (2 * (3) + 7)
-var b = "hey"
+var a = 2 * 3 + 7;
+var b = "hey";
 
 var d = {
-    var c = 2 + 2
-    c + 1
-}
+    var c = 2 + 2;
+    c + 1;
+};
+
+if true {
+    print("it's true");
+}; //TODO allow removing this ;
+
+print("a:"  a); //FIXME why is this allowed ? (no comma, no semicolon)

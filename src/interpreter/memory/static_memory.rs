@@ -9,7 +9,7 @@ use std::{
 //IN BYTES
 const MEMORY_SIZE:usize = 32;
 
-//TODO look at C stack heap implementations (stack growing from the end)
+//RESEARCH look at C stack heap implementations (stack growing from the end)
 #[derive(Debug)]
 pub struct StaticMemory
 {
@@ -74,6 +74,9 @@ impl Memory for StaticMemory
             t if t == TypeId::of::<String>() => {
                 Dynamic::new(String::from_utf8(Vec::from(self.access(var.ptr))).ok().unwrap())
             },
+            t if t == TypeId::of::<bool>() => {
+                Dynamic::new(self.access(var.ptr)[0] == 1)
+            },
             t => {
                 invalid_type_error!(t);
             }
@@ -117,6 +120,13 @@ impl Memory for StaticMemory
                     self.scopes.last_mut().unwrap().insert(id.clone(), var);
                 }
                 self.access_mut(var.ptr).copy_from_slice(bytes)
+            },
+            t if t == TypeId::of::<bool>() => {
+                self.access_mut(var.ptr)[0] = if *value.downcast_ref::<bool>().unwrap() {
+                    1u8
+                } else {
+                    0u8
+                };
             },
             t => {
                 invalid_type_error!(t);
@@ -222,7 +232,7 @@ impl StaticMemory
         }
     }
 
-    fn free (&mut self, ptr:Pointer) -> () //TODO shift everything to the right so there is always free memory on the left ?
+    fn free (&mut self, ptr:Pointer) -> () //RESEARCH shift everything to the right so there is always free memory on the left ?
     {
         for i in (ptr.pos)..(ptr.pos + ptr.len) {
             self.ram[i] = u8::default();

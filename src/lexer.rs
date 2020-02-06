@@ -1,26 +1,28 @@
 use std::collections::VecDeque;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Token
 {
     Id(String),
     Const(Const),
     Op(String),
-    DelimOpen(char), //TODO [, {
+    DelimOpen(char),
     DelimClose(char),
     Comma,
+    Semicolon,
     Eof,
     Nil
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Const
 {
     Number(f32),
-    Str(String)
+    Str(String),
+    Bool(bool)
 }
 
-//TODO define how strict the lexer should be (unexpected characters are currently ignored)
+//DESIGN define how strict the lexer should be (unexpected characters are currently ignored)
 pub fn lex (program:&str) -> VecDeque<Token>
 {
     let mut pos:usize = 0;
@@ -72,10 +74,16 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             loop
             {
                 let c = get_char!();
-                if !c.is_lowercase() { break; } //TODO allow _
+                if !c.is_lowercase() { break; } //TODO allow _ and digits
                 len += 1;
             }
-            Token::Id(String::from(read_cursor!()))
+            let id = read_cursor!();
+            match id
+            {
+                "true" => Token::Const(Const::Bool(true)),
+                "false" => Token::Const(Const::Bool(false)),
+                _ => Token::Id(String::from(read_cursor!()))
+            }
         },
         c if c.is_numeric() => {
             let mut is_float = false;
@@ -97,7 +105,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             match get_char!()
             {
                 '/' => {
-                    while get_char!() != '\n' { len += 1; }
+                    while get_char!() != '\n' && get_char!() != EOF { len += 1; }
                     Token::Nil
                 },
                 _ => { //OP
@@ -126,6 +134,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
         c if c.is_delimiter_open() => Token::DelimOpen(c),
         c if c.is_delimiter_close() => Token::DelimClose(c),
         ',' => Token::Comma,
+        ';' => Token::Semicolon,
         EOF => Token::Eof,
         c if c.is_whitespace() => {
             loop
@@ -162,7 +171,7 @@ impl CharExt for char
 {
     fn is_operator (&self) -> bool
     {
-        *self == '=' || *self == '+' || *self == '-' || *self == '*' || *self == '/'
+        *self == '=' || *self == '+' || *self == '-' || *self == '*' || *self == '/'|| *self == '|'|| *self == '&'
     }
 
     fn is_delimiter_open (&self) -> bool
