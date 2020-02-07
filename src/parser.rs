@@ -99,7 +99,7 @@ fn parse_expr (tokens:&mut TkIter) -> Expr
             let e = parse_expr(tokens);
             match next!(tokens)
             {
-                Token::DelimClose(')') => Expr::Parent(Box::new(parse_expr_next(tokens, e))),
+                Token::DelimClose(')') => parse_expr_next(tokens, Expr::Parent(Box::new(e))),
                 _ => {
                     eprintln!("Unclosed delimiter \"(\"");
                     panic!();
@@ -181,7 +181,6 @@ fn parse_structure (tokens:&mut TkIter, id:&str) -> Expr
     }
 }
 
-//FIXME broken precedence : a * (b) + c -> a * (b + c)
 fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
 {
     fn priorities (op:&str) -> i32

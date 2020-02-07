@@ -32,7 +32,7 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
             {
                 Const::Number(n) => Dynamic::new(n),
                 Const::Str(s) =>    Dynamic::new(s),
-                Const::Bool(b) =>    Dynamic::new(b)
+                Const::Bool(b) =>   Dynamic::new(b)
             }
         },
         Expr::Id(id) => mem.get_var(&id),
