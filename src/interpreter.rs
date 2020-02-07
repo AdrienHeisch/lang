@@ -15,7 +15,7 @@ pub fn interpret (expr_:Expr)
 {
     let mut mem = MemType::new();
     
-    // #[cfg(not(features = "benchmark"))]
+    #[cfg(not(benchmark))]
     println!("Program stdout :");
     
     expr(&mut mem, &expr_);
