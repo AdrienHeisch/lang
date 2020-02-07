@@ -70,11 +70,11 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
     
     let token = match bytes[pos] as char
     {
-        c if c.is_lowercase() => {
+        c if c.is_lowercase() || c == '_' => {
             loop
             {
                 let c = get_char!();
-                if !c.is_lowercase() { break; } //TODO allow _ and digits
+                if !(c.is_lowercase() || c == '_' || c.is_numeric()) { break; }
                 len += 1;
             }
             let id = read_cursor!();

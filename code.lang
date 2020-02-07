@@ -1,5 +1,5 @@
 var a = 2 * 3 + 7;
-var b = "hey";
+var b_2 = "hey";
 
 var d = {
     var c = 2 + 2;
@@ -8,6 +8,6 @@ var d = {
 
 if true {
     print("it's true");
-}; //TODO allow removing this ;
+}
 
-print("a:"  a); //FIXME why is this allowed ? (no comma, no semicolon)
+print("a:", a);

@@ -70,12 +70,12 @@ fn parse_full_expr (tokens:&mut TkIter) -> Expr
         next!(tokens);
     } else
     {
-        match expr
+        match &expr
         {
-            Expr::Block(_) => (),
+            e if is_block(e) => (),
             Expr::End => (),
             _ => {
-                eprintln!("Expected semicolon, got : {:?}", tk);
+                eprintln!("Expected Semicolon, got : {:?}", tk);
                 panic!();
             }
         }
@@ -166,8 +166,8 @@ fn parse_structure (tokens:&mut TkIter, id:&str) -> Expr
         },
         "if" => {
             let cond = parse_expr(tokens);
-            let block = parse_expr(tokens);
-            Expr::If(Box::new(cond), Box::new(block))
+            let then = parse_expr(tokens);
+            Expr::If(Box::new(cond), Box::new(then))
         },
         id => parse_expr_next(tokens, Expr::Id(String::from(id)))
     }
@@ -215,8 +215,13 @@ fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
 fn make_expr_list (tokens:&mut TkIter, close_on:char) -> Vec<Expr>
 {
     let mut expr_list = Vec::new();
+    if *peek!(tokens) == Token::DelimClose(close_on) {
+        return expr_list;
+    }
+
     loop
     {
+        expr_list.push(parse_expr(tokens));
         match peek!(tokens)
         {
             Token::Comma => {
@@ -230,12 +235,24 @@ fn make_expr_list (tokens:&mut TkIter, close_on:char) -> Vec<Expr>
                 eprintln!("Unclosed parenthese.");
                 panic!();
             },
-            _ => {
-                expr_list.push(parse_expr(tokens));
+            tk => {
+                eprintln!("Expected Comma or DelimClose('{}'), got  {:?}", close_on, tk);
+                panic!();
             }
         }
     }
+    
     expr_list
+}
+
+fn is_block (e:&Expr) -> bool
+{
+    match e
+    {
+		Expr::Block(_) => true,
+		Expr::If(_, then) => is_block(then),
+		_ => false
+    }
 }
 
 /* fn unexpected_expr (e:Expr)
