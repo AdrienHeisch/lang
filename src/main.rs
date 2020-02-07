@@ -24,10 +24,10 @@ fn main ()
         }
     }
 
-    // #[cfg(features = "benchmark")]
-    // measure_n_times(&program, 1000000);
+    #[cfg(benchmark)]
+    measure_n_times(&program, 1000);
 
-    // #[cfg(not(features = "benchmark"))]
+    #[cfg(not(benchmark))]
     eval(&program);
 }
 
@@ -51,9 +51,9 @@ fn measure_n_times (program:&str, n:usize)
     }
 
     //empirical correction
-    durations.0 -= Duration::new(0, 50000000);
-    durations.1 -= Duration::new(0, 50000000);
-    durations.2 -= Duration::new(0, 50000000);
+    // durations.0 -= Duration::new(0, 50000000);
+    // durations.1 -= Duration::new(0, 50000000);
+    // durations.2 -= Duration::new(0, 50000000);
 
     println!("For {} iterations :", n);
     println!("Lexing :  {}ms", durations.0.as_millis());

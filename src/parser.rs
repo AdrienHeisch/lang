@@ -54,11 +54,11 @@ pub fn parse (tokens:&VecDeque<Token>) -> Expr
         if let None = tk_iter.peek() { break; }
     }
 
-    // #[cfg(not(features = "benchmark"))]
-    println!("exprs:  {:?}\n", exprs);
-
-    // #[cfg(not(features = "benchmark"))]
-    exprs.push(Expr::Call(Box::new(Expr::Id(String::from("printmem"))), Vec::new()));
+    #[cfg(not(benchmark))]
+    {
+        println!("exprs:  {:?}\n", exprs);
+        exprs.push(Expr::Call(Box::new(Expr::Id(String::from("printmem"))), Vec::new()));
+    }
 
     Expr::Block(exprs)
 }

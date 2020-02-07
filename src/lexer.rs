@@ -42,7 +42,9 @@ pub fn lex (program:&str) -> VecDeque<Token>
     
     tokens.push_back(Token::Eof);
 
+    #[cfg(not(benchmark))]
     println!("tokens: {:?}\n", tokens);
+
     tokens
 }
 

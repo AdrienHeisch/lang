@@ -16,7 +16,7 @@ pub fn interpret (expr_:Expr)
 {
     let mut mem = MemType::new();
     
-    // #[cfg(not(features = "benchmark"))]
+    #[cfg(not(benchmark))]
     println!("Program stdout :");
     
     expr(&mut mem, &expr_);
@@ -238,16 +238,16 @@ fn call<T:Memory> (mem:&mut T, e:&Expr, args:&Vec<Expr>) -> Box<Dynamic>
             match id.as_str()
             {
                 "print" => {
-                    // #[cfg(not(features = "benchmark"))]
+                    #[cfg(not(benchmark))]
                     {
                         print!("> ");
-                        args.iter().for_each(|arg| print!("{}", crate::dyn_box_to_string!(expr(mem, arg))));
+                        args.iter().for_each(|arg| print!("{} ", crate::dyn_box_to_string!(expr(mem, arg))));
                         println!();
                     }
                     Dynamic::new(Void)
                 },
                 "printmem" => {
-                    // #[cfg(not(features = "benchmark"))]
+                    #[cfg(not(benchmark))]
                     {
                         println!("\nMemory state :");
                         mem.print_memory();
