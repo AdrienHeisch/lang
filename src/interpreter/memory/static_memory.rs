@@ -1,6 +1,5 @@
-use crate::{get_dyn_size, invalid_type_error, dyn_box_to_string}; //MACROS
+use crate::cst::Const;
 use super::Memory;
-use dynamic::Dynamic;
 use std::{
     any::TypeId,
     collections::HashMap
@@ -47,7 +46,7 @@ impl Memory for StaticMemory
         }
     }
 
-    fn get_var (&self, id:&String) -> Box<Dynamic>
+    fn get_var (&self, id:&String) -> Const
     {
         let mut var_opt = None;
         for scope in self.scopes.iter().rev()
@@ -69,21 +68,22 @@ impl Memory for StaticMemory
         {
             //☺
             t if t == TypeId::of::<f32>() => unsafe {
-                Dynamic::new(f32::from_ne_bytes(std::mem::transmute([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]])))
+                Const::Number(f32::from_ne_bytes(std::mem::transmute([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]])))
             },
             t if t == TypeId::of::<String>() => {
-                Dynamic::new(String::from_utf8(Vec::from(self.access(var.ptr))).ok().unwrap())
+                Const::Str(String::from_utf8(Vec::from(self.access(var.ptr))).ok().unwrap())
             },
             t if t == TypeId::of::<bool>() => {
-                Dynamic::new(self.access(var.ptr)[0] == 1)
+                Const::Bool(self.access(var.ptr)[0] == 1)
             },
             t => {
-                invalid_type_error!(t);
+                eprintln!("Invalid type id: {:?}", t);
+                panic!();
             }
         }
     }
 
-    fn set_var (&mut self, id:&String, value:&Box<Dynamic>) -> ()
+    fn set_var (&mut self, id:&String, value:&Const) -> ()
     {
         let mut var_opt = None;
         for scope in self.scopes.iter().rev()
@@ -97,23 +97,34 @@ impl Memory for StaticMemory
         let mut var = if let Some(var) = var_opt {
             *var
         } else {
-            let var = Variable
+            let var = match value
             {
-                t: value.id(),
-                ptr: self.alloc(get_dyn_size!(value))
+                Const::Number(_) => Variable {
+                    t: TypeId::of::<f32>(),
+                    ptr: self.alloc(std::mem::size_of::<f32>())
+                },
+                Const::Str(_) => Variable {
+                    t: TypeId::of::<String>(),
+                    ptr: self.alloc(std::mem::size_of::<String>())
+                },
+                Const::Bool(_) => Variable {
+                    t: TypeId::of::<bool>(),
+                    ptr: self.alloc(std::mem::size_of::<String>())
+                },
+                Const::Void => panic!() //TODO ?
             };
             self.scopes.last_mut().unwrap().insert(id.clone(), var);
             var
         };
         
-        match value.id()
+        match value
         {
             //☺
-            t if t == TypeId::of::<f32>() => {
-                self.access_mut(var.ptr).copy_from_slice(&value.downcast_ref::<f32>().unwrap().to_ne_bytes()[0..4])
+            Const::Number(f) => {
+                self.access_mut(var.ptr).copy_from_slice(&(*f).to_ne_bytes()[0..4])
             },
-            t if t == TypeId::of::<String>() => {
-                let bytes = value.downcast_ref::<String>().unwrap().as_bytes();
+            Const::Str(s) => {
+                let bytes = s.as_bytes();
                 let len = bytes.len();
                 if len != var.ptr.len {
                     self.realloc(&mut var, len);
@@ -121,16 +132,14 @@ impl Memory for StaticMemory
                 }
                 self.access_mut(var.ptr).copy_from_slice(bytes)
             },
-            t if t == TypeId::of::<bool>() => {
-                self.access_mut(var.ptr)[0] = if *value.downcast_ref::<bool>().unwrap() {
+            Const::Bool(b) => {
+                self.access_mut(var.ptr)[0] = if *b {
                     1u8
                 } else {
                     0u8
                 };
             },
-            t => {
-                invalid_type_error!(t);
-            }
+            Const::Void => panic!() //TODO ?
         }
     }
 
@@ -164,7 +173,7 @@ impl Memory for StaticMemory
         {
             for (id, address) in scope
             {
-                mem_str = format!("{}{} => {:?} => {}\n", mem_str, id, address.ptr, dyn_box_to_string!(*(&self.get_var(&id))));
+                mem_str = format!("{}{} => {:?} => {:?}\n", mem_str, id, address.ptr, self.get_var(id));
             }
             mem_str = format!("{}----------\n", mem_str);
         }

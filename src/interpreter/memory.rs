@@ -2,13 +2,13 @@
 // pub mod table_memory;
 pub mod static_memory;
 
-use dynamic::Dynamic;
+use crate::cst::Const;
 
 pub trait Memory
 {
     fn new () -> Self;
-    fn get_var (&self, id:&String) -> Box<Dynamic>;
-    fn set_var (&mut self, id:&String, value:&Box<Dynamic>) -> ();
+    fn get_var (&self, id:&String) -> Const;
+    fn set_var (&mut self, id:&String, value:&Const) -> ();
     fn open_scope (&mut self) -> ();
     fn close_scope (&mut self) -> ();
     fn print_memory (&self) -> ();

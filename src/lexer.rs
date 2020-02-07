@@ -1,3 +1,4 @@
+use crate::cst::Const;
 use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq)]
@@ -12,14 +13,6 @@ pub enum Token
     Semicolon,
     Eof,
     Nil
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum Const
-{
-    Number(f32),
-    Str(String),
-    Bool(bool)
 }
 
 //DESIGN define how strict the lexer should be (unexpected characters are currently ignored)

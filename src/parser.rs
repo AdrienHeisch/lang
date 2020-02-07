@@ -1,4 +1,7 @@
-use crate::lexer::{ Const, Token };
+use crate::{
+    cst::Const, 
+    lexer::Token
+};
 use std::collections::VecDeque;
 
 #[derive(Debug, Clone)]
