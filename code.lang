@@ -1,13 +1,12 @@
 var a = 2 * 3 + 7;
-var b_2 = "hey";
+var b = "hey";
 
 var d = {
     var c = 2 + 2;
     c + 1;
 };
 
-if true {
-    print("it's true");
+while a > 0 {
+    print("a:", a);
+    a -= 1;
 }
-
-print("a:", a);

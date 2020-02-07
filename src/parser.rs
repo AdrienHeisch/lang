@@ -7,11 +7,13 @@ pub enum Expr
     Const(Const),
     Id(String),
     Var(String, Box<Expr>),
+    UnOp(String, Box<Expr>),
     BinOp(String, Box<Expr>, Box<Expr>),
     Parent(Box<Expr>),
     Call(Box<Expr>, Vec<Expr>),
     Block(Vec<Expr>),
     If(Box<Expr>, Box<Expr>),
+    While(Box<Expr>, Box<Expr>),
     End
 }
 
@@ -88,6 +90,7 @@ fn parse_expr (tokens:&mut TkIter) -> Expr
 {
     match next!(tokens)
     {
+        Token::Op(op) => Expr::UnOp(String::from(op), Box::new(parse_expr(tokens))),
         Token::Const(c) => parse_expr_next(tokens, Expr::Const(c.clone())), //RESEARCH Copy vs Clone
         Token::Id(id) => {
             parse_structure(tokens, id)
@@ -168,6 +171,11 @@ fn parse_structure (tokens:&mut TkIter, id:&str) -> Expr
             let cond = parse_expr(tokens);
             let then = parse_expr(tokens);
             Expr::If(Box::new(cond), Box::new(then))
+        },
+        "while" => {
+            let cond = parse_expr(tokens);
+            let then = parse_expr(tokens);
+            Expr::While(Box::new(cond), Box::new(then))
         },
         id => parse_expr_next(tokens, Expr::Id(String::from(id)))
     }
@@ -250,7 +258,8 @@ fn is_block (e:&Expr) -> bool
     match e
     {
 		Expr::Block(_) => true,
-		Expr::If(_, then) => is_block(then),
+		Expr::If(_, expr) => is_block(expr),
+		Expr::While(_, expr) => is_block(expr),
 		_ => false
     }
 }

@@ -37,7 +37,8 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
         },
         Expr::Id(id) => mem.get_var(&id),
         Expr::Var(id, assign_expr) => assign(mem, &Expr::Id(id), &*assign_expr), //DESIGN should re assignation be allowed ?
-        Expr::BinOp(op, e1, e2) => operation(mem, &op, &*e1, &*e2),
+        Expr::UnOp(op, e) => unop(mem, &op, &*e),
+        Expr::BinOp(op, e1, e2) => binop(mem, &op, &*e1, &*e2),
         Expr::Parent(e) => expr(mem, &*e),
         Expr::Call(e, args) => call(mem, &*e, &args),
         Expr::Block(exprs) => {
@@ -55,12 +56,12 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
             mem.close_scope();
             out
         },
-        Expr::If(cond, block) => {
+        Expr::If(cond, e) => {
             let cond_val = expr(mem, &*cond);
             if cond_val.is::<bool>()
             {
                 if *cond_val.downcast_ref::<bool>().unwrap() {
-                    expr(mem, &*block)
+                    expr(mem, &*e)
                 } else {
                     Dynamic::new(Void)
                 }
@@ -71,6 +72,26 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
                 panic!();
             }
         },
+        Expr::While(cond, e) => {
+            loop
+            {
+                let cond_val = expr(mem, &*cond);
+                if cond_val.is::<bool>()
+                {
+                    if *cond_val.downcast_ref::<bool>().unwrap() {
+                        expr(mem, &*e);
+                    } else {
+                        break;
+                    }
+                } 
+                else
+                {
+                    eprintln!("Invalid condition : {:?}", cond); //TODO this should not be checked at runtime
+                    panic!();
+                }
+            }
+            Dynamic::new(Void)
+        },
         Expr::End => Dynamic::new(Void),
         /* Expr::Invalid => {
             eprintln!("Invalid expression : {:?}", e);
@@ -79,25 +100,63 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
     }
 }
 
-fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
+fn unop<T:Memory> (mem:&mut T, op:&str, e:&Expr) -> Box<Dynamic>
+{
+    match expr(mem, e)
+    {
+        e if e.is::<f32>() => {
+            let e_val = *e.downcast_ref::<f32>().unwrap();
+            match op
+            {
+                "-" => Dynamic::new(-e_val),
+                _ => {
+                    eprintln!("Invalid operator : {}", op);
+                    panic!();
+                }
+            }
+        },
+        e if e.is::<bool>() => {
+            let e_val = *e.downcast_ref::<bool>().unwrap();
+            match op
+            {
+                "-" => Dynamic::new(!e_val),
+                _ => {
+                    eprintln!("Invalid operator : {}", op);
+                    panic!();
+                }
+            }
+        },
+        e => {
+            eprintln!("Invalid operation : {}{}", op, crate::dyn_box_to_string!(&e));
+            panic!();
+        }
+    }
+}
+
+fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
 {
     match (expr(mem, e1), expr(mem, e2))
     {
         (expr1, expr2) if expr1.is::<f32>() && expr2.is::<f32>() => { //TODO match types instead of using guards (Dynamic.id) ?
             let e1_val = *expr1.downcast_ref::<f32>().unwrap();
             let e2_val = *expr2.downcast_ref::<f32>().unwrap();
-            match &op[..]
+            match op
             {
                 "==" => Dynamic::new(e1_val == e2_val),
-                "+" => Dynamic::new(e1_val + e2_val),
-                "-" => Dynamic::new(e1_val - e2_val),
-                "*" => Dynamic::new(e1_val * e2_val),
-                "/" => Dynamic::new(e1_val / e2_val),
+                "!=" => Dynamic::new(e1_val == e2_val),
+                ">" =>  Dynamic::new(e1_val > e2_val),
+                ">=" => Dynamic::new(e1_val >= e2_val),
+                "<" =>  Dynamic::new(e1_val < e2_val),
+                "<=" => Dynamic::new(e1_val <= e2_val),
+                "+" =>  Dynamic::new(e1_val + e2_val),
+                "-" =>  Dynamic::new(e1_val - e2_val),
+                "*" =>  Dynamic::new(e1_val * e2_val),
+                "/" =>  Dynamic::new(e1_val / e2_val),
                 //TODO EXTRACT TO METHOD FROM HERE ?
                 "=" => assign(mem, e1, e2),
                 _ => {
                     if op.len() > 1 && op.ends_with("=") {
-                        let value = *operation(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<f32>().unwrap();
+                        let value = *binop(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<f32>().unwrap();
                         assign(mem, e1, &Expr::Const(Const::Number(value)))
                     } else {
                         eprintln!("Invalid operator : {}", op);
@@ -113,11 +172,12 @@ fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
             match &op[..]
             {
                 "==" => Dynamic::new(e1_val == e2_val),
+                "!=" => Dynamic::new(e1_val == e2_val),
                 "+" => Dynamic::new(format!("{}{}", e1_val, e2_val)), //TODO check performance
                 "=" => assign(mem, e1, e2),
                 _ => {
                     if op.len() > 1 && op.ends_with("=") {
-                        let value = operation(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<String>().unwrap().clone();
+                        let value = binop(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<String>().unwrap().clone();
                         assign(mem, e1, &Expr::Const(Const::Str(value)))
                     } else {
                         eprintln!("Invalid operator : {}", op);
@@ -132,12 +192,13 @@ fn operation<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
             match &op[..]
             {
                 "==" => Dynamic::new(e1_val == e2_val),
+                "!=" => Dynamic::new(e1_val == e2_val),
                 "&&" => Dynamic::new(e1_val && e2_val),
                 "||" => Dynamic::new(e1_val || e2_val),
                 "=" => assign(mem, e1, e2),
                 _ => {
                     if op.len() > 1 && op.ends_with("=") {
-                        let value = operation(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<bool>().unwrap().clone();
+                        let value = binop(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<bool>().unwrap().clone();
                         assign(mem, e1, &Expr::Const(Const::Bool(value)))
                     } else {
                         eprintln!("Invalid operator : {}", op);

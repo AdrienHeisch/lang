@@ -171,7 +171,11 @@ impl CharExt for char
 {
     fn is_operator (&self) -> bool
     {
-        *self == '=' || *self == '+' || *self == '-' || *self == '*' || *self == '/'|| *self == '|'|| *self == '&'
+        match self
+        {
+            '=' | '+' | '-' | '*' | '/' | '<' | '>' | '|' | '&' | '!' => true,
+            _ => false
+        }
     }
 
     fn is_delimiter_open (&self) -> bool
