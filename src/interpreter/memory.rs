@@ -1,6 +1,7 @@
 // pub mod dyn_memory;
 // pub mod table_memory;
 pub mod static_memory;
+// pub mod dumb_memory;
 
 use crate::cst::Const;
 

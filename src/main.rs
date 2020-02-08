@@ -27,7 +27,7 @@ fn main ()
     }
 
     #[cfg(benchmark)]
-    measure_n_times(&program, 1000);
+    measure_n_times(&program, 6_000_000);
 
     #[cfg(not(benchmark))]
     eval(&program);

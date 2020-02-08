@@ -1,7 +1,6 @@
 use crate::cst::Const;
 use super::Memory;
 use std::{
-    any::TypeId,
     collections::HashMap
 };
 
@@ -20,8 +19,17 @@ pub struct StaticMemory
 #[derive(Clone, Copy, Debug)]
 struct Variable
 {
-    t: TypeId,
+    t: VarType,
     ptr:Pointer
+}
+
+#[derive(Clone, Copy, Debug)]
+enum VarType
+{
+    Number,
+    Str,
+    Bool,
+    // Void
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -58,19 +66,16 @@ impl Memory for StaticMemory
         match var.t
         {
             //☺
-            t if t == TypeId::of::<f32>() => {
+            VarType::Number => {
                 Const::Number(f32::from_ne_bytes([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]]))
             },
-            t if t == TypeId::of::<String>() => {
-                Const::Str(String::from_utf8(Vec::from(self.access(var.ptr))).ok().unwrap())
-            },
-            t if t == TypeId::of::<bool>() => {
-                Const::Bool(self.access(var.ptr)[0] == 1)
-            },
-            t => {
+            VarType::Str => Const::Str(String::from_utf8(Vec::from(self.access(var.ptr))).ok().unwrap()),
+            VarType::Bool => Const::Bool(self.access(var.ptr)[0] == 1),
+            // VarType::Void => Const::Void,
+            /* t => {
                 eprintln!("Invalid type id: {:?}", t);
                 panic!();
-            }
+            } */
         }
     }
 
@@ -82,15 +87,15 @@ impl Memory for StaticMemory
             let var = match value
             {
                 Const::Number(_) => Variable {
-                    t: TypeId::of::<f32>(),
+                    t: VarType::Number,
                     ptr: self.alloc(std::mem::size_of::<f32>())
                 },
                 Const::Str(_) => Variable {
-                    t: TypeId::of::<String>(),
+                    t: VarType::Str,
                     ptr: self.alloc(std::mem::size_of::<String>())
                 },
                 Const::Bool(_) => Variable {
-                    t: TypeId::of::<bool>(),
+                    t: VarType::Bool,
                     ptr: self.alloc(std::mem::size_of::<String>())
                 },
                 Const::Void => panic!() //TODO ?

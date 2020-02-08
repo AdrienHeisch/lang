@@ -10,6 +10,7 @@ use memory::{
     // dyn_memory::DynamicMemory as MemType,
     // table_memory::TableMemory as MemType,
     static_memory::StaticMemory as MemType,
+    // dumb_memory::DumbMemory as MemType,
 };
 
 const F32_EQUALITY_THRESHOLD:f32 = 1e-6;
