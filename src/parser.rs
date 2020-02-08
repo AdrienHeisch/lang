@@ -51,7 +51,7 @@ pub fn parse (tokens:&VecDeque<Token>) -> Expr
             // Expr::End => break,
             expr => exprs.push(expr)
         }
-        if let None = tk_iter.peek() { break; }
+        if tk_iter.peek().is_none() { break; }
     }
 
     #[cfg(not(benchmark))]
@@ -70,8 +70,7 @@ fn parse_full_expr (tokens:&mut TkIter) -> Expr
     let tk = peek!(tokens);
     if *tk == Token::Semicolon {
         next!(tokens);
-    } else
-    {
+    } else {
         match &expr
         {
             e if is_block(e) => (),
@@ -140,7 +139,7 @@ fn parse_expr_next (tokens:&mut TkIter, e:Expr) -> Expr
 
 fn parse_structure (tokens:&mut TkIter, id:&str) -> Expr
 {
-    return match id
+    match id
     {
         "var" => {
             match next!(tokens)
@@ -210,7 +209,7 @@ fn make_binop (op:&str, el:Expr, er:Expr) -> Expr
     {
         Expr::BinOp(op_, el_, er_) => {
             if priorities(op) <= priorities(&op_) {
-                Expr::BinOp(op_.clone(), Box::new(make_binop(op, el, *el_)), er_)
+                Expr::BinOp(op_, Box::new(make_binop(op, el, *el_)), er_)
             } else {
                 Expr::BinOp(String::from(op), Box::new(el), Box::new(er))
             }

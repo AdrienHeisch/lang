@@ -31,7 +31,7 @@ pub fn lex (program:&str) -> VecDeque<Token>
     while pos < program.len()
     {
         let (token, len) = get_token(program, pos);
-        pos = pos + len;
+        pos += len;
         match token
         {
             Token::Eof => break,
@@ -48,6 +48,7 @@ pub fn lex (program:&str) -> VecDeque<Token>
     tokens
 }
 
+#[allow(clippy::cognitive_complexity)] //TODO split into smaller functions ?
 fn get_token (program:&str, mut pos:usize) -> (Token, usize)
 {
     let mut len:usize = 1;

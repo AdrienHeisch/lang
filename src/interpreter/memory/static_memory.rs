@@ -47,13 +47,13 @@ impl Memory for StaticMemory
         }
     }
 
-    fn get_var (&self, id:&String) -> Box<Dynamic>
+    fn get_var (&self, id:&str) -> Box<Dynamic>
     {
         let mut var_opt = None;
         for scope in self.scopes.iter().rev()
         {
             var_opt = scope.get(id);
-            if let Some(_) = var_opt {
+            if var_opt.is_some() {
                 break;
             }
         }
@@ -68,8 +68,8 @@ impl Memory for StaticMemory
         match var.t
         {
             //☺
-            t if t == TypeId::of::<f32>() => unsafe {
-                Dynamic::new(f32::from_ne_bytes(std::mem::transmute([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]])))
+            t if t == TypeId::of::<f32>() => {
+                Dynamic::new(f32::from_ne_bytes([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]]))
             },
             t if t == TypeId::of::<String>() => {
                 Dynamic::new(String::from_utf8(Vec::from(self.access(var.ptr))).ok().unwrap())
@@ -83,13 +83,13 @@ impl Memory for StaticMemory
         }
     }
 
-    fn set_var (&mut self, id:&String, value:&Box<Dynamic>) -> ()
+    fn set_var (&mut self, id:&str, value:&Dynamic)
     {
         let mut var_opt = None;
         for scope in self.scopes.iter().rev()
         {
             var_opt = scope.get(id);
-            if let Some(_) = var_opt {
+            if var_opt.is_some() {
                 break;
             }
         }
@@ -102,7 +102,7 @@ impl Memory for StaticMemory
                 t: value.id(),
                 ptr: self.alloc(get_dyn_size!(value))
             };
-            self.scopes.last_mut().unwrap().insert(id.clone(), var);
+            self.scopes.last_mut().unwrap().insert(id.to_string(), var);
             var
         };
         
@@ -117,7 +117,7 @@ impl Memory for StaticMemory
                 let len = bytes.len();
                 if len != var.ptr.len {
                     self.realloc(&mut var, len);
-                    self.scopes.last_mut().unwrap().insert(id.clone(), var);
+                    self.scopes.last_mut().unwrap().insert(id.to_string(), var);
                 }
                 self.access_mut(var.ptr).copy_from_slice(bytes)
             },
@@ -134,12 +134,12 @@ impl Memory for StaticMemory
         }
     }
 
-    fn open_scope (&mut self) -> ()
+    fn open_scope (&mut self)
     {
         self.scopes.push(Scope::new());
     }
 
-    fn close_scope (&mut self) -> ()
+    fn close_scope (&mut self)
     {
         let scope = if let Some(scope) = self.scopes.pop() {
             scope
@@ -155,7 +155,7 @@ impl Memory for StaticMemory
     }
 
     #[allow(dead_code)]
-    fn print_memory (&self) -> ()
+    fn print_memory (&self)
     {
         // self.vars.iter().map(|(k, v)| format!("{} => {:?}", k, v.ptr)).for_each(|s| print!("{}, ", s));
         // println!();
@@ -164,7 +164,7 @@ impl Memory for StaticMemory
         {
             for (id, address) in scope
             {
-                mem_str = format!("{}{} => {:?} => {}\n", mem_str, id, address.ptr, dyn_box_to_string!(*(&self.get_var(&id))));
+                mem_str = format!("{}{} => {:?} => {}\n", mem_str, id, address.ptr, dyn_box_to_string!(self.get_var(&id)));
             }
             mem_str = format!("{}----------\n", mem_str);
         }
@@ -199,7 +199,8 @@ impl StaticMemory
             }
             let mut is_valid = true;
             let mut next_pos_found = false;
-            for i in pos..(pos + len)
+            let init_pos = pos;
+            for i in init_pos..(init_pos + len)
             {
                 if self.allocation_map[i] {
                     is_valid = false;
@@ -232,7 +233,7 @@ impl StaticMemory
         }
     }
 
-    fn free (&mut self, ptr:Pointer) -> () //RESEARCH shift everything to the right so there is always free memory on the left ?
+    fn free (&mut self, ptr:Pointer) //RESEARCH shift everything to the right so there is always free memory on the left ?
     {
         for i in (ptr.pos)..(ptr.pos + ptr.len) {
             self.ram[i] = u8::default();
@@ -240,7 +241,7 @@ impl StaticMemory
         }
     }
 
-    fn realloc (&mut self, var:&mut Variable, new_len:usize) -> ()
+    fn realloc (&mut self, var:&mut Variable, new_len:usize)
     {
         self.free(var.ptr);
         var.ptr = self.alloc(new_len);

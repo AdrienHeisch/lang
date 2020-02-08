@@ -2,7 +2,8 @@ mod memory;
 
 use crate::{
     lexer::Const,
-    parser::Expr
+    parser::Expr,
+    utils
 };
 use dynamic::Dynamic;
 use memory::{
@@ -11,6 +12,8 @@ use memory::{
     // table_memory::TableMemory as MemType,
     static_memory::StaticMemory as MemType,
 };
+
+const F32_EQUALITY_THRESHOLD:f32 = 1e-6;
 
 pub fn interpret (expr_:Expr)
 {
@@ -43,10 +46,10 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
         Expr::Call(e, args) => call(mem, &*e, &args),
         Expr::Block(exprs) => {
             mem.open_scope();
-            let out = if exprs.len() > 0
+            let out = if !exprs.is_empty()
             {
-                for i in 0..(exprs.len() - 1) {
-                    expr(mem, &exprs[i]);
+                for e in &exprs {
+                    expr(mem, e);
                 }
                 expr(mem, exprs.iter().last().unwrap())
             }
@@ -65,9 +68,7 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
                 } else {
                     Dynamic::new(Void)
                 }
-            } 
-            else
-            {
+            } else {
                 eprintln!("Invalid condition : {:?}", cond); //TODO this should not be checked at runtime
                 panic!();
             }
@@ -83,9 +84,7 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
                     } else {
                         break;
                     }
-                } 
-                else
-                {
+                } else {
                     eprintln!("Invalid condition : {:?}", cond); //TODO this should not be checked at runtime
                     panic!();
                 }
@@ -142,8 +141,8 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
             let e2_val = *expr2.downcast_ref::<f32>().unwrap();
             match op
             {
-                "==" => Dynamic::new(e1_val == e2_val),
-                "!=" => Dynamic::new(e1_val != e2_val),
+                "==" => Dynamic::new( utils::compare_floats(e1_val, e2_val, F32_EQUALITY_THRESHOLD)),
+                "!=" => Dynamic::new(!utils::compare_floats(e1_val, e2_val, F32_EQUALITY_THRESHOLD)),
                 ">" =>  Dynamic::new(e1_val > e2_val),
                 ">=" => Dynamic::new(e1_val >= e2_val),
                 "<" =>  Dynamic::new(e1_val < e2_val),
@@ -155,7 +154,7 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
                 //TODO EXTRACT TO METHOD FROM HERE ?
                 "=" => assign(mem, e1, e2),
                 _ => {
-                    if op.len() > 1 && op.ends_with("=") {
+                    if op.len() > 1 && op.ends_with('=') {
                         let value = *binop(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<f32>().unwrap();
                         assign(mem, e1, &Expr::Const(Const::Number(value)))
                     } else {
@@ -176,7 +175,7 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
                 "+" => Dynamic::new(format!("{}{}", e1_val, e2_val)), //TODO check performance
                 "=" => assign(mem, e1, e2),
                 _ => {
-                    if op.len() > 1 && op.ends_with("=") {
+                    if op.len() > 1 && op.ends_with('=') {
                         let value = binop(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<String>().unwrap().clone();
                         assign(mem, e1, &Expr::Const(Const::Str(value)))
                     } else {
@@ -225,7 +224,7 @@ fn assign<T:Memory> (mem:&mut T, to:&Expr, from:&Expr) -> Box<Dynamic>
     value
 }
 
-fn call<T:Memory> (mem:&mut T, e:&Expr, args:&Vec<Expr>) -> Box<Dynamic>
+fn call<T:Memory> (mem:&mut T, e:&Expr, args:&[Expr]) -> Box<Dynamic>
 {
     match e
     {
