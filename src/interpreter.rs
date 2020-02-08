@@ -2,7 +2,7 @@ mod memory;
 
 use crate::{
     cst::Const,
-    parser::Expr,
+    expr::Expr,
     utils
 };
 use memory::{
@@ -15,14 +15,14 @@ use memory::{
 
 const F32_EQUALITY_THRESHOLD:f32 = 1e-6;
 
-pub fn interpret (expr_:Expr)
+pub fn interpret (expr_:&Expr)
 {
     let mut mem = MemType::new();
     
     #[cfg(not(benchmark))]
     println!("Program stdout :");
     
-    expr(&mut mem, &expr_);
+    expr(&mut mem, expr_);
 }
 
 fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
@@ -35,7 +35,7 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
         Expr::UnOp(op, e) => unop(mem, &op, e),
         Expr::BinOp(op, e1, e2) => binop(mem, &op, e1, e2),
         Expr::Parent(e) => expr(mem, e),
-        Expr::Call(e, args) => call(mem, e, &args),
+        Expr::Call(e, args) => call(mem, e, args),
         Expr::Block(exprs) => {
             mem.open_scope();
             let out = if !exprs.is_empty()
@@ -212,7 +212,7 @@ fn assign<T:Memory> (mem:&mut T, to:&Expr, from:&Expr) -> Const
     value
 }
 
-fn call<T:Memory> (mem:&mut T, e:&Expr, args:&[Expr]) -> Const
+fn call<T:Memory> (mem:&mut T, e:&Expr, args:&[&Expr]) -> Const
 {
     match e
     {

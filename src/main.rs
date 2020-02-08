@@ -1,4 +1,5 @@
 mod cst;
+mod expr;
 mod lexer;
 mod parser;
 mod interpreter;
@@ -7,6 +8,7 @@ mod utils;
 // mod macros;
 
 use std::time::{ Instant, Duration };
+use typed_arena::Arena;
 
 //TODO find a name and push to github ?
 //TODO use Result instead of panic! on error
@@ -33,13 +35,16 @@ fn main ()
     eval(&program);
 }
 
+#[cfg(not(benchmark))]
 fn eval (program:&str)
 {
     let tokens = lexer::lex(program);
-    let block = parser::parse(&tokens);
+    let arena = Arena::new();
+    let block = parser::parse(&arena, &tokens);
     interpreter::interpret(block);
 }
 
+#[cfg(benchmark)]
 #[allow(dead_code)]
 fn measure_n_times (program:&str, n:usize)
 {
@@ -64,6 +69,7 @@ fn measure_n_times (program:&str, n:usize)
     println!("Total :   {}ms", durations.0.as_millis() + durations.1.as_millis() + durations.2.as_millis());
 }
 
+#[cfg(benchmark)]
 #[allow(unused_variables)]
 fn measure_once (program:&str) -> (Duration, Duration, Duration)
 {
@@ -72,11 +78,12 @@ fn measure_once (program:&str) -> (Duration, Duration, Duration)
     let lex_time = now.elapsed();
     
     let now = Instant::now();
-    let exprs = parser::parse(&tokens);
+    let arena = Arena::new();
+    let block = parser::parse(&arena, &tokens);
     let parse_time = now.elapsed();
 
     let now = Instant::now();
-    interpreter::interpret(exprs);
+    interpreter::interpret(block);
     let interp_time = now.elapsed();
 
     (lex_time, parse_time, interp_time)
