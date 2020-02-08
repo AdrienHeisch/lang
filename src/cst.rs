@@ -16,7 +16,7 @@ impl std::fmt::Display for Const
             Const::Number(f_) => write!(f, "{}", f_),
             Const::Str(s) => write!(f, "{}", s),
             Const::Bool(b) => write!(f, "{}", b),
-            Const::Void => write!(f, "{}", "void")
+            Const::Void => write!(f, "void")
         }
     }
 }

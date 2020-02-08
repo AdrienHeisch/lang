@@ -2,6 +2,7 @@ mod cst;
 mod lexer;
 mod parser;
 mod interpreter;
+mod utils;
 
 // mod macros;
 

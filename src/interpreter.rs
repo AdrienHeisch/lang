@@ -2,7 +2,8 @@ mod memory;
 
 use crate::{
     cst::Const,
-    parser::Expr
+    parser::Expr,
+    utils
 };
 use memory::{
     Memory,
@@ -10,6 +11,8 @@ use memory::{
     // table_memory::TableMemory as MemType,
     static_memory::StaticMemory as MemType,
 };
+
+const F32_EQUALITY_THRESHOLD:f32 = 1e-6;
 
 pub fn interpret (expr_:Expr)
 {
@@ -35,10 +38,10 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
         Expr::Call(e, args) => call(mem, &*e, &args),
         Expr::Block(exprs) => {
             mem.open_scope();
-            let out = if exprs.len() > 0
+            let out = if !exprs.is_empty()
             {
-                for i in 0..(exprs.len() - 1) {
-                    expr(mem, &exprs[i]);
+                for e in &exprs {
+                    expr(mem, e);
                 }
                 expr(mem, exprs.iter().last().unwrap())
             }
@@ -130,8 +133,8 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Const
         (Const::Number(f1), Const::Number(f2)) => { //TODO match types instead of using guards (Dynamic.id) ?
             match op
             {
-                "==" => Const::Bool(f1 == f2),
-                "!=" => Const::Bool(f1 == f2),
+                "==" => Const::Bool( utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
+                "!=" => Const::Bool(!utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
                 ">" =>  Const::Bool(f1 > f2),
                 ">=" => Const::Bool(f1 >= f2),
                 "<" =>  Const::Bool(f1 < f2),
@@ -143,7 +146,7 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Const
                 //TODO EXTRACT TO METHOD FROM HERE ?
                 "=" =>  assign(mem, e1, e2),
                 _ => {
-                    if op.len() > 1 && op.ends_with("=") {
+                    if op.len() > 1 && op.ends_with('=') {
                         let value = binop(mem, &op[0..(op.len() - 1)], e1, e2);
                         assign(mem, e1, &Expr::Const(value))
                     } else {
@@ -162,7 +165,7 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Const
                 "+" =>  Const::Str(format!("{}{}", s1, s2)), //TODO check performance
                 "=" =>  assign(mem, e1, e2),
                 _ => {
-                    if op.len() > 1 && op.ends_with("=") {
+                    if op.len() > 1 && op.ends_with('=') {
                         let value = binop(mem, &op[0..(op.len() - 1)], e1, e2);
                         assign(mem, e1, &Expr::Const(value))
                     } else {
@@ -209,7 +212,7 @@ fn assign<T:Memory> (mem:&mut T, to:&Expr, from:&Expr) -> Const
     value
 }
 
-fn call<T:Memory> (mem:&mut T, e:&Expr, args:&Vec<Expr>) -> Const
+fn call<T:Memory> (mem:&mut T, e:&Expr, args:&[Expr]) -> Const
 {
     match e
     {
