@@ -143,7 +143,7 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
             match op
             {
                 "==" => Dynamic::new(e1_val == e2_val),
-                "!=" => Dynamic::new(e1_val == e2_val),
+                "!=" => Dynamic::new(e1_val != e2_val),
                 ">" =>  Dynamic::new(e1_val > e2_val),
                 ">=" => Dynamic::new(e1_val >= e2_val),
                 "<" =>  Dynamic::new(e1_val < e2_val),
@@ -172,7 +172,7 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
             match &op[..]
             {
                 "==" => Dynamic::new(e1_val == e2_val),
-                "!=" => Dynamic::new(e1_val == e2_val),
+                "!=" => Dynamic::new(e1_val != e2_val),
                 "+" => Dynamic::new(format!("{}{}", e1_val, e2_val)), //TODO check performance
                 "=" => assign(mem, e1, e2),
                 _ => {
@@ -192,18 +192,13 @@ fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Box<Dynamic>
             match &op[..]
             {
                 "==" => Dynamic::new(e1_val == e2_val),
-                "!=" => Dynamic::new(e1_val == e2_val),
+                "!=" => Dynamic::new(e1_val != e2_val),
                 "&&" => Dynamic::new(e1_val && e2_val),
                 "||" => Dynamic::new(e1_val || e2_val),
                 "=" => assign(mem, e1, e2),
                 _ => {
-                    if op.len() > 1 && op.ends_with("=") {
-                        let value = binop(mem, &op[0..op.len() - 1], e1, e2).downcast_ref::<bool>().unwrap().clone();
-                        assign(mem, e1, &Expr::Const(Const::Bool(value)))
-                    } else {
-                        eprintln!("Invalid operator : {}", op);
-                        panic!();
-                    }
+                    eprintln!("Invalid operator : {}", op);
+                    panic!();
                 }
             }
         },
