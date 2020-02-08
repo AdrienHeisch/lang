@@ -26,12 +26,11 @@ pub fn interpret (expr_:Expr)
 
 fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
 {
-    let e = e.clone();
     match e
     {
-        Expr::Const(cst) => cst,
+        Expr::Const(cst) => cst.clone(),
         Expr::Id(id) => mem.get_var(&id),
-        Expr::Var(id, assign_expr) => assign(mem, &Expr::Id(id), &*assign_expr), //DESIGN should re assignation be allowed ?
+        Expr::Var(id, assign_expr) => assign(mem, &Expr::Id(id.clone()), &*assign_expr), //DESIGN should re assignation be allowed ?
         Expr::UnOp(op, e) => unop(mem, &op, &*e),
         Expr::BinOp(op, e1, e2) => binop(mem, &op, &*e1, &*e2),
         Expr::Parent(e) => expr(mem, &*e),
