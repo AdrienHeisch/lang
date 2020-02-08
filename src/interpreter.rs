@@ -30,11 +30,11 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
     {
         Expr::Const(cst) => cst.clone(),
         Expr::Id(id) => mem.get_var(&id),
-        Expr::Var(id, assign_expr) => assign(mem, &Expr::Id(id.clone()), &*assign_expr), //DESIGN should re assignation be allowed ?
-        Expr::UnOp(op, e) => unop(mem, &op, &*e),
-        Expr::BinOp(op, e1, e2) => binop(mem, &op, &*e1, &*e2),
-        Expr::Parent(e) => expr(mem, &*e),
-        Expr::Call(e, args) => call(mem, &*e, &args),
+        Expr::Var(id, assign_expr) => assign(mem, &Expr::Id(id.clone()), assign_expr), //DESIGN should re assignation be allowed ?
+        Expr::UnOp(op, e) => unop(mem, &op, e),
+        Expr::BinOp(op, e1, e2) => binop(mem, &op, e1, e2),
+        Expr::Parent(e) => expr(mem, e),
+        Expr::Call(e, args) => call(mem, e, &args),
         Expr::Block(exprs) => {
             mem.open_scope();
             let out = if !exprs.is_empty()
@@ -51,11 +51,11 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
             out
         },
         Expr::If(cond, e) => {
-            match expr(mem, &*cond)
+            match expr(mem, cond)
             {
                 Const::Bool(b) => {
                     if b {
-                        expr(mem, &*e)
+                        expr(mem, e)
                     } else {
                         Const::Void
                     }
@@ -69,11 +69,11 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
         Expr::While(cond, e) => {
             loop
             {
-                match expr(mem, &*cond)
+                match expr(mem, cond)
                 {
                     Const::Bool(b) => {
                         if b {
-                            expr(mem, &*e);
+                            expr(mem, e);
                         } else {
                             break;
                         }

@@ -48,16 +48,7 @@ impl Memory for StaticMemory
 
     fn get_var (&self, id:&str) -> Const
     {
-        let mut var_opt = None;
-        for scope in self.scopes.iter().rev()
-        {
-            var_opt = scope.get(id);
-            if var_opt.is_some() {
-                break;
-            }
-        }
-
-        let var = if let Some(var) = var_opt {
+        let var = if let Some(var) = self.get_var_from_ident(id) {
             *var
         } else {
             eprintln!("Unknown identifier : {}", id);
@@ -85,16 +76,7 @@ impl Memory for StaticMemory
 
     fn set_var (&mut self, id:&str, value:&Const)
     {
-        let mut var_opt = None;
-        for scope in self.scopes.iter().rev()
-        {
-            var_opt = scope.get(id);
-            if var_opt.is_some() {
-                break;
-            }
-        }
-
-        let mut var = if let Some(var) = var_opt {
+        let mut var = if let Some(var) = self.get_var_from_ident(id) {
             *var
         } else {
             let var = match value
@@ -185,6 +167,19 @@ impl Memory for StaticMemory
 
 impl StaticMemory
 {
+
+    fn get_var_from_ident (&self, id:&str) -> Option<&Variable>
+    {
+        let mut var_opt = None;
+        for scope in self.scopes.iter().rev()
+        {
+            var_opt = scope.get(id);
+            if var_opt.is_some() {
+                break;
+            }
+        }
+        var_opt
+    }
 
     fn alloc (&mut self, len:usize) -> Pointer
     {
