@@ -39,8 +39,8 @@ fn main ()
 fn eval (program:&str)
 {
     let tokens = lexer::lex(program);
-    let arena = Arena::new();
-    let block = parser::parse(&arena, &tokens);
+    let expr_arena = Arena::new();
+    let block = parser::parse(&expr_arena, &tokens);
     interpreter::interpret(block);
 }
 
@@ -78,8 +78,8 @@ fn measure_once (program:&str) -> (Duration, Duration, Duration)
     let lex_time = now.elapsed();
     
     let now = Instant::now();
-    let arena = Arena::new();
-    let block = parser::parse(&arena, &tokens);
+    let expr_arena = Arena::new();
+    let block = parser::parse(&expr_arena, &tokens);
     let parse_time = now.elapsed();
 
     let now = Instant::now();

@@ -39,7 +39,7 @@ pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> &'a Exp
             // Expr::End => break,
             expr => exprs.push(expr)
         }; */
-        exprs.push(arena.alloc(parse_full_expr(arena, &mut tk_iter)));
+        exprs.push(parse_full_expr(arena, &mut tk_iter));
         if tk_iter.peek().is_none() { break; }
     }
 
@@ -52,7 +52,7 @@ pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> &'a Exp
     arena.alloc(Expr::Block(exprs))
 }
 
-fn parse_full_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> Expr<'a>
+fn parse_full_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a>
 {
     let expr = parse_expr(arena, tokens);
 
@@ -74,12 +74,12 @@ fn parse_full_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> Expr<'
     expr
 }
 
-fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> Expr<'a>
+fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a>
 {
     match next!(tokens)
     {
-        Token::Op(op) => Expr::UnOp(String::from(op), arena.alloc(parse_expr(arena, tokens))),
-        Token::Const(c) => parse_expr_next(arena, tokens, Expr::Const(c.clone())), //RESEARCH Copy vs Clone
+        Token::Op(op) => arena.alloc(Expr::UnOp(String::from(op), parse_expr(arena, tokens))),
+        Token::Const(c) => parse_expr_next(arena, tokens, arena.alloc(Expr::Const(c.clone()))), //RESEARCH Copy vs Clone
         Token::Id(id) => {
             parse_structure(arena, tokens, id)
         },
@@ -87,7 +87,7 @@ fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> Expr<'a>
             let e = parse_expr(arena, tokens);
             match next!(tokens)
             {
-                Token::DelimClose(')') => parse_expr_next(arena, tokens, Expr::Parent(arena.alloc(e))),
+                Token::DelimClose(')') => parse_expr_next(arena, tokens, arena.alloc(Expr::Parent(e))),
                 _ => {
                     eprintln!("Unclosed delimiter \"(\"");
                     panic!();
@@ -97,12 +97,12 @@ fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> Expr<'a>
         Token::DelimOpen('{') => {
             let mut exprs:Vec<&Expr> = Vec::new();
             while *peek!(tokens) != Token::DelimClose('}') {
-                exprs.push(arena.alloc(parse_full_expr(arena, tokens)));
+                exprs.push(&parse_full_expr(arena, tokens));
             }
             next!(tokens);
-            Expr::Block(exprs)
+            arena.alloc(Expr::Block(exprs))
         },
-        Token::Eof => Expr::End,
+        Token::Eof => arena.alloc(Expr::End),
         tk => {
             eprintln!("Unexpected token : {:?}", tk);
             panic!();
@@ -110,7 +110,7 @@ fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> Expr<'a>
     }
 }
 
-fn parse_expr_next<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, e:Expr<'a>) -> Expr<'a>
+fn parse_expr_next<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, e:&'a Expr<'a>) -> &'a Expr<'a>
 {
     match peek!(tokens)
     {
@@ -120,13 +120,13 @@ fn parse_expr_next<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, e:Expr<'a
         },
         Token::DelimOpen('(') => {
             next!(tokens);
-            Expr::Call(arena.alloc(e), make_expr_list(arena, tokens, ')'))
+            arena.alloc(Expr::Call(e, make_expr_list(arena, tokens, ')')))
         },
         _ => e
     }
 }
 
-fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) -> Expr<'a>
+fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) -> &'a Expr<'a>
 {
     match id
     {
@@ -134,9 +134,9 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
             match next!(tokens)
             {
                 Token::Id(id) => {
-                    Expr::Var(
+                    arena.alloc(Expr::Var(
                         id.clone(),
-                        arena.alloc(match peek!(tokens)
+                        match peek!(tokens)
                         { 
                             Token::Op(op) if &op[..] == "=" => {
                                 next!(tokens);
@@ -146,8 +146,8 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
                                 eprintln!("Expected assign operator, got : {:?}", tk);
                                 panic!();
                             }
-                        })
-                    )
+                        }
+                    ))
                 }
                 tk => {
                     eprintln!("Expected identifier, got : {:?}", tk);
@@ -158,18 +158,18 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
         "if" => {
             let cond = parse_expr(arena, tokens);
             let then = parse_expr(arena, tokens);
-            Expr::If(arena.alloc(cond), arena.alloc(then))
+            arena.alloc(Expr::If(cond, then))
         },
         "while" => {
             let cond = parse_expr(arena, tokens);
             let then = parse_expr(arena, tokens);
-            Expr::While(arena.alloc(cond), arena.alloc(then))
+            arena.alloc(Expr::While(cond, then))
         },
-        id => parse_expr_next(arena, tokens, Expr::Id(String::from(id)))
+        id => parse_expr_next(arena, tokens, arena.alloc(Expr::Id(String::from(id))))
     }
 }
 
-fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&str, el:Expr<'a>, er:Expr<'a>) -> Expr<'a>
+fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&str, el:&'a Expr<'a>, er:&'a Expr<'a>) -> &'a Expr<'a>
 {
     fn priorities (op:&str) -> i32
     {
@@ -198,12 +198,12 @@ fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&str, el:Expr<'a>, er:Expr<'a>)
     {
         Expr::BinOp(op_, el_, er_) => {
             if priorities(op) <= priorities(&op_) {
-                Expr::BinOp(op_, arena.alloc(make_binop(arena, op, el, el_.clone())), er_)
+                arena.alloc(Expr::BinOp(op_, make_binop(arena, op, el, el_), er_))
             } else {
-                Expr::BinOp(String::from(op), arena.alloc(el), arena.alloc(er))
+                arena.alloc(Expr::BinOp(String::from(op), el, er))
             }
         },
-        _ => Expr::BinOp(String::from(op), arena.alloc(el), arena.alloc(er))
+        _ => arena.alloc(Expr::BinOp(String::from(op), el, er))
     }
 }
 
@@ -216,7 +216,7 @@ fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, close_on:c
 
     loop
     {
-        expr_list.push(arena.alloc(parse_expr(arena, tokens)));
+        expr_list.push(parse_expr(arena, tokens));
         match peek!(tokens)
         {
             Token::Comma => {
