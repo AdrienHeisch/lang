@@ -48,7 +48,7 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Box<Dynamic>
             mem.open_scope();
             let out = if !exprs.is_empty()
             {
-                for e in &exprs {
+                for e in exprs.iter().take(exprs.len() - 1) {
                     expr(mem, e);
                 }
                 expr(mem, exprs.iter().last().unwrap())
