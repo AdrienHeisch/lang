@@ -34,11 +34,6 @@ pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> &'a Exp
 
     loop
     {
-        /* match parse_full_expr(&mut tk_iter)
-        {
-            // Expr::End => break,
-            expr => exprs.push(expr)
-        }; */
         exprs.push(parse_full_expr(arena, &mut tk_iter));
         if tk_iter.peek().is_none() { break; }
     }
@@ -171,34 +166,25 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
 
 fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&str, el:&'a Expr<'a>, er:&'a Expr<'a>) -> &'a Expr<'a>
 {
-    fn priorities (op:&str) -> i32
+    fn priorities (op:&str) -> u8
     {
-        macro_rules! map(
-            { $($key:expr => $value:expr),+ } => {
-                {
-                    let mut m = ::std::collections::HashMap::new();
-                    $(
-                        m.insert($key, $value);
-                    )+
-                    m
-                }
-            };
-        );
-
-        let map = map!{ "*" => 1, "/" => 1, "+" => 2, "-" => 2, "=" => 9 }; //TODO can't do this every time -> lazy_static! ?
-        if let Some(p) = map.get(op) {
-            *p
-        } else {
-            eprintln!("Invalid operator : {}", op);
-            0
+        match op
+        {
+            "*" | "/" => 1,
+            "+" | "-" => 2,
+            "=" => 9,
+            op => {
+                eprintln!("Invalid operator : {}", op);
+                panic!();
+            }
         }
     }
 
-    match er.clone()
+    match er
     {
         Expr::BinOp(op_, el_, er_) => {
             if priorities(op) <= priorities(&op_) {
-                arena.alloc(Expr::BinOp(op_, make_binop(arena, op, el, el_), er_))
+                arena.alloc(Expr::BinOp(op_.clone(), make_binop(arena, op, el, el_), er_))
             } else {
                 arena.alloc(Expr::BinOp(String::from(op), el, er))
             }

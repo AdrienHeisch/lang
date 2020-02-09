@@ -13,17 +13,17 @@ pub struct StaticMemory
 {
     ram:[u8; MEMORY_SIZE],
     allocation_map:[bool; MEMORY_SIZE],
-    scopes:Vec<Scope>
+    scopes:Vec<HashMap<String, Variable>>
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Variable
 {
     t: VarType,
     ptr:Pointer
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 enum VarType
 {
     Number,
@@ -32,14 +32,12 @@ enum VarType
     // Void
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 struct Pointer
 {
     pos:usize,
     len:usize
 }
-
-type Scope = HashMap<String, Variable>;
 
 impl Memory for StaticMemory
 {
@@ -57,7 +55,7 @@ impl Memory for StaticMemory
     fn get_var (&self, id:&str) -> Const
     {
         let var = if let Some(var) = self.get_var_from_ident(id) {
-            *var
+            var
         } else {
             eprintln!("Unknown identifier : {}", id);
             panic!()
@@ -69,8 +67,8 @@ impl Memory for StaticMemory
             VarType::Number => {
                 Const::Number(f32::from_ne_bytes([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]]))
             },
-            VarType::Str => Const::Str(String::from_utf8(Vec::from(self.access(var.ptr))).ok().unwrap()),
-            VarType::Bool => Const::Bool(self.access(var.ptr)[0] == 1),
+            VarType::Str => Const::Str(String::from_utf8(Vec::from(self.access(&var.ptr))).ok().unwrap()),
+            VarType::Bool => Const::Bool(self.access(&var.ptr)[0] == 1),
             // VarType::Void => Const::Void,
             /* t => {
                 eprintln!("Invalid type id: {:?}", t);
@@ -82,7 +80,7 @@ impl Memory for StaticMemory
     fn set_var (&mut self, id:&str, value:&Const)
     {
         let mut var = if let Some(var) = self.get_var_from_ident(id) {
-            *var
+            var.clone()
         } else {
             let var = match value
             {
@@ -92,15 +90,15 @@ impl Memory for StaticMemory
                 },
                 Const::Str(_) => Variable {
                     t: VarType::Str,
-                    ptr: self.alloc(std::mem::size_of::<String>())
+                    ptr: self.alloc(std::mem::size_of::<String>()) //TODO lazy allocation with alloc(0) ?
                 },
                 Const::Bool(_) => Variable {
                     t: VarType::Bool,
-                    ptr: self.alloc(std::mem::size_of::<String>())
+                    ptr: self.alloc(std::mem::size_of::<bool>())
                 },
                 Const::Void => panic!() //TODO ?
             };
-            self.scopes.last_mut().unwrap().insert(id.to_string(), var);
+            self.scopes.last_mut().unwrap().insert(id.to_string(), var.clone());
             var
         };
         
@@ -108,19 +106,19 @@ impl Memory for StaticMemory
         {
             //☺
             Const::Number(f) => {
-                self.access_mut(var.ptr).copy_from_slice(&(*f).to_ne_bytes()[0..4])
+                self.access_mut(&var.ptr).copy_from_slice(&(*f).to_ne_bytes()[0..4])
             },
             Const::Str(s) => {
                 let bytes = s.as_bytes();
                 let len = bytes.len();
                 if len != var.ptr.len {
                     self.realloc(&mut var, len);
-                    self.scopes.last_mut().unwrap().insert(id.to_string(), var);
+                    self.scopes.last_mut().unwrap().insert(id.to_string(), var.clone());
                 }
-                self.access_mut(var.ptr).copy_from_slice(bytes)
+                self.access_mut(&var.ptr).copy_from_slice(bytes)
             },
             Const::Bool(b) => {
-                self.access_mut(var.ptr)[0] = if *b {
+                self.access_mut(&var.ptr)[0] = if *b {
                     1u8
                 } else {
                     0u8
@@ -132,7 +130,7 @@ impl Memory for StaticMemory
 
     fn open_scope (&mut self)
     {
-        self.scopes.push(Scope::new());
+        self.scopes.push(HashMap::new());
     }
 
     fn close_scope (&mut self)
@@ -146,7 +144,7 @@ impl Memory for StaticMemory
 
         for (_, var) in scope
         {
-            self.free(var.ptr);
+            self.free(&var.ptr);
         }
     }
 
@@ -242,7 +240,7 @@ impl StaticMemory
         }
     }
 
-    fn free (&mut self, ptr:Pointer) //RESEARCH shift everything to the right so there is always free memory on the left ?
+    fn free (&mut self, ptr:&Pointer) //RESEARCH shift everything to the right so there is always free memory on the left ?
     {
         for i in (ptr.pos)..(ptr.pos + ptr.len) {
             self.ram[i] = u8::default();
@@ -252,16 +250,16 @@ impl StaticMemory
 
     fn realloc (&mut self, var:&mut Variable, new_len:usize)
     {
-        self.free(var.ptr);
+        self.free(&var.ptr);
         var.ptr = self.alloc(new_len);
     }
 
-    fn access (&self, ptr:Pointer) -> &[u8]
+    fn access (&self, ptr:&Pointer) -> &[u8]
     {
         &self.ram[ptr.pos..(ptr.pos + ptr.len)]
     }
 
-    fn access_mut (&mut self, ptr:Pointer) -> &mut [u8]
+    fn access_mut (&mut self, ptr:&Pointer) -> &mut [u8]
     {
         &mut self.ram[ptr.pos..(ptr.pos + ptr.len)]
     }
