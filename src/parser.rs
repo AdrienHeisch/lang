@@ -1,5 +1,6 @@
 use crate::{
     expr::Expr,
+    op::Op,
     lexer::Token
 };
 use std::collections::VecDeque;
@@ -51,17 +52,18 @@ fn parse_full_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Ex
 {
     let expr = parse_expr(arena, tokens);
 
-    let tk = peek!(tokens);
-    if *tk == Token::Semicolon {
-        next!(tokens);
-    } else {
-        match &expr
-        {
-            e if is_block(e) => (),
-            Expr::End => (),
-            _ => {
-                eprintln!("Expected Semicolon, got : {:?}", tk);
-                panic!();
+    match peek!(tokens)
+    {
+        Token::Semicolon  => next!(tokens),
+        tk => {
+            match &expr
+            {
+                e if is_block(e) => (),
+                Expr::End => (),
+                _ => {
+                    eprintln!("Expected Semicolon, got : {:?}", tk);
+                    panic!();
+                }
             }
         }
     }
@@ -73,7 +75,7 @@ fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a
 {
     match next!(tokens)
     {
-        Token::Op(op) => arena.alloc(Expr::UnOp(String::from(op), parse_expr(arena, tokens))),
+        Token::Op(op, _) => arena.alloc(Expr::UnOp(*op, parse_expr(arena, tokens))),
         Token::Const(c) => parse_expr_next(arena, tokens, arena.alloc(Expr::Const(c.clone()))), //RESEARCH Copy vs Clone
         Token::Id(id) => {
             parse_structure(arena, tokens, id)
@@ -166,12 +168,13 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
 
 fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&str, el:&'a Expr<'a>, er:&'a Expr<'a>) -> &'a Expr<'a>
 {
-    fn priorities (op:&str) -> u8
+    fn priorities (op:BinOp) -> u8
     {
         match op
         {
-            "*" | "/" => 1,
-            "+" | "-" => 2,
+            BinOp::Mod => 0,
+            BinOp::Mult | BinOp::Div => 1,
+            BinOp:: | "-" => 2,
             "=" => 9,
             op => {
                 eprintln!("Invalid operator : {}", op);
@@ -183,7 +186,8 @@ fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&str, el:&'a Expr<'a>, er:&'a E
     match er
     {
         Expr::BinOp(op_, el_, er_) => {
-            if priorities(op) <= priorities(&op_) {
+            let op1 = match_binop(op);
+            if op1.1 <= op2.1 {
                 arena.alloc(Expr::BinOp(op_.clone(), make_binop(arena, op, el, el_), er_))
             } else {
                 arena.alloc(Expr::BinOp(String::from(op), el, er))

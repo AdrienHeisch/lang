@@ -1,5 +1,22 @@
 {
     "lldb.showDisassembly": "never",
     "lldb.dereferencePointers": true,
-    "lldb.displayFormat": "auto"
+    "lldb.displayFormat": "auto",
+    "todo-tree.general.tags": [
+        "TODO",
+        "FIXME",
+        "DESIGN",
+        "RESEARCH"
+    ],
+    "todo-tree.highlights.defaultHighlight": {
+        "iconColour": "white"
+    },
+    "todo-tree.highlights.customHighlight": {
+        "RESEARCH": {
+            "icon": "beaker"
+        },
+        "DESIGN": {
+            "icon": "pencil"
+        }
+    },
 }

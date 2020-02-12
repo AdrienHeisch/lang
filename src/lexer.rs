@@ -1,12 +1,13 @@
 use crate::cst::Const;
+use crate::op::Op;
 use std::collections::VecDeque;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug/* , PartialEq */)]
 pub enum Token
 {
     Id(String),
-    Const(Const),
-    Op(String),
+    Const(Const), //String ?
+    Op(Op, bool),
     DelimOpen(char),
     DelimClose(char),
     Comma,
@@ -100,7 +101,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
         c if c.is_operator() => {
             match get_char!()
             {
-                '/' => {
+                '/' => { //COMMENT
                     while get_char!() != '\n' && get_char!() != EOF { len += 1; }
                     Token::Nil
                 },
@@ -111,7 +112,8 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                         if !c.is_operator() { break; }
                         len += 1;
                     }
-                    Token::Op(String::from(read_cursor!()))
+                    let op = Op::from_string(read_cursor!());
+                    Token::Op(op.0, op.1)
                 }
             }
         },
@@ -152,7 +154,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
 
 fn unexpected_char (c:char)
 {
-    eprintln!("Unexpected char : {}", c.to_string());
+    eprintln!("Unexpected char : {}", c);
     panic!();
 }
 

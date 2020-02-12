@@ -98,7 +98,7 @@ impl Memory for StaticMemory
                 },
                 Const::Void => panic!() //TODO ?
             };
-            self.scopes.last_mut().unwrap().insert(id.to_string(), var.clone());
+            self.scopes.last_mut().unwrap().insert(String::from(id), var.clone());
             var
         };
         
@@ -113,7 +113,7 @@ impl Memory for StaticMemory
                 let len = bytes.len();
                 if len != var.ptr.len {
                     self.realloc(&mut var, len);
-                    self.scopes.last_mut().unwrap().insert(id.to_string(), var.clone());
+                    self.scopes.last_mut().unwrap().insert(String::from(id), var.clone());
                 }
                 self.access_mut(&var.ptr).copy_from_slice(bytes)
             },

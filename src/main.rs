@@ -1,8 +1,9 @@
 mod cst;
 mod expr;
 mod lexer;
-mod parser;
 mod interpreter;
+mod op;
+mod parser;
 mod utils;
 
 // mod macros;
@@ -16,10 +17,12 @@ use typed_arena::Arena;
 //TODO use enums instead of typeids OR use custom types
 fn main ()
 {
+    // let args:Vec<String> = std::env::args().collect();
+    // let path = args[1];
     let path = "./code.lang";
     let program:String;
 
-    match std::fs::read_to_string(path.to_string())
+    match std::fs::read_to_string(String::from(path))
     {
         Ok(p) => program = p,
         Err(_) => {
