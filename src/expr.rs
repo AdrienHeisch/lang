@@ -5,8 +5,8 @@ use crate::op::Op;
 pub enum Expr<'a>
 {
     Const   (crate::cst::Const),
-    Id      (String), //TODO replace string with a numeric id
-    Var     (String, &'a Expr<'a>), //TODO shouldn't this string be a Expr::Id ?
+    Id      (usize), //TODO replace string with a numeric id
+    Var     (usize, &'a Expr<'a>), //TODO shouldn't this string be a Expr::Id ?
     UnOp    (Op, &'a Expr<'a>),
     BinOp   (Op, bool, &'a Expr<'a>, &'a Expr<'a>),
     Parent  (&'a Expr<'a>),

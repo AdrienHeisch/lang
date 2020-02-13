@@ -16,35 +16,36 @@ use memory::{
 
 const F32_EQUALITY_THRESHOLD:f32 = 1e-6;
 
-pub fn interpret (expr_:&Expr)
+//TODO identifiers won't need to be passed here as soon as function definitions are implemented
+pub fn interpret (expr_:&Expr, identifiers:&[String])
 {
     let mut mem = MemType::new();
     
     #[cfg(not(benchmark))]
     println!("Program stdout :");
     
-    expr(&mut mem, expr_);
+    expr(&mut mem, identifiers, expr_);
 }
 
-fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
+fn expr<T:Memory> (mem:&mut T, identifiers:&[String], e:&Expr) -> Const
 {
     match e
     {
         Expr::Const(cst) => cst.clone(),
-        Expr::Id(id) => mem.get_var(&id),
-        Expr::Var(id, assign_expr) => assign(mem, &Expr::Id(id.clone()), assign_expr), //DESIGN should re assignation be allowed ?
-        Expr::UnOp(op, e) => unop(mem, *op, e),
-        Expr::BinOp(op, is_assign, e1, e2) => binop(mem, *op, *is_assign, e1, e2),
-        Expr::Parent(e) => expr(mem, e),
-        Expr::Call(e, args) => call(mem, e, args),
+        Expr::Id(id) => mem.get_var(*id),
+        Expr::Var(id, assign_expr) => assign(mem, identifiers, &Expr::Id(*id), assign_expr), //DESIGN should re assignation be allowed ?
+        Expr::UnOp(op, e) => unop(mem, identifiers, *op, e),
+        Expr::BinOp(op, is_assign, e1, e2) => binop(mem, identifiers, *op, *is_assign, e1, e2),
+        Expr::Parent(e) => expr(mem, identifiers, e),
+        Expr::Call(e, args) => call(mem, identifiers, e, args),
         Expr::Block(exprs) => {
             mem.open_scope();
             let out = if !exprs.is_empty()
             {
                 for e in exprs.iter().take(exprs.len() - 1) {
-                    expr(mem, e);
+                    expr(mem, identifiers, e);
                 }
-                expr(mem, exprs.iter().last().unwrap())
+                expr(mem, identifiers, exprs.iter().last().unwrap())
             }
             else {
                 Const::Void
@@ -53,11 +54,11 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
             out
         },
         Expr::If(cond, e) => {
-            match expr(mem, cond)
+            match expr(mem, identifiers, cond)
             {
                 Const::Bool(b) => {
                     if b {
-                        expr(mem, e)
+                        expr(mem, identifiers, e)
                     } else {
                         Const::Void
                     }
@@ -71,11 +72,11 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
         Expr::While(cond, e) => {
             loop
             {
-                match expr(mem, cond)
+                match expr(mem, identifiers, cond)
                 {
                     Const::Bool(b) => {
                         if b {
-                            expr(mem, e);
+                            expr(mem, identifiers, e);
                         } else {
                             break;
                         }
@@ -96,9 +97,9 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
     }
 }
 
-fn unop<T:Memory> (mem:&mut T, op:Op, e:&Expr) -> Const
+fn unop<T:Memory> (mem:&mut T, identifiers:&[String], op:Op, e:&Expr) -> Const
 {
-    match expr(mem, e)
+    match expr(mem, identifiers, e)
     {
         Const::Number(f) => {
             match op
@@ -127,18 +128,18 @@ fn unop<T:Memory> (mem:&mut T, op:Op, e:&Expr) -> Const
     }
 }
 
-fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Const
+fn binop<T:Memory> (mem:&mut T, identifiers:&[String], op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Const
 {
-    match (expr(mem, e1), expr(mem, e2))
+    match (expr(mem, identifiers, e1), expr(mem, identifiers, e2))
     {
         (Const::Number(f1), Const::Number(f2)) => { //TODO match types instead of using guards (Dynamic.id) ?
             if is_assign {
-                let value = binop(mem, op, false, e1, e2);
-                assign(mem, e1, &Expr::Const(value))
+                let value = binop(mem, identifiers, op, false, e1, e2);
+                assign(mem, identifiers, e1, &Expr::Const(value))
             } else {
                 match op
                 {
-                    Op::Assign      =>  assign(mem, e1, e2),
+                    Op::Assign      =>  assign(mem, identifiers, e1, e2),
                     Op::Equal       => Const::Bool( utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
                     Op::NotEqual    => Const::Bool(!utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
                     Op::Gt          =>  Const::Bool(f1 > f2),
@@ -158,12 +159,12 @@ fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Co
         },
         (Const::Str(s1), Const::Str(s2)) => {
             if is_assign {
-                let value = binop(mem, op, false, e1, e2);
-                assign(mem, e1, &Expr::Const(value))
+                let value = binop(mem, identifiers, op, false, e1, e2);
+                assign(mem, identifiers, e1, &Expr::Const(value))
             } else {
                 match op
                 {
-                    Op::Assign      =>  assign(mem, e1, e2),
+                    Op::Assign      =>  assign(mem, identifiers, e1, e2),
                     Op::Equal       => Const::Bool(s1 == s2),
                     Op::NotEqual    => Const::Bool(s1 == s2),
                     Op::Add         =>  Const::Str(format!("{}{}", s1, s2)), //TODO check performance
@@ -177,7 +178,7 @@ fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Co
         (Const::Bool(b1), Const::Bool(b2)) => {
             match op
             {
-                Op::Assign      => assign(mem, e1, e2),
+                Op::Assign      => assign(mem, identifiers, e1, e2),
                 Op::Equal       => Const::Bool(b1 == b2),
                 Op::NotEqual    => Const::Bool(b1 == b2),
                 Op::BoolAnd     => Const::Bool(b1 && b2),
@@ -195,13 +196,13 @@ fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Co
     }
 }
 
-fn assign<T:Memory> (mem:&mut T, to:&Expr, from:&Expr) -> Const
+fn assign<T:Memory> (mem:&mut T, identifiers:&[String], to:&Expr, from:&Expr) -> Const
 {
-    let value = expr(mem, from);
+    let value = expr(mem, identifiers, from);
     match to
     {
         Expr::Id(id) => {
-            mem.set_var(id, &value);
+            mem.set_var(*id, &value);
         },
         _ => {
             eprintln!("Can't assign {:?} to {:?}", from, to);
@@ -211,18 +212,18 @@ fn assign<T:Memory> (mem:&mut T, to:&Expr, from:&Expr) -> Const
     value
 }
 
-fn call<T:Memory> (mem:&mut T, e:&Expr, args:&[&Expr]) -> Const
+fn call<T:Memory> (mem:&mut T, identifiers:&[String], e:&Expr, args:&[&Expr]) -> Const
 {
     match e
     {
         Expr::Id(id) => {
-            match id.as_str()
+            match identifiers[*id].as_str()
             {
                 "print" => {
                     #[cfg(not(benchmark))]
                     {
                         print!("> ");
-                        args.iter().for_each(|arg| print!("{} ", expr(mem, arg)));
+                        args.iter().for_each(|arg| print!("{} ", expr(mem, identifiers, arg)));
                         println!();
                     }
                     Const::Void

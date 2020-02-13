@@ -35,26 +35,26 @@ fn main ()
     measure_n_times(&program, 6_000_000);
 
     #[cfg(not(benchmark))]
-    eval(&program);
-    /* {
+    // eval(&program);
+    {
         let tokens = lexer::lex(&program);
         let expr_arena = Arena::new();
-        let block = parser::parse(&expr_arena, &tokens);
-        tokens.len();
-        //drop(tokens);
-        //drop(program);
-        interpreter::interpret(block);
-    } */
+        let mut identifiers = vec!(String::from("print"), String::from("printmem"));
+        let block = parser::parse(&expr_arena, &tokens, &mut identifiers);
+        drop(tokens);
+        drop(program);
+        interpreter::interpret(block, &identifiers);
+    }
 }
 
-#[cfg(not(benchmark))]
+/* #[cfg(not(benchmark))]
 fn eval (program:&str)
 {
     let tokens = lexer::lex(program);
     let expr_arena = Arena::new();
     let block = parser::parse(&expr_arena, &tokens);
     interpreter::interpret(block);
-}
+} */
 
 #[cfg(benchmark)]
 #[allow(dead_code)]
@@ -89,13 +89,14 @@ fn measure_once (program:&str) -> (Duration, Duration, Duration)
     let tokens = lexer::lex(program);
     let lex_time = now.elapsed();
     
-    let now = Instant::now();
     let expr_arena = Arena::new();
-    let block = parser::parse(&expr_arena, &tokens);
+    let mut identifiers = vec!(String::from("print"), String::from("printmem"));
+    let now = Instant::now();
+    let block = parser::parse(&expr_arena, &tokens, &mut identifiers);
     let parse_time = now.elapsed();
 
     let now = Instant::now();
-    interpreter::interpret(block);
+    interpreter::interpret(block, &identifiers);
     let interp_time = now.elapsed();
 
     (lex_time, parse_time, interp_time)
