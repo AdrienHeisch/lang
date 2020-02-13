@@ -3,9 +3,9 @@ use crate::op::Op;
 use std::collections::VecDeque;
 
 #[derive(Debug, PartialEq)]
-pub enum Token
+pub enum Token<'a>
 {
-    Id(String),
+    Id(&'a str),
     Const(Const), //String ?
     Op(Op, bool),
     DelimOpen(Delimiter),
@@ -50,6 +50,7 @@ pub fn lex (program:&str) -> VecDeque<Token>
     tokens
 }
 
+// #[inline(never)] //used for profiling
 #[allow(clippy::cognitive_complexity)] //TODO split into smaller functions ?
 fn get_token (program:&str, mut pos:usize) -> (Token, usize)
 {
@@ -87,7 +88,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             {
                 "true" => Token::Const(Const::Bool(true)),
                 "false" => Token::Const(Const::Bool(false)),
-                _ => Token::Id(String::from(read_cursor!()))
+                _ => Token::Id(read_cursor!())
             }
         },
         c if c.is_numeric() => {

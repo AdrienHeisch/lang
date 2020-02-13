@@ -36,6 +36,15 @@ fn main ()
 
     #[cfg(not(benchmark))]
     eval(&program);
+    /* {
+        let tokens = lexer::lex(&program);
+        let expr_arena = Arena::new();
+        let block = parser::parse(&expr_arena, &tokens);
+        tokens.len();
+        //drop(tokens);
+        //drop(program);
+        interpreter::interpret(block);
+    } */
 }
 
 #[cfg(not(benchmark))]
