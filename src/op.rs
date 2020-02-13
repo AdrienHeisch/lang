@@ -1,4 +1,4 @@
-#[derive(Debug, Clone/* , PartialEq */)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Op
 {
     Not,
@@ -23,9 +23,10 @@ impl Op
 
     pub fn from_string (string:&str) -> (Op, bool)
     {
-        let is_assign = false;
-        (match string
+        let mut is_assign = false;
+        let op = match string
         {
+            "!" =>  Op::Not,
             "==" => Op::Equal,
             "!=" => Op::NotEqual,
             ">" =>  Op::Gt,
@@ -35,25 +36,29 @@ impl Op
             "&&" => Op::BoolAnd,
             "||" => Op::BoolOr,
             "=" =>  Op::Assign,
+            //Check if this is an assign operator other than "="
             op if op.ends_with('=') => {
                 is_assign = true;
                 Op::from_string(&op[0..(op.len() - 1)]).0
             },
+            //All operators below can have an assign version like "+="
+            "%" =>  Op::Mod,
             "+" =>  Op::Add,
             "-" =>  Op::Sub,
             "*" =>  Op::Mult,
             "/" =>  Op::Div,
-            "%" =>  Op::Mod,
             op => {
                 eprintln!("Invalid unop : {}", op);
                 panic!();
             }
-        }, is_assign)
+        };
+
+        (op, is_assign)
     }
 
-    pub fn priority (op:Op) -> u8
+    pub fn priority (self) -> u8
     {
-        match op
+        match self
         {
             Op::Not => 0,
             Op::Mod => 1,

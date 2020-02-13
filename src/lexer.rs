@@ -2,18 +2,26 @@ use crate::cst::Const;
 use crate::op::Op;
 use std::collections::VecDeque;
 
-#[derive(Debug/* , PartialEq */)]
+#[derive(Debug, PartialEq)]
 pub enum Token
 {
     Id(String),
     Const(Const), //String ?
     Op(Op, bool),
-    DelimOpen(char),
-    DelimClose(char),
+    DelimOpen(Delimiter),
+    DelimClose(Delimiter),
     Comma,
     Semicolon,
     Eof,
     Nil
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Delimiter
+{
+    Pr,
+    Br,
+    SqBr
 }
 
 //DESIGN define how strict the lexer should be (unexpected characters are currently ignored)
@@ -129,8 +137,8 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             len += 2;
             tk
         },
-        c if c.is_delimiter_open() => Token::DelimOpen(c),
-        c if c.is_delimiter_close() => Token::DelimClose(c),
+        c if c.is_delimiter_open() => Token::DelimOpen(Delimiter::from_char(c)),
+        c if c.is_delimiter_close() => Token::DelimClose(Delimiter::from_char(c)),
         ',' => Token::Comma,
         ';' => Token::Semicolon,
         EOF => Token::Eof,
@@ -185,6 +193,25 @@ impl CharExt for char
     {
         *self == ')' || *self == ']' || *self == '}'
     }
+}
+
+impl Delimiter
+{
+
+    fn from_char (c:char) -> Delimiter
+    {
+        match c
+        {
+            '(' | ')' => Delimiter::Pr,
+            '{' | '}' => Delimiter::Br,
+            '[' | ']' => Delimiter::SqBr,
+            _ => {
+                eprintln!("Invalid delimiter : {}", c);
+                panic!();
+            }
+        }
+    }
+
 }
 
 const EOF:char = '\u{0}';

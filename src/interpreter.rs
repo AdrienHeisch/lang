@@ -3,6 +3,7 @@ mod memory;
 use crate::{
     cst::Const,
     expr::Expr,
+    op::Op,
     utils
 };
 use memory::{
@@ -32,8 +33,8 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
         Expr::Const(cst) => cst.clone(),
         Expr::Id(id) => mem.get_var(&id),
         Expr::Var(id, assign_expr) => assign(mem, &Expr::Id(id.clone()), assign_expr), //DESIGN should re assignation be allowed ?
-        Expr::UnOp(op, e) => unop(mem, &op, e),
-        Expr::BinOp(op, e1, e2) => binop(mem, &op, e1, e2),
+        Expr::UnOp(op, e) => unop(mem, *op, e),
+        Expr::BinOp(op, is_assign, e1, e2) => binop(mem, *op, *is_assign, e1, e2),
         Expr::Parent(e) => expr(mem, e),
         Expr::Call(e, args) => call(mem, e, args),
         Expr::Block(exprs) => {
@@ -95,16 +96,16 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
     }
 }
 
-fn unop<T:Memory> (mem:&mut T, op:&str, e:&Expr) -> Const
+fn unop<T:Memory> (mem:&mut T, op:Op, e:&Expr) -> Const
 {
     match expr(mem, e)
     {
         Const::Number(f) => {
             match op
             {
-                "-" => Const::Number(-f),
+                Op::Sub => Const::Number(-f),
                 _ => {
-                    eprintln!("Invalid operator : {}", op);
+                    eprintln!("Invalid operator : {:?}", op);
                     panic!();
                 }
             }
@@ -112,85 +113,83 @@ fn unop<T:Memory> (mem:&mut T, op:&str, e:&Expr) -> Const
         Const::Bool(b) => {
             match op
             {
-                "-" => Const::Bool(!b),
+                Op::Not => Const::Bool(!b),
                 _ => {
-                    eprintln!("Invalid operator : {}", op);
+                    eprintln!("Invalid operator : {:?}", op);
                     panic!();
                 }
             }
         },
-        e => {
-            eprintln!("Invalid operation : {}{:?}", op, e);
+        cst => {
+            eprintln!("Invalid operation : {:?}{}", op, cst);
             panic!();
         }
     }
 }
 
-fn binop<T:Memory> (mem:&mut T, op:&str, e1:&Expr, e2:&Expr) -> Const
+fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Const
 {
     match (expr(mem, e1), expr(mem, e2))
     {
         (Const::Number(f1), Const::Number(f2)) => { //TODO match types instead of using guards (Dynamic.id) ?
-            match op
-            {
-                "==" => Const::Bool( utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
-                "!=" => Const::Bool(!utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
-                ">" =>  Const::Bool(f1 > f2),
-                ">=" => Const::Bool(f1 >= f2),
-                "<" =>  Const::Bool(f1 < f2),
-                "<=" => Const::Bool(f1 <= f2),
-                "+" =>  Const::Number(f1 + f2),
-                "-" =>  Const::Number(f1 - f2),
-                "*" =>  Const::Number(f1 * f2),
-                "/" =>  Const::Number(f1 / f2),
-                //TODO EXTRACT TO METHOD FROM HERE ?
-                "=" =>  assign(mem, e1, e2),
-                _ => {
-                    if op.len() > 1 && op.ends_with('=') {
-                        let value = binop(mem, &op[0..(op.len() - 1)], e1, e2);
-                        assign(mem, e1, &Expr::Const(value))
-                    } else {
-                        eprintln!("Invalid operator : {}", op);
+            if is_assign {
+                let value = binop(mem, op, false, e1, e2);
+                assign(mem, e1, &Expr::Const(value))
+            } else {
+                match op
+                {
+                    Op::Assign      =>  assign(mem, e1, e2),
+                    Op::Equal       => Const::Bool( utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
+                    Op::NotEqual    => Const::Bool(!utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
+                    Op::Gt          =>  Const::Bool(f1 > f2),
+                    Op::Gte         => Const::Bool(f1 >= f2),
+                    Op::Lt          =>  Const::Bool(f1 < f2),
+                    Op::Lte         => Const::Bool(f1 <= f2),
+                    Op::Add         =>  Const::Number(f1 + f2),
+                    Op::Sub         =>  Const::Number(f1 - f2),
+                    Op::Mult        =>  Const::Number(f1 * f2),
+                    Op::Div         =>  Const::Number(f1 / f2),
+                    _ => {
+                        eprintln!("Invalid operator : {:?}", op);
                         panic!();
                     }
                 }
-                //TO HERE
             }
         },
         (Const::Str(s1), Const::Str(s2)) => {
-            match &op[..]
-            {
-                "==" => Const::Bool(s1 == s2),
-                "!=" => Const::Bool(s1 == s2),
-                "+" =>  Const::Str(format!("{}{}", s1, s2)), //TODO check performance
-                "=" =>  assign(mem, e1, e2),
-                _ => {
-                    if op.len() > 1 && op.ends_with('=') {
-                        let value = binop(mem, &op[0..(op.len() - 1)], e1, e2);
-                        assign(mem, e1, &Expr::Const(value))
-                    } else {
-                        eprintln!("Invalid operator : {}", op);
+            if is_assign {
+                let value = binop(mem, op, false, e1, e2);
+                assign(mem, e1, &Expr::Const(value))
+            } else {
+                match op
+                {
+                    Op::Assign      =>  assign(mem, e1, e2),
+                    Op::Equal       => Const::Bool(s1 == s2),
+                    Op::NotEqual    => Const::Bool(s1 == s2),
+                    Op::Add         =>  Const::Str(format!("{}{}", s1, s2)), //TODO check performance
+                    _ => {
+                        eprintln!("Invalid operator : {:?}", op);
                         panic!();
                     }
                 }
             }
         },
         (Const::Bool(b1), Const::Bool(b2)) => {
-            match &op[..]
+            match op
             {
-                "==" => Const::Bool(b1 == b2),
-                "!=" => Const::Bool(b1 == b2),
-                "&&" => Const::Bool(b1 && b2),
-                "||" => Const::Bool(b1 || b2),
-                "=" =>  assign(mem, e1, e2),
+                Op::Assign      => assign(mem, e1, e2),
+                Op::Equal       => Const::Bool(b1 == b2),
+                Op::NotEqual    => Const::Bool(b1 == b2),
+                Op::BoolAnd     => Const::Bool(b1 && b2),
+                Op::BoolOr      => Const::Bool(b1 || b2),
                 _ => {
-                    eprintln!("Invalid operator : {}", op);
+                    eprintln!("Invalid operator : {:?}", op);
                     panic!();
                 }
             }
         },
         (e1, e2) => {
-            eprintln!("Invalid operation : {:?} {} {:?}", e1, op, e2);
+            eprintln!("Invalid operation : {:?} {:?} {:?}", e1, op, e2);
             panic!();
         }
     }

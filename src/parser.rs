@@ -1,7 +1,7 @@
 use crate::{
     expr::Expr,
     op::Op,
-    lexer::Token
+    lexer::{ Token, Delimiter }
 };
 use std::collections::VecDeque;
 use typed_arena::Arena;
@@ -52,18 +52,16 @@ fn parse_full_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Ex
 {
     let expr = parse_expr(arena, tokens);
 
-    match peek!(tokens)
-    {
-        Token::Semicolon  => next!(tokens),
-        tk => {
-            match &expr
-            {
-                e if is_block(e) => (),
-                Expr::End => (),
-                _ => {
-                    eprintln!("Expected Semicolon, got : {:?}", tk);
-                    panic!();
-                }
+    if peek!(tokens) == &Token::Semicolon {
+        next!(tokens);
+    } else {
+        match &expr
+        {
+            e if is_block(e) => (),
+            Expr::End => (),
+            _ => {
+                eprintln!("Expected Semicolon, got : {:?}", peek!(tokens));
+                panic!();
             }
         }
     }
@@ -80,20 +78,20 @@ fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a
         Token::Id(id) => {
             parse_structure(arena, tokens, id)
         },
-        Token::DelimOpen('(') => {
+        Token::DelimOpen(Delimiter::Pr) => {
             let e = parse_expr(arena, tokens);
             match next!(tokens)
             {
-                Token::DelimClose(')') => parse_expr_next(arena, tokens, arena.alloc(Expr::Parent(e))),
+                Token::DelimClose(Delimiter::Pr) => parse_expr_next(arena, tokens, arena.alloc(Expr::Parent(e))),
                 _ => {
                     eprintln!("Unclosed delimiter \"(\"");
                     panic!();
                 }
             }
         },
-        Token::DelimOpen('{') => {
+        Token::DelimOpen(Delimiter::Br) => {
             let mut exprs:Vec<&Expr> = Vec::new();
-            while *peek!(tokens) != Token::DelimClose('}') {
+            while *peek!(tokens) != Token::DelimClose(Delimiter::Br) {
                 exprs.push(&parse_full_expr(arena, tokens));
             }
             next!(tokens);
@@ -111,13 +109,13 @@ fn parse_expr_next<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, e:&'a Exp
 {
     match peek!(tokens)
     {
-        Token::Op(op) => {
+        Token::Op(op, is_assign) => {
             next!(tokens);
-            make_binop(arena, op, e, parse_expr(arena, tokens))
+            make_binop(arena, op, *is_assign, e, parse_expr(arena, tokens))
         },
-        Token::DelimOpen('(') => {
+        Token::DelimOpen(Delimiter::Pr) => {
             next!(tokens);
-            arena.alloc(Expr::Call(e, make_expr_list(arena, tokens, ')')))
+            arena.alloc(Expr::Call(e, make_expr_list(arena, tokens, Delimiter::Pr)))
         },
         _ => e
     }
@@ -134,11 +132,11 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
                     arena.alloc(Expr::Var(
                         id.clone(),
                         match peek!(tokens)
-                        { 
-                            Token::Op(op) if &op[..] == "=" => {
+                        {
+                            Token::Op(Op::Assign, _) => {
                                 next!(tokens);
                                 parse_expr(arena, tokens)
-                            } 
+                            },
                             tk => {
                                 eprintln!("Expected assign operator, got : {:?}", tk);
                                 panic!();
@@ -166,41 +164,31 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
     }
 }
 
-fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&str, el:&'a Expr<'a>, er:&'a Expr<'a>) -> &'a Expr<'a>
+fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&Op, is_assign:bool, el:&'a Expr<'a>, er:&'a Expr<'a>) -> &'a Expr<'a>
 {
-    fn priorities (op:BinOp) -> u8
-    {
-        match op
-        {
-            BinOp::Mod => 0,
-            BinOp::Mult | BinOp::Div => 1,
-            BinOp:: | "-" => 2,
-            "=" => 9,
-            op => {
-                eprintln!("Invalid operator : {}", op);
-                panic!();
-            }
-        }
-    }
+    let priority = if is_assign {
+        std::u8::MAX
+    } else {
+        op.priority()
+    };
 
     match er
     {
-        Expr::BinOp(op_, el_, er_) => {
-            let op1 = match_binop(op);
-            if op1.1 <= op2.1 {
-                arena.alloc(Expr::BinOp(op_.clone(), make_binop(arena, op, el, el_), er_))
+        Expr::BinOp(op_, is_assign_, el_, er_) => {
+            if priority <= op_.priority() {
+                arena.alloc(Expr::BinOp(*op_, *is_assign_, make_binop(arena, op, is_assign, el, el_), er_))
             } else {
-                arena.alloc(Expr::BinOp(String::from(op), el, er))
+                arena.alloc(Expr::BinOp(*op, is_assign, el, er))
             }
         },
-        _ => arena.alloc(Expr::BinOp(String::from(op), el, er))
+        _ => arena.alloc(Expr::BinOp(*op, is_assign, el, er))
     }
 }
 
-fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, close_on:char) -> Vec<&'a Expr<'a>>
+fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, delimiter:Delimiter) -> Vec<&'a Expr<'a>>
 {
     let mut expr_list = Vec::new();
-    if *peek!(tokens) == Token::DelimClose(close_on) {
+    if *peek!(tokens) == Token::DelimClose(delimiter) {
         return expr_list;
     }
 
@@ -212,7 +200,7 @@ fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, close_on:c
             Token::Comma => {
                 next!(tokens);
             },
-            Token::DelimClose(c) if *c == close_on => {
+            Token::DelimClose(c) if *c == delimiter => {
                 next!(tokens);
                 break;
             },
@@ -221,7 +209,7 @@ fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, close_on:c
                 panic!();
             },
             tk => {
-                eprintln!("Expected Comma or DelimClose('{}'), got  {:?}", close_on, tk);
+                eprintln!("Expected Comma or DelimClose('{:?}'), got  {:?}", delimiter, tk);
                 panic!();
             }
         }
