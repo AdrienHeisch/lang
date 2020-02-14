@@ -9,7 +9,7 @@ impl Memory for DumbMemory
 
     fn new () -> Self
     {
-        DumbMemory
+        Self
     }
 
     fn get_var (&self, id:&str) -> Const

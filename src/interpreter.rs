@@ -8,7 +8,7 @@ use crate::{
 };
 use memory::{
     Memory,
-    // dyn_memory::DynamicMemory as MemType,
+    // vec_memory::VecMemory as MemType,
     // table_memory::TableMemory as MemType,
     static_memory::StaticMemory as MemType,
     // dumb_memory::DumbMemory as MemType,
