@@ -196,6 +196,7 @@ fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, delimiter:
 {
     let mut expr_list = Vec::new();
     if *peek!(tokens) == Token::DelimClose(delimiter) {
+        next!(tokens);
         return expr_list;
     }
 
