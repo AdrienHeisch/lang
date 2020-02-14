@@ -88,9 +88,9 @@ impl Memory for StaticMemory
                     t: VarType::Number,
                     ptr: self.alloc(std::mem::size_of::<f32>())
                 },
-                Const::Str(_) => Variable {
+                Const::Str(s) => Variable {
                     t: VarType::Str,
-                    ptr: self.alloc(std::mem::size_of::<String>()) //TODO lazy allocation with alloc(0) ?
+                    ptr: self.alloc(s.len())
                 },
                 Const::Bool(_) => Variable {
                     t: VarType::Bool,
@@ -189,6 +189,7 @@ impl StaticMemory
         macro_rules! out_of_mem_error {
             () => {
                 eprintln!("OUT OF MEMORY !");
+                self.print_memory();
                 panic!();
             };
         }

@@ -152,7 +152,15 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
         "if" => {
             let cond = parse_expr(arena, tokens);
             let then = parse_expr(arena, tokens);
-            arena.alloc(Expr::If(cond, then))
+            let else_ = match peek!(tokens)
+            {
+                Token::Id("else") => {
+                    next!(tokens);
+                    Some(parse_expr(arena, tokens))
+                },
+                _ => None
+            };
+            arena.alloc(Expr::If(cond, then, else_))
         },
         "while" => {
             let cond = parse_expr(arena, tokens);

@@ -52,12 +52,14 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
             mem.close_scope();
             out
         },
-        Expr::If(cond, e) => {
+        Expr::If(cond, e, else_) => {
             match expr(mem, cond)
             {
                 Const::Bool(b) => {
                     if b {
                         expr(mem, e)
+                    } else if else_.is_some() {
+                        expr(mem, else_.unwrap())
                     } else {
                         Const::Void
                     }
