@@ -56,7 +56,7 @@ fn parse_full_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Ex
     } else {
         match &expr
         {
-            e if is_block(e) => (),
+            e if e.is_block() => (),
             Expr::End => (),
             _ => {
                 eprintln!("Expected Semicolon, got : {:?}", peek!(tokens));
@@ -215,17 +215,6 @@ fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, delimiter:
     }
     
     expr_list
-}
-
-fn is_block (e:&Expr) -> bool
-{
-    match e
-    {
-		Expr::Block(_) => true,
-		Expr::If(_, expr) => is_block(expr),
-		Expr::While(_, expr) => is_block(expr),
-		_ => false
-    }
 }
 
 /* fn unexpected_expr (e:Expr)

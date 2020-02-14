@@ -16,3 +16,19 @@ pub enum Expr<'a>
     While   (&'a Expr<'a>, &'a Expr<'a>),
     End
 }
+
+impl<'a> Expr<'a>
+{
+
+    pub fn is_block (&self) -> bool
+    {
+        match self
+        {
+            Expr::Block(_) => true,
+            Expr::If(_, expr) => Self::is_block(expr),
+            Expr::While(_, expr) => Self::is_block(expr),
+            _ => false
+        }
+    }
+
+}
