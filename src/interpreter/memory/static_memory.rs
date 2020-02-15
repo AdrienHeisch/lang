@@ -170,24 +170,26 @@ impl StaticMemory
 
     fn alloc (&mut self, len:usize) -> Pointer
     {
-        macro_rules! out_of_mem_error {
-            () => {
-                eprintln!("OUT OF MEMORY !");
-                self.print_memory();
-                panic!();
-            };
+        if len > MEMORY_SIZE {
+            eprintln!("Tried to allocate more bytes than the memory can contain : {} / {}", len, MEMORY_SIZE);
+            panic!();
         }
 
-        #[allow(unused_assignments)]
-        let mut ptr_option = None;
+        let ptr;
         let mut pos = 0;
         loop
         {
             while self.allocation_map[pos] {
-                pos += 1;
                 if pos + len > MEMORY_SIZE - 1 {
-                    out_of_mem_error!();
+                    eprintln!("----------");
+                    eprintln!("OUT OF MEMORY !");
+                    eprintln!("Tried to allocate {} bytes at index {}", len, pos);
+                    eprintln!("----------");
+                    self.print_memory();
+                    eprintln!("----------");
+                    panic!();
                 }
+                pos += 1;
             }
             let mut is_valid = true;
             let mut next_pos_found = false;
@@ -204,7 +206,7 @@ impl StaticMemory
                 }
             }
             if is_valid {
-                ptr_option = Some(Pointer { pos, len });
+                ptr = Pointer { pos, len };
                 break;
             }
             if !next_pos_found
@@ -213,16 +215,10 @@ impl StaticMemory
             }
         }
 
-        if let Some(ptr) = ptr_option
-        {
-            for i in pos..(pos + len) {
-                self.allocation_map[i] = true;
-            }
-            ptr
-        } 
-        else {
-            out_of_mem_error!();
+        for i in pos..(pos + len) {
+            self.allocation_map[i] = true;
         }
+        ptr
     }
 
     fn free (&mut self, ptr:&Pointer) //RESEARCH shift everything to the right so there is always free memory on the left ?
