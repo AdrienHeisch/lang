@@ -10,6 +10,7 @@ use memory::{
     Memory,
     // vec_memory::VecMemory as MemType,
     // table_memory::TableMemory as MemType,
+    // hashmap_memory::HashMapMemory as MemType,
     static_memory::StaticMemory as MemType,
     // dumb_memory::DumbMemory as MemType,
 };
@@ -52,7 +53,15 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
             else {
                 Const::Void
             };
-            mem.close_scope();
+            //TODO only in debug mode ?
+            //if there is no more scopes to close, prints memory
+            if mem.close_scope() {
+                #[cfg(not(benchmark))]
+                {
+                    println!("\nMemory state :");
+                    mem.print_memory();
+                }
+            }
             out
         },
         Expr::If(cond, e, else_) => {
@@ -196,6 +205,7 @@ fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Co
         (e1, e2) => {
             eprintln!("Invalid operation : {:?} {:?} {:?}", e1, op, e2);
             panic!();
+            // Const::Void
         }
     }
 }

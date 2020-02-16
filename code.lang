@@ -1,16 +1,6 @@
 var a = 2.1 * 3.1 + 7.1;
 var b = "hey";
+b += " yo";
+
 var c = a * 5.1;
-
-var i = 3;
-while i > 0
-{
-   b += " yo";
-   i -= 1;
-}
-
-var d = 5 + 2;
-d *= 6;
-
-var e = if d == 14 { "7 x 2"; } else if d == 42 { "=)"; } else { "???"; };
-print(e);
+a *= 2.1;

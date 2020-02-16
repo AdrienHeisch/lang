@@ -8,46 +8,26 @@ mod utils;
 
 // mod macros;
 
-use std::time::{ Instant, Duration };
 use typed_arena::Arena;
 
 //TODO find a name and push to github ?
 //TODO use Result instead of panic! on error
 //TODO add tests
 //TODO use enums instead of typeids OR use custom types
-fn main ()
+fn main () -> Result<(), std::io::Error>
 {
     // let args:Vec<String> = std::env::args().collect();
     // let path = args[1];
-    let path = "./code.lang";
-    let program:String;
 
-    match std::fs::read_to_string(String::from(path))
-    {
-        Ok(p) => program = p,
-        Err(_) => {
-            eprintln!("Program not found at {}", path);
-            panic!();
-        }
-    }
-
-    #[cfg(benchmark)]
-    measure_n_times(&program, 6_000_000);
-
-    #[cfg(not(benchmark))]
-    eval(&program);
-    /* {
-        let tokens = lexer::lex(&program);
-        let expr_arena = Arena::new();
-        let block = parser::parse(&expr_arena, &tokens);
-        tokens.len();
-        //drop(tokens);
-        //drop(program);
-        interpreter::interpret(block);
-    } */
+    eval_file("./code.lang")
 }
 
-#[cfg(not(benchmark))]
+fn eval_file (path:&str) -> Result<(), std::io::Error>
+{
+    eval(&std::fs::read_to_string(path)?);
+    Ok(())
+}
+
 fn eval (program:&str)
 {
     let tokens = lexer::lex(program);
@@ -56,47 +36,68 @@ fn eval (program:&str)
     interpreter::interpret(block);
 }
 
-#[cfg(benchmark)]
 #[allow(dead_code)]
-fn measure_n_times (program:&str, n:usize)
+mod test
 {
-    let mut durations = (Duration::new(0, 0), Duration::new(0, 0), Duration::new(0, 0));
-    for _ in 0..n
+    use crate::{
+        interpreter,
+        lexer,
+        parser
+    };
+    use std::time::{ Instant, Duration };
+    use typed_arena::Arena;
+
+    #[test]
+    fn benchmark () -> Result<(), std::io::Error>
     {
-        let measure = measure_once(program);
-        durations.0 += measure.0;
-        durations.1 += measure.1;
-        durations.2 += measure.2;
+        let n = 6_000_000;
+        let durations = measure_n_times(&std::fs::read_to_string("./code.lang")?, n);
+        
+        std::fs::write("./benchmark.txt", format!("{}{}{}{}{}",
+            format!("For {} iterations :\n", n),
+            format!("Lexing :  {}ms\n", durations.0.as_millis()),
+            format!("Parsing : {}ms\n", durations.1.as_millis()),
+            format!("Interp :  {}ms\n", durations.2.as_millis()),
+            format!("Total :   {}ms\n", durations.0.as_millis() + durations.1.as_millis() + durations.2.as_millis())
+        ))?;
+
+        Ok(())
     }
 
-    //empirical correction
-    // durations.0 -= Duration::new(0, 50000000);
-    // durations.1 -= Duration::new(0, 50000000);
-    // durations.2 -= Duration::new(0, 50000000);
+    fn measure_n_times (program:&str, n:usize) -> (Duration, Duration, Duration)
+    {
+        let mut durations = (Duration::new(0, 0), Duration::new(0, 0), Duration::new(0, 0));
+        for _ in 0..n
+        {
+            let measure = measure_once(program);
+            durations.0 += measure.0;
+            durations.1 += measure.1;
+            durations.2 += measure.2;
+        }
 
-    println!("For {} iterations :", n);
-    println!("Lexing :  {}ms", durations.0.as_millis());
-    println!("Parsing : {}ms", durations.1.as_millis());
-    println!("Interp :  {}ms", durations.2.as_millis());
-    println!("Total :   {}ms", durations.0.as_millis() + durations.1.as_millis() + durations.2.as_millis());
-}
+        //empirical correction
+        // durations.0 -= Duration::new(0, 50000000);
+        // durations.1 -= Duration::new(0, 50000000);
+        // durations.2 -= Duration::new(0, 50000000);
 
-#[cfg(benchmark)]
-#[allow(unused_variables)]
-fn measure_once (program:&str) -> (Duration, Duration, Duration)
-{
-    let now = Instant::now();
-    let tokens = lexer::lex(program);
-    let lex_time = now.elapsed();
-    
-    let now = Instant::now();
-    let expr_arena = Arena::new();
-    let block = parser::parse(&expr_arena, &tokens);
-    let parse_time = now.elapsed();
+        durations
+    }
 
-    let now = Instant::now();
-    interpreter::interpret(block);
-    let interp_time = now.elapsed();
+    fn measure_once (program:&str) -> (Duration, Duration, Duration)
+    {
+        let now = Instant::now();
+        let tokens = lexer::lex(program);
+        let lex_time = now.elapsed();
+        
+        let expr_arena = Arena::new();
+        let now = Instant::now();
+        let block = parser::parse(&expr_arena, &tokens);
+        let parse_time = now.elapsed();
 
-    (lex_time, parse_time, interp_time)
+        let now = Instant::now();
+        interpreter::interpret(block);
+        let interp_time = now.elapsed();
+
+        (lex_time, parse_time, interp_time)
+    }
 }

@@ -52,7 +52,7 @@ impl Memory for VecMemory
     }
     
     
-    fn close_scope (&mut self)
+    fn close_scope (&mut self) -> bool
     {
         let scope = if let Some(scope) = self.scopes.pop() {
             scope
@@ -61,6 +61,7 @@ impl Memory for VecMemory
             panic!();
         };
 
+        //TODO shift all remaining pointers ?
         /* for (_, var) in scope
         {
             match var.t
@@ -70,6 +71,8 @@ impl Memory for VecMemory
                 VarType::Bool => Const::Bool(self.bool_table.remove(var.index)),
             };
         } */
+
+        self.scopes.is_empty()
     }
 
     #[allow(dead_code)]

@@ -21,7 +21,7 @@ impl Memory for DumbMemory
 
     fn open_scope (&mut self) {}
     
-    fn close_scope (&mut self) {}
+    fn close_scope (&mut self) -> bool { false }
 
     fn print_memory (&self)
     {

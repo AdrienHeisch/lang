@@ -97,24 +97,26 @@ impl Memory for TableMemory
     }
     
     
-    fn close_scope (&mut self)
+    fn close_scope (&mut self) -> bool
     {
-        let scope = if let Some(scope) = self.scopes.pop() {
+        let _ = if let Some(scope) = self.scopes.pop() {
             scope
         } else {
             eprintln!("There is no scope to close.");
             panic!();
         };
 
-        for (_, var) in scope
+        /* for (_, var) in scope
         {
-            /* match var.t
+            match var.t
             {
                 VarType::Number => Const::Number(self.f32_table.remove(var.index)),
                 VarType::Str => Const::Str(self.str_table.remove(var.index)),
                 VarType::Bool => Const::Bool(self.bool_table.remove(var.index)),
-            }; */
-        }
+            };
+        } */
+        
+        self.scopes.is_empty()
     }
 
     #[allow(dead_code)]
