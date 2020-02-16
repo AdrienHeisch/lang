@@ -55,13 +55,7 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
             };
             //TODO only in debug mode ?
             //if there is no more scopes to close, prints memory
-            if mem.close_scope() {
-                #[cfg(not(benchmark))]
-                {
-                    println!("\nMemory state :");
-                    mem.print_memory();
-                }
-            }
+            mem.close_scope();
             out
         },
         Expr::If(cond, e, else_) => {

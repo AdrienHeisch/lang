@@ -52,14 +52,12 @@ impl Memory for HashMapMemory
         self.scopes.push(HashMap::new());
     }
     
-    fn close_scope (&mut self) -> bool
+    fn close_scope (&mut self)
     {
-        if let None = self.scopes.pop() {
+        if self.scopes.pop().is_none() {
             eprintln!("There is no scope to close.");
             panic!();
         };
-        
-        self.scopes.is_empty()
     }
 
     #[allow(dead_code)]

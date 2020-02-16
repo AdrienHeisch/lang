@@ -52,9 +52,9 @@ impl Memory for VecMemory
     }
     
     
-    fn close_scope (&mut self) -> bool
+    fn close_scope (&mut self)
     {
-        let scope = if let Some(scope) = self.scopes.pop() {
+        let _ = if let Some(scope) = self.scopes.pop() {
             scope
         } else {
             eprintln!("There is no scope to close.");
@@ -71,8 +71,6 @@ impl Memory for VecMemory
                 VarType::Bool => Const::Bool(self.bool_table.remove(var.index)),
             };
         } */
-
-        self.scopes.is_empty()
     }
 
     #[allow(dead_code)]

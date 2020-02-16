@@ -6,29 +6,9 @@ mod op;
 mod parser;
 mod utils;
 
-// mod macros;
-
 use typed_arena::Arena;
 
-//TODO find a name and push to github ?
-//TODO use Result instead of panic! on error
-//TODO add tests
-//TODO use enums instead of typeids OR use custom types
-fn main () -> Result<(), std::io::Error>
-{
-    // let args:Vec<String> = std::env::args().collect();
-    // let path = args[1];
-
-    eval_file("./code.lang")
-}
-
-fn eval_file (path:&str) -> Result<(), std::io::Error>
-{
-    eval(&std::fs::read_to_string(path)?);
-    Ok(())
-}
-
-fn eval (program:&str)
+pub fn eval (program:&str)
 {
     let tokens = lexer::lex(program);
     let expr_arena = Arena::new();
@@ -36,8 +16,16 @@ fn eval (program:&str)
     interpreter::interpret(block);
 }
 
+// #[cfg(test)]
+pub mod test_exports
+{
+    pub use crate::lexer::lex;
+    pub use crate::parser::parse;
+    pub use crate::interpreter::interpret;
+}
+
 #[allow(dead_code)]
-mod test
+pub mod test
 {
     use crate::{
         interpreter,
@@ -100,4 +88,5 @@ mod test
 
         (lex_time, parse_time, interp_time)
     }
+
 }

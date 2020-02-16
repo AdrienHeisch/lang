@@ -116,7 +116,7 @@ impl Memory for StaticMemory
         self.scopes.push(HashMap::new());
     }
 
-    fn close_scope (&mut self) -> bool
+    fn close_scope (&mut self)
     {
         let scope = if let Some(scope) = self.scopes.pop() {
             scope
@@ -129,8 +129,6 @@ impl Memory for StaticMemory
         {
             self.free(&var.ptr);
         }
-
-        self.scopes.is_empty()
     }
 
     #[allow(dead_code)]

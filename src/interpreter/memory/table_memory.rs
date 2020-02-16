@@ -97,7 +97,7 @@ impl Memory for TableMemory
     }
     
     
-    fn close_scope (&mut self) -> bool
+    fn close_scope (&mut self)
     {
         let _ = if let Some(scope) = self.scopes.pop() {
             scope
@@ -115,8 +115,6 @@ impl Memory for TableMemory
                 VarType::Bool => Const::Bool(self.bool_table.remove(var.index)),
             };
         } */
-        
-        self.scopes.is_empty()
     }
 
     #[allow(dead_code)]
