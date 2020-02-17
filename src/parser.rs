@@ -73,7 +73,7 @@ fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a
     match next!(tokens)
     {
         Token::Op(op, _) => arena.alloc(Expr::UnOp(*op, parse_expr(arena, tokens))),
-        Token::Const(c) => parse_expr_next(arena, tokens, arena.alloc(Expr::Const(c.clone()))), //RESEARCH Copy vs Clone
+        Token::Const(c) => parse_expr_next(arena, tokens, arena.alloc(Expr::Const(c.clone()))),
         Token::Id(id) => {
             parse_structure(arena, tokens, id)
         },

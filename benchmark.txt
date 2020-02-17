@@ -1,5 +1,5 @@
 For 6000000 iterations :
-Lexing :  6506ms
-Parsing : 6217ms
-Interp :  13431ms
-Total :   26154ms
+Lexing :  3066ms
+Parsing : 2193ms
+Interp :  4077ms
+Total :   9336ms

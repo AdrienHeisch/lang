@@ -67,6 +67,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             }
         };
     }
+    
     macro_rules! read_cursor {
         () => {
             &program[pos..(pos + len)]

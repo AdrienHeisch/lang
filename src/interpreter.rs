@@ -146,17 +146,17 @@ fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Co
             } else {
                 match op
                 {
-                    Op::Assign      =>  assign(mem, e1, e2),
+                    Op::Assign      => assign(mem, e1, e2),
                     Op::Equal       => Const::Bool( utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
                     Op::NotEqual    => Const::Bool(!utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
-                    Op::Gt          =>  Const::Bool(f1 > f2),
-                    Op::Gte         => Const::Bool(f1 >= f2),
-                    Op::Lt          =>  Const::Bool(f1 < f2),
+                    Op::Gt          => Const::Bool(f1 > f2),
+                    Op::Gte         => Const::Bool(f1 > f2 || utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
+                    Op::Lt          => Const::Bool(f1 < f2 || utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
                     Op::Lte         => Const::Bool(f1 <= f2),
-                    Op::Add         =>  Const::Number(f1 + f2),
-                    Op::Sub         =>  Const::Number(f1 - f2),
-                    Op::Mult        =>  Const::Number(f1 * f2),
-                    Op::Div         =>  Const::Number(f1 / f2),
+                    Op::Add         => Const::Number(f1 + f2),
+                    Op::Sub         => Const::Number(f1 - f2),
+                    Op::Mult        => Const::Number(f1 * f2),
+                    Op::Div         => Const::Number(f1 / f2),
                     _ => {
                         eprintln!("Invalid operator : {:?}", op);
                         panic!();
@@ -171,10 +171,10 @@ fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Co
             } else {
                 match op
                 {
-                    Op::Assign      =>  assign(mem, e1, e2),
+                    Op::Assign      => assign(mem, e1, e2),
                     Op::Equal       => Const::Bool(s1 == s2),
-                    Op::NotEqual    => Const::Bool(s1 == s2),
-                    Op::Add         =>  Const::Str(format!("{}{}", s1, s2)), //TODO check performance
+                    Op::NotEqual    => Const::Bool(s1 != s2),
+                    Op::Add         => Const::Str(s1 + &s2),
                     _ => {
                         eprintln!("Invalid operator : {:?}", op);
                         panic!();
@@ -187,7 +187,7 @@ fn binop<T:Memory> (mem:&mut T, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> Co
             {
                 Op::Assign      => assign(mem, e1, e2),
                 Op::Equal       => Const::Bool(b1 == b2),
-                Op::NotEqual    => Const::Bool(b1 == b2),
+                Op::NotEqual    => Const::Bool(b1 != b2),
                 Op::BoolAnd     => Const::Bool(b1 && b2),
                 Op::BoolOr      => Const::Bool(b1 || b2),
                 _ => {

@@ -1,6 +1,8 @@
-var a = 2.1 * 3.1 + 7.1;
-var b = "hey";
-b += " yo";
+//var a = 2.1 * 3.1 + 7.1;
+//var b = "hey";
+//b += " yo";
 
-var c = a * 5.1;
-a *= 2.1;
+//var c = a * 5.1;
+//a *= 2.1;
+
+var a = "ab" + "cd";

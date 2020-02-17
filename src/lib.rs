@@ -24,6 +24,7 @@ pub mod test_exports
     pub use crate::interpreter::interpret;
 }
 
+#[cfg(test)]
 #[allow(dead_code)]
 pub mod test
 {
