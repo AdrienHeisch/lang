@@ -101,11 +101,7 @@ impl Memory for StaticMemory
                 self.access_mut(&var.ptr).copy_from_slice(bytes)
             },
             Const::Bool(b) => {
-                self.access_mut(&var.ptr)[0] = if *b {
-                    1u8
-                } else {
-                    0u8
-                };
+                self.access_mut(&var.ptr)[0] = if *b { 1u8 } else { 0u8 };
             },
             Const::Void => panic!() //TODO ?
         }

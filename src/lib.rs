@@ -24,7 +24,7 @@ pub mod test_exports
     pub use crate::interpreter::interpret;
 }
 
-#[cfg(test)]
+// #[cfg(test)]
 #[allow(dead_code)]
 pub mod test
 {
@@ -36,24 +36,26 @@ pub mod test
     use std::time::{ Instant, Duration };
     use typed_arena::Arena;
 
-    #[test]
-    fn benchmark () -> Result<(), std::io::Error>
+    const ITERATIONS:u32 = 6_000_000;
+
+    pub fn benchmark () -> Result<(), std::io::Error>
     {
-        let n = 6_000_000;
-        let durations = measure_n_times(&std::fs::read_to_string("./code.lang")?, n);
+        let durations = measure_n_times(&std::fs::read_to_string("./code.lang")?, ITERATIONS);
         
-        std::fs::write("./benchmark.txt", format!("{}{}{}{}{}",
-            format!("For {} iterations :\n", n),
+        let text = format!("{}{}{}{}{}",
+            format!("For {} iterations :\n", ITERATIONS),
             format!("Lexing :  {}ms\n", durations.0.as_millis()),
             format!("Parsing : {}ms\n", durations.1.as_millis()),
             format!("Interp :  {}ms\n", durations.2.as_millis()),
             format!("Total :   {}ms\n", durations.0.as_millis() + durations.1.as_millis() + durations.2.as_millis())
-        ))?;
+        );
+
+        std::fs::write("./benchmark.txt", text)?;
 
         Ok(())
     }
 
-    fn measure_n_times (program:&str, n:usize) -> (Duration, Duration, Duration)
+    pub fn measure_n_times (program:&str, n:u32) -> (Duration, Duration, Duration)
     {
         let mut durations = (Duration::new(0, 0), Duration::new(0, 0), Duration::new(0, 0));
         for _ in 0..n
@@ -88,6 +90,35 @@ pub mod test
         let interp_time = now.elapsed();
 
         (lex_time, parse_time, interp_time)
+    }
+
+    pub fn benchmark_lexer ()
+    {
+        let program = std::fs::read_to_string("./code.lang").unwrap();
+        let now = Instant::now();
+        for _ in 0..ITERATIONS { lexer::lex(&program); }
+        println!("Lexing: {}ms", now.elapsed().as_millis());
+    }
+
+    pub fn benchmark_parser ()
+    {
+        let program = std::fs::read_to_string("./code.lang").unwrap();
+        let tokens = lexer::lex(&program);
+        let expr_arena = typed_arena::Arena::new();
+        let now = Instant::now();
+        for _ in 0..ITERATIONS { parser::parse(&expr_arena, &tokens); }
+        println!("Parsing: {}ms", now.elapsed().as_millis());
+    }
+
+    pub fn benchmark_interpreter ()
+    {
+        let program = std::fs::read_to_string("./code.lang").unwrap();
+        let tokens = lexer::lex(&program);
+        let expr_arena = typed_arena::Arena::new();
+        let block = parser::parse(&expr_arena, &tokens);
+        let now = Instant::now();
+        for _ in 0..ITERATIONS { interpreter::interpret(block); }
+        println!("Interp: {}ms", now.elapsed().as_millis());
     }
 
 }

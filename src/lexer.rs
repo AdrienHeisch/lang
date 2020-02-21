@@ -89,7 +89,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             {
                 "true" => Token::Const(Const::Bool(true)),
                 "false" => Token::Const(Const::Bool(false)),
-                _ => Token::Id(read_cursor!())
+                id => Token::Id(id)
             }
         },
         c if c.is_numeric() => {
