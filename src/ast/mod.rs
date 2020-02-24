@@ -7,7 +7,7 @@ pub struct Ast<'e>
 {
     #[allow(dead_code)] // This is where all the Expr instances live, they are accessed using top_level
     arena: Arena<Expr<'e>>,
-    top_level: &'e Expr<'e>
+    top_level: Vec<&'e Expr<'e>>
 }
 
 impl<'e> Ast<'e>
@@ -28,9 +28,9 @@ impl<'e> Ast<'e>
         }
     }
 
-    pub fn get_top_level (&self) -> &Expr
+    pub fn get_top_level (&self) -> &Vec<&Expr>
     {
-        self.top_level
+        &self.top_level
     }
 
 }

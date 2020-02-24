@@ -2,10 +2,16 @@ mod ast;
 mod interpreter;
 mod utils;
 
+#[cfg(test)]
+mod tests;
+
 pub fn eval (program:&str)
 {
     let ast = ast::Ast::from_str(program);
-    interpreter::interpret(ast.get_top_level());
+    let mem = interpreter::interpret(ast.get_top_level());
+
+    use interpreter::memory::Memory;
+    mem.print_memory();
 }
 
 pub const BENCHMARK_ITERATIONS:u32 = 6_000_000;

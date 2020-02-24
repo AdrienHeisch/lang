@@ -1,4 +1,4 @@
-mod memory;
+pub mod memory;
 
 use crate::{
     ast::{ Const, Expr, Op },
@@ -15,14 +15,21 @@ use memory::{
 
 const F32_EQUALITY_THRESHOLD:f32 = 1e-6;
 
-pub fn interpret (expr_:&Expr)
+pub fn interpret (exprs:&[&Expr]) -> impl Memory
 {
     let mut mem = MemType::new();
     
     #[cfg(not(benchmark))]
     println!("Program stdout :");
     
-    expr(&mut mem, expr_);
+    for e in exprs {
+        expr(&mut mem, e);
+    }
+
+    #[cfg(not(benchmark))]
+    println!();
+
+    mem
 }
 
 fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const

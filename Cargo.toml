@@ -12,9 +12,9 @@ path = "src/lib.rs"
 name = "lang"
 path = "src/bin.rs"
 
-[[bench]]
-name = "benchmark"
-harness = false
+#[[bench]]
+#name = "benchmark"
+#harness = false
 
 [profile.release]
 debug = true

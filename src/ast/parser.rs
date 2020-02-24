@@ -23,7 +23,7 @@ macro_rules! peek {
 }
 
 //DESIGN should blocks return last expression only if there is no semicolon like rust ?
-pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> &'a Expr<'a>
+pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> Vec<&'a Expr<'a>>
 {
     let mut statements:Vec<&Expr> = Vec::new();
     let mut tk_iter:TkIter = tokens.iter().peekable();
@@ -35,12 +35,10 @@ pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> &'a Exp
     }
 
     #[cfg(not(benchmark))]
-    {
-        println!("exprs:  {:?}\n", statements);
-        statements.push(arena.alloc(Expr::Call(arena.alloc(Expr::Id(String::from("printmem"))), Vec::new())));
-    }
+    println!("exprs:  {:?}\n", statements);
 
-    arena.alloc(Expr::Block(statements))
+    statements
+    // arena.alloc(Expr::Block(statements))
 }
 
 fn parse_statement<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a>
