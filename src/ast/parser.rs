@@ -1,8 +1,4 @@
-use crate::{
-    expr::Expr,
-    op::Op,
-    lexer::{ Token, Delimiter }
-};
+use super::{ Expr, Op, Token, Delimiter };
 use std::collections::VecDeque;
 use typed_arena::Arena;
 
@@ -27,27 +23,27 @@ macro_rules! peek {
 }
 
 //DESIGN should blocks return last expression only if there is no semicolon like rust ?
-pub fn parse<'a, 'b> (arena:&'a Arena<Expr<'a>>, tokens:&'b VecDeque<Token<'b>>) -> &'a Expr<'a>
+pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> &'a Expr<'a>
 {
-    let mut exprs:Vec<&Expr> = Vec::new();
+    let mut statements:Vec<&Expr> = Vec::new();
     let mut tk_iter:TkIter = tokens.iter().peekable();
 
     loop
     {
-        exprs.push(parse_full_expr(arena, &mut tk_iter));
+        statements.push(parse_statement(arena, &mut tk_iter));
         if tk_iter.peek().is_none() { break; }
     }
 
     #[cfg(not(benchmark))]
     {
-        println!("exprs:  {:?}\n", exprs);
-        exprs.push(arena.alloc(Expr::Call(arena.alloc(Expr::Id(String::from("printmem"))), Vec::new())));
+        println!("exprs:  {:?}\n", statements);
+        statements.push(arena.alloc(Expr::Call(arena.alloc(Expr::Id(String::from("printmem"))), Vec::new())));
     }
 
-    arena.alloc(Expr::Block(exprs))
+    arena.alloc(Expr::Block(statements))
 }
 
-fn parse_full_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a>
+fn parse_statement<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a>
 {
     let expr = parse_expr(arena, tokens);
 
@@ -91,7 +87,7 @@ fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a
         Token::DelimOpen(Delimiter::Br) => {
             let mut exprs:Vec<&Expr> = Vec::new();
             while *peek!(tokens) != Token::DelimClose(Delimiter::Br) {
-                exprs.push(&parse_full_expr(arena, tokens));
+                exprs.push(&parse_statement(arena, tokens));
             }
             next!(tokens);
             arena.alloc(Expr::Block(exprs))
@@ -232,4 +228,4 @@ fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, delimiter:
     panic!();
 } */
 
-type TkIter<'l> = std::iter::Peekable<std::collections::vec_deque::Iter<'l, crate::lexer::Token<'l>>>;
+type TkIter<'l> = std::iter::Peekable<std::collections::vec_deque::Iter<'l, Token<'l>>>;

@@ -1,5 +1,5 @@
 use super::Memory;
-use crate::cst::Const;
+use crate::ast::Const;
 use std::collections::HashMap;
 
 #[derive(Debug)]

@@ -13,6 +13,9 @@ fn main () -> Result<(), std::io::Error>
 
 fn eval_file (path:&str) -> Result<(), std::io::Error>
 {
+    // lang::benchmarks::benchmark_lexer();
+    // lang::benchmarks::benchmark_parser();
+    // lang::benchmarks::benchmark_interpreter();
     eval(&std::fs::read_to_string(path)?);
     Ok(())
 }

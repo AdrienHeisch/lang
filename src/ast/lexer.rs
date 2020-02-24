@@ -1,28 +1,5 @@
-use crate::cst::Const;
-use crate::op::Op;
+use super::{ Const, Op, Token, Delimiter };
 use std::collections::VecDeque;
-
-#[derive(Debug, PartialEq)]
-pub enum Token<'a>
-{
-    Id(&'a str),
-    Const(Const), //String ?
-    Op(Op, bool),
-    DelimOpen(Delimiter),
-    DelimClose(Delimiter),
-    Comma,
-    Semicolon,
-    Eof,
-    Nil
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Delimiter
-{
-    Pr,
-    Br,
-    SqBr
-}
 
 //DESIGN define how strict the lexer should be (unexpected characters are currently ignored)
 pub fn lex (program:&str) -> VecDeque<Token>

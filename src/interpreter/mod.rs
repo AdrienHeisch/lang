@@ -1,9 +1,7 @@
 mod memory;
 
 use crate::{
-    cst::Const,
-    expr::Expr,
-    op::Op,
+    ast::{ Const, Expr, Op },
     utils
 };
 use memory::{
@@ -96,7 +94,7 @@ fn expr<T:Memory> (mem:&mut T, e:&Expr) -> Const
             }
             Const::Void
         },
-        Expr::End => Const::Void,
+        Expr::End => Const::Void, //TODO ?
         /* Expr::Invalid => {
             eprintln!("Invalid expression : {:?}", e);
             panic!();

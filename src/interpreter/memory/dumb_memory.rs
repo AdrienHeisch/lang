@@ -1,4 +1,4 @@
-use crate::cst::Const;
+use crate::ast::Const;
 use super::Memory;
 
 pub struct DumbMemory;
