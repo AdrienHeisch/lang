@@ -1,4 +1,5 @@
-use super::{ Const, Op, Token, Delimiter };
+use crate::langval::LangVal;
+use super::{ Op, Token, Delimiter };
 use std::collections::VecDeque;
 
 //DESIGN define how strict the lexer should be (unexpected characters are currently ignored)
@@ -64,8 +65,8 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             let id = read_cursor!();
             match id
             {
-                "true" => Token::Const(Const::Bool(true)),
-                "false" => Token::Const(Const::Bool(false)),
+                "true" => Token::Const(LangVal::Bool(true)),
+                "false" => Token::Const(LangVal::Bool(false)),
                 id => Token::Id(id)
             }
         },
@@ -83,7 +84,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                 } else if !c.is_numeric() { break; }
                 len += 1;
             }
-            Token::Const(Const::Number(read_cursor!().parse().unwrap()))
+            Token::Const(LangVal::Number(read_cursor!().parse().unwrap()))
         },
         c if c.is_operator() => {
             match get_char!()
@@ -112,7 +113,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                 if c == '"' { break; }
                 len += 1;
             }
-            let tk = Token::Const(Const::Str(String::from(read_cursor!())));
+            let tk = Token::Const(LangVal::Str(String::from(read_cursor!())));
             len += 2;
             tk
         },

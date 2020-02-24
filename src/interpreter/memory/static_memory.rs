@@ -1,4 +1,4 @@
-use crate::ast::Const;
+use crate::langval::LangVal;
 use super::{ Memory, VarType };
 use std::collections::HashMap;
 
@@ -9,9 +9,9 @@ const MEMORY_SIZE:usize = 32;
 #[derive(Debug)]
 pub struct StaticMemory
 {
-    ram:[u8; MEMORY_SIZE],
-    allocation_map:[bool; MEMORY_SIZE],
-    scopes:Vec<HashMap<String, Variable>>
+    ram: [u8; MEMORY_SIZE],
+    allocation_map: [bool; MEMORY_SIZE],
+    scopes: Vec<HashMap<String, Variable>>
 }
 
 #[derive(Clone, Debug)]
@@ -41,7 +41,7 @@ impl Memory for StaticMemory
         }
     }
 
-    fn get_var (&self, id:&str) -> Const
+    fn get_var (&self, id:&str) -> LangVal
     {
         let (var, _) = if let Some(var) = self.get_var_from_ident(id) {
             var
@@ -53,34 +53,34 @@ impl Memory for StaticMemory
         match var.t
         {
             VarType::Number => {
-                Const::Number(f32::from_ne_bytes([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]]))
+                LangVal::Number(f32::from_ne_bytes([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]]))
             },
-            VarType::Str => Const::Str(String::from_utf8(Vec::from(self.access(&var.ptr))).ok().unwrap()),
-            VarType::Bool => Const::Bool(self.access(&var.ptr)[0] == 1),
-            // VarType::Void => Const::Void,
+            VarType::Str => LangVal::Str(String::from_utf8(Vec::from(self.access(&var.ptr))).ok().unwrap()),
+            VarType::Bool => LangVal::Bool(self.access(&var.ptr)[0] == 1),
+            // VarType::Void => LangVal::Void,
         }
     }
 
-    fn set_var (&mut self, id:&str, value:&Const)
+    fn set_var (&mut self, id:&str, value:&LangVal)
     {
         let (mut var, scope_index) = if let Some((var, scope_index)) = self.get_var_from_ident(id) {
             (var.clone(), scope_index)
         } else {
             let var = match value
             {
-                Const::Number(_) => Variable {
+                LangVal::Number(_) => Variable {
                     t: VarType::Number,
                     ptr: self.alloc(std::mem::size_of::<f32>())
                 },
-                Const::Str(s) => Variable {
+                LangVal::Str(s) => Variable {
                     t: VarType::Str,
                     ptr: self.alloc(s.len())
                 },
-                Const::Bool(_) => Variable {
+                LangVal::Bool(_) => Variable {
                     t: VarType::Bool,
                     ptr: self.alloc(std::mem::size_of::<bool>())
                 },
-                Const::Void => panic!() //TODO ?
+                LangVal::Void => panic!() //TODO ?
             };
             self.scopes.last_mut().unwrap().insert(String::from(id), var.clone());
             (var, self.scopes.len() - 1)
@@ -88,10 +88,10 @@ impl Memory for StaticMemory
         
         match value
         {
-            Const::Number(f) => {
+            LangVal::Number(f) => {
                 self.access_mut(&var.ptr).copy_from_slice(&(*f).to_ne_bytes()[0..4])
             },
-            Const::Str(s) => {
+            LangVal::Str(s) => {
                 let bytes = s.as_bytes();
                 let len = bytes.len();
                 if len != var.ptr.len {
@@ -100,10 +100,10 @@ impl Memory for StaticMemory
                 }
                 self.access_mut(&var.ptr).copy_from_slice(bytes)
             },
-            Const::Bool(b) => {
+            LangVal::Bool(b) => {
                 self.access_mut(&var.ptr)[0] = if *b { 1u8 } else { 0u8 };
             },
-            Const::Void => panic!() //TODO ?
+            LangVal::Void => panic!() //TODO ?
         }
     }
 

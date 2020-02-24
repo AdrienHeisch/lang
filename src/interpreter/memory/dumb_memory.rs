@@ -1,4 +1,4 @@
-use crate::ast::Const;
+use crate::langval::LangVal;
 use super::Memory;
 
 pub struct DumbMemory;
@@ -12,12 +12,12 @@ impl Memory for DumbMemory
         Self
     }
 
-    fn get_var (&self, id:&str) -> Const
+    fn get_var (&self, id:&str) -> LangVal
     {
-        Const::Void
+        LangVal::Void
     }
 
-    fn set_var (&mut self, id:&str, value:&Const) {}
+    fn set_var (&mut self, id:&str, value:&LangVal) {}
 
     fn open_scope (&mut self) {}
     

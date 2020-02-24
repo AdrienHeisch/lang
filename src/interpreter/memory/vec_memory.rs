@@ -1,11 +1,11 @@
 use super::Memory;
-use crate::ast::Const;
+use crate::langval::LangVal;
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub struct VecMemory
 {
-    vec:Vec<Const>,
+    vec:Vec<LangVal>,
     scopes:Vec<HashMap<String, usize>>
 }
 
@@ -21,7 +21,7 @@ impl Memory for VecMemory
         }
     }
 
-    fn get_var (&self, id:&str) -> Const
+    fn get_var (&self, id:&str) -> LangVal
     {
         let index = if let Some(index) = self.get_var_from_ident(id) {
             index
@@ -33,7 +33,7 @@ impl Memory for VecMemory
         self.vec[*index].clone()
     }
 
-    fn set_var (&mut self, id:&str, value:&Const)
+    fn set_var (&mut self, id:&str, value:&LangVal)
     {
         let index = if let Some(index) = self.get_var_from_ident(id) {
             *index
@@ -66,9 +66,9 @@ impl Memory for VecMemory
         {
             match var.t
             {
-                VarType::Number => Const::Number(self.f32_table.remove(var.index)),
-                VarType::Str => Const::Str(self.str_table.remove(var.index)),
-                VarType::Bool => Const::Bool(self.bool_table.remove(var.index)),
+                VarType::Number => LangVal::Number(self.f32_table.remove(var.index)),
+                VarType::Str => LangVal::Str(self.str_table.remove(var.index)),
+                VarType::Bool => LangVal::Bool(self.bool_table.remove(var.index)),
             };
         } */
     }

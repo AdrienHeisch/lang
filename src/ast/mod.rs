@@ -1,6 +1,7 @@
 mod parser;
 mod lexer;
 
+use crate::langval::LangVal;
 use typed_arena::Arena;
 
 pub struct Ast<'e>
@@ -39,7 +40,7 @@ impl<'e> Ast<'e>
 #[derive(Debug, Clone)]
 pub enum Expr<'a>
 {
-    Const   (Const),
+    Const   (LangVal),
     Id      (String), //TODO replace string with a numeric id
     Var     (String, &'a Expr<'a>), //TODO shouldn't this string be a Expr::Id ?
     UnOp    (Op, &'a Expr<'a>),
@@ -66,31 +67,6 @@ impl<'a> Expr<'a>
         }
     }
 
-}
-// #endregion
-
-// #region CONST
-#[derive(Debug, Clone, PartialEq)]
-pub enum Const
-{
-    Number(f32),
-    Str(String),
-    Bool(bool),
-    Void
-}
-
-impl std::fmt::Display for Const
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
-    {
-        match self
-        {
-            Const::Number(f_) => write!(f, "{}", f_),
-            Const::Str(s) => write!(f, "{}", s),
-            Const::Bool(b) => write!(f, "{}", b),
-            Const::Void => write!(f, "void")
-        }
-    }
 }
 // #endregion
 
@@ -183,7 +159,7 @@ impl Op
 pub enum Token<'a>
 {
     Id(&'a str),
-    Const(Const), //String ?
+    Const(LangVal), //String ?
     Op(Op, bool),
     DelimOpen(Delimiter),
     DelimClose(Delimiter),

@@ -1,5 +1,5 @@
 use super::{ Memory, VarType };
-use crate::ast::Const;
+use crate::langval::LangVal;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -32,7 +32,7 @@ impl Memory for TableMemory
         }
     }
 
-    fn get_var (&self, id:&str) -> Const
+    fn get_var (&self, id:&str) -> LangVal
     {
         let var = if let Some(var) = self.get_var_from_ident(id) {
             var
@@ -43,50 +43,50 @@ impl Memory for TableMemory
 
         match var.t
         {
-            VarType::Number => Const::Number(self.f32_table[var.index]),
-            VarType::Str => Const::Str(self.str_table[var.index].clone()),
-            VarType::Bool => Const::Bool(self.bool_table[var.index]),
+            VarType::Number => LangVal::Number(self.f32_table[var.index]),
+            VarType::Str => LangVal::Str(self.str_table[var.index].clone()),
+            VarType::Bool => LangVal::Bool(self.bool_table[var.index]),
         }
     }
 
-    fn set_var (&mut self, id:&str, value:&Const)
+    fn set_var (&mut self, id:&str, value:&LangVal)
     {
         let var = if let Some(var) = self.get_var_from_ident(id) {
             var.clone()
         } else {
                 let var = match value
                 {
-                    Const::Number(f) => Variable {
+                    LangVal::Number(f) => Variable {
                         t: VarType::Number,
                         index: {
                             self.f32_table.push(*f);
                             self.f32_table.len() - 1
                         }
                     },
-                    Const::Str(s) => Variable {
+                    LangVal::Str(s) => Variable {
                         t: VarType::Str,
                         index: {
                             self.str_table.push(s.clone());
                             self.str_table.len() - 1
                         }
                     },
-                    Const::Bool(b) => Variable {
+                    LangVal::Bool(b) => Variable {
                         t: VarType::Bool,
                         index: {
                             self.bool_table.push(*b);
                             self.bool_table.len() - 1
                         }
                     },
-                    Const::Void => panic!() //TODO ?
+                    LangVal::Void => panic!() //TODO ?
                 };
                 self.scopes.last_mut().unwrap().insert(String::from(id), var);
                 return;
         };
 
         match (value, &var.t) {
-            (Const::Number(f), VarType::Number) => self.f32_table[var.index] = *f,
-            (Const::Str(s), VarType::Str) => self.str_table[var.index] = s.clone(),
-            (Const::Bool(b), VarType::Bool) => self.bool_table[var.index] = *b,
+            (LangVal::Number(f), VarType::Number) => self.f32_table[var.index] = *f,
+            (LangVal::Str(s), VarType::Str) => self.str_table[var.index] = s.clone(),
+            (LangVal::Bool(b), VarType::Bool) => self.bool_table[var.index] = *b,
             (_, _) => panic!() //TODO ?
         }
     }
@@ -110,9 +110,9 @@ impl Memory for TableMemory
         {
             match var.t
             {
-                VarType::Number => Const::Number(self.f32_table.remove(var.index)),
-                VarType::Str => Const::Str(self.str_table.remove(var.index)),
-                VarType::Bool => Const::Bool(self.bool_table.remove(var.index)),
+                VarType::Number => LangVal::Number(self.f32_table.remove(var.index)),
+                VarType::Str => LangVal::Str(self.str_table.remove(var.index)),
+                VarType::Bool => LangVal::Bool(self.bool_table.remove(var.index)),
             };
         } */
     }

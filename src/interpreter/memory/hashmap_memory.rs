@@ -1,5 +1,5 @@
 use super::Memory;
-use crate::ast::Const;
+use crate::langval::LangVal;
 use std::collections::HashMap;
 
 #[derive(Debug)]
@@ -8,7 +8,7 @@ pub struct HashMapMemory
     scopes:Vec<Scope>
 }
 
-type Scope = HashMap<String, Const>;
+type Scope = HashMap<String, LangVal>;
 
 impl Memory for HashMapMemory
 {
@@ -21,7 +21,7 @@ impl Memory for HashMapMemory
         }
     }
 
-    fn get_var (&self, id:&str) -> Const
+    fn get_var (&self, id:&str) -> LangVal
     {
         for scope in self.scopes.iter().rev()
         {
@@ -34,7 +34,7 @@ impl Memory for HashMapMemory
         panic!();
     }
 
-    fn set_var (&mut self, id:&str, value:&Const)
+    fn set_var (&mut self, id:&str, value:&LangVal)
     {
         for scope in self.scopes.iter_mut().rev()
         {

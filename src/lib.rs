@@ -1,17 +1,20 @@
 mod ast;
 mod interpreter;
+// mod vm;
+mod langval;
 mod utils;
 
-#[cfg(test)]
-mod tests;
+// #[cfg(test)]
+// mod tests;
 
 pub fn eval (program:&str)
 {
     let ast = ast::Ast::from_str(program);
-    let mem = interpreter::interpret(ast.get_top_level());
+    let mut interp = interpreter::Interpreter::new();
+    interp.interpret(ast.get_top_level());
 
     use interpreter::memory::Memory;
-    mem.print_memory();
+    interp.get_memory().print_memory();
 }
 
 pub const BENCHMARK_ITERATIONS:u32 = 6_000_000;
@@ -93,7 +96,8 @@ pub mod benchmarks
         let ast = ast::Ast::from_str(&std::fs::read_to_string("./code.lang").unwrap());
         let expr = ast.get_top_level();
         let now = Instant::now();
-        for _ in 0..ITERATIONS { interpreter::interpret(expr); }
+        let mut interp = interpreter::Interpreter::new();
+        for _ in 0..ITERATIONS { interp.interpret(expr); }
         println!("Interp: {}ms", now.elapsed().as_millis());
     }
 
