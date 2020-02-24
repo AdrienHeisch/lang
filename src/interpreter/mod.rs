@@ -60,10 +60,10 @@ impl Interpreter
         match e
         {
             Expr::Const(cst) => cst.clone(),
-            Expr::Id(id) => self.memory.get_var(&id),
+            Expr::Id(id) => self.memory.get_var(id),
             Expr::Var(id, assign_expr) => {
                 // mem.get_var(id); //TODO check if variable exists
-                self.assign(&Expr::Id(id.clone()), assign_expr) //FIXME re assigning variable with different size can lead to problems -> forbid re assigning
+                self.assign(&Expr::Id(*id), assign_expr) //FIXME re assigning variable with different size can lead to problems -> forbid re assigning ?
             }, //DESIGN should re assignation be allowed ?
             Expr::UnOp(op, e) => self.unop(*op, e),
             Expr::BinOp(op, is_assign, e1, e2) => self.binop(*op, *is_assign, e1, e2),
@@ -253,9 +253,10 @@ impl Interpreter
         match e
         {
             Expr::Id(id) => {
-                match id.as_str()
+                match id
                 {
-                    "print" => {
+                    //"print"
+                    [0x70, 0x72, 0x69, 0x6e, 0x74, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0/* , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 */] => {
                         #[cfg(not(benchmark))]
                         {
                             print!("> ");
@@ -264,7 +265,8 @@ impl Interpreter
                         }
                         LangVal::Void
                     },
-                    "printmem" => {
+                    //"printmem"
+                    [0x70, 0x72, 0x69, 0x6E, 0x74, 0x6D, 0x65, 0x6D, 0, 0, 0, 0, 0, 0, 0, 0/* , 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 */] => {
                         #[cfg(not(benchmark))]
                         {
                             println!("\nMemory state :");
@@ -273,7 +275,7 @@ impl Interpreter
                         LangVal::Void
                     },
                     id => {
-                        eprintln!("Unknown function identifier : {}", id);
+                        eprintln!("Unknown function identifier : {}", std::str::from_utf8(id).ok().unwrap());
                         panic!();
                     }
                 }

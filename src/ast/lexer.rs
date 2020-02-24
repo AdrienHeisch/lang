@@ -62,8 +62,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                 if !(c.is_lowercase() || c == '_' || c.is_numeric()) { break; }
                 len += 1;
             }
-            let id = read_cursor!();
-            match id
+            match read_cursor!()
             {
                 "true" => Token::Const(LangVal::Bool(true)),
                 "false" => Token::Const(LangVal::Bool(false)),

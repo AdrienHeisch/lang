@@ -36,17 +36,20 @@ impl<'e> Ast<'e>
 
 }
 
+pub type Identifier = [u8; 16];
+
 // #region EXPR
 #[derive(Debug, Clone)]
 pub enum Expr<'a>
 {
     Const   (LangVal),
-    Id      (String), //TODO replace string with a numeric id
-    Var     (String, &'a Expr<'a>), //TODO shouldn't this string be a Expr::Id ?
+    Id      (Identifier), //TODO replace string with a numeric id
+    Var     (Identifier, &'a Expr<'a>), //TODO shouldn't this string be a Expr::Id ?
     UnOp    (Op, &'a Expr<'a>),
     BinOp   (Op, bool, &'a Expr<'a>, &'a Expr<'a>),
     Parent  (&'a Expr<'a>),
     Call    (&'a Expr<'a>, Vec<&'a Expr<'a>>),
+    // FnDecl  (u8, &'a Expr<'a>),
     Block   (Vec<&'a Expr<'a>>),
     If      (&'a Expr<'a>, &'a Expr<'a>, Option<&'a Expr<'a>>),
     While   (&'a Expr<'a>, &'a Expr<'a>),
@@ -67,6 +70,30 @@ impl<'a> Expr<'a>
         }
     }
 
+}
+// #endregion
+
+// #region TOKEN
+#[derive(Debug, PartialEq)]
+pub enum Token<'a>
+{
+    Id(&'a str),
+    Const(LangVal), //String ?
+    Op(Op, bool),
+    DelimOpen(Delimiter),
+    DelimClose(Delimiter),
+    Comma,
+    Semicolon,
+    Eof,
+    Nil
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Delimiter
+{
+    Pr,
+    Br,
+    SqBr
 }
 // #endregion
 
@@ -151,30 +178,6 @@ impl Op
         }
     }
 
-}
-// #endregion
-
-// #region TOKEN
-#[derive(Debug, PartialEq)]
-pub enum Token<'a>
-{
-    Id(&'a str),
-    Const(LangVal), //String ?
-    Op(Op, bool),
-    DelimOpen(Delimiter),
-    DelimClose(Delimiter),
-    Comma,
-    Semicolon,
-    Eof,
-    Nil
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Delimiter
-{
-    Pr,
-    Br,
-    SqBr
 }
 // #endregion
 

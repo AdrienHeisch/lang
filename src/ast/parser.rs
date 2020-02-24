@@ -1,4 +1,4 @@
-use super::{ Expr, Op, Token, Delimiter };
+use super::{ Expr, Op, Token, Delimiter, Identifier };
 use std::collections::VecDeque;
 use typed_arena::Arena;
 
@@ -123,7 +123,7 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
             {
                 Token::Id(id) => {
                     arena.alloc(Expr::Var(
-                        String::from(*id),
+                        make_identifier(id),
                         match peek!(tokens)
                         {
                             Token::Op(Op::Assign, _) => {
@@ -161,7 +161,7 @@ fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) 
             let then = parse_expr(arena, tokens);
             arena.alloc(Expr::While(cond, then))
         },
-        id => parse_expr_next(arena, tokens, arena.alloc(Expr::Id(String::from(id))))
+        id => parse_expr_next(arena, tokens, arena.alloc(Expr::Id(make_identifier(id))))
     }
 }
 
@@ -220,10 +220,11 @@ fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, delimiter:
     expr_list
 }
 
-/* fn unexpected_expr (e:Expr)
+fn make_identifier (id:&str) -> Identifier
 {
-    eprintln!("Unexpected expression : {:?}", e);
-    panic!();
-} */
+    let mut identifier = super::Identifier::default();
+    identifier[0..id.len()].copy_from_slice(id.as_bytes());
+    identifier
+}
 
 type TkIter<'l> = std::iter::Peekable<std::collections::vec_deque::Iter<'l, Token<'l>>>;
