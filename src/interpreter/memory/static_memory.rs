@@ -4,10 +4,9 @@ use super::{ Memory, VarType };
 use std::collections::HashMap;
 
 //IN BYTES
-const MEMORY_SIZE:usize = 32;
+const MEMORY_SIZE:usize = 64;
 
 //RESEARCH look at C stack heap implementations (stack growing from the end)
-#[derive(Debug)]
 pub struct StaticMemory
 {
     ram: [u8; MEMORY_SIZE],
@@ -15,14 +14,14 @@ pub struct StaticMemory
     scopes: Vec<HashMap<Identifier, Variable>>
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone)]
 struct Variable
 {
     t: VarType,
     ptr: Pointer
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 struct Pointer
 {
     pos:usize,
@@ -56,7 +55,7 @@ impl Memory for StaticMemory
             VarType::Number => {
                 LangVal::Number(f32::from_ne_bytes([self.ram[var.ptr.pos], self.ram[var.ptr.pos + 1], self.ram[var.ptr.pos + 2], self.ram[var.ptr.pos + 3]]))
             },
-            VarType::Str => LangVal::Str(String::from_utf8(Vec::from(self.access(&var.ptr))).ok().unwrap()),
+            VarType::Str => LangVal::Str(String::from_utf8(self.access(&var.ptr).to_vec()).ok().unwrap()),
             VarType::Bool => LangVal::Bool(self.access(&var.ptr)[0] == 1),
             // VarType::Void => LangVal::Void,
         }
@@ -65,7 +64,7 @@ impl Memory for StaticMemory
     fn set_var (&mut self, id:&Identifier, value:&LangVal)
     {
         let (mut var, scope_index) = if let Some((var, scope_index)) = self.get_var_from_ident(id) {
-            (var.clone(), scope_index)
+            (var, scope_index)
         } else {
             let var = match value
             {
@@ -83,7 +82,7 @@ impl Memory for StaticMemory
                 },
                 LangVal::Void => panic!() //TODO ?
             };
-            self.scopes.last_mut().unwrap().insert(*id, var.clone());
+            self.scopes.last_mut().unwrap().insert(*id, var);
             (var, self.scopes.len() - 1)
         };
         
@@ -97,7 +96,7 @@ impl Memory for StaticMemory
                 let len = bytes.len();
                 if len != var.ptr.len {
                     self.realloc(&mut var, len);
-                    self.scopes[scope_index].insert(*id, var.clone());
+                    self.scopes[scope_index].insert(*id, var);
                 }
                 self.access_mut(&var.ptr).copy_from_slice(bytes)
             },
@@ -131,6 +130,7 @@ impl Memory for StaticMemory
     #[allow(dead_code)]
     fn print_memory (&self)
     {
+        use crate::utils::slice_to_string;
         // self.vars.iter().map(|(k, v)| format!("{} => {:?}", k, v.ptr)).for_each(|s| print!("{}, ", s));
         // println!();
         let mut mem_str = String::default();
@@ -138,12 +138,13 @@ impl Memory for StaticMemory
         {
             for (id, address) in scope
             {
-                mem_str = format!("{}{:?} => {:?} => {:?}\n", mem_str, id, address.ptr, self.get_var(id));
+                let id_str = String::from_utf8(id.iter().take_while(|i| **i != 0).cloned().collect()).ok().unwrap();
+                mem_str = format!("{}{} => {:?} => {:?}\n", mem_str, id_str, address.ptr, self.get_var(id));
             }
             mem_str = format!("{}----------\n", mem_str);
         }
         print!("{}", mem_str);
-        println!("raw: {:?}", self.ram);
+        println!("raw: {:?}", slice_to_string(&self.ram));
         // println!("map: {:?}", self.allocation_map);
     }
 }
@@ -151,14 +152,14 @@ impl Memory for StaticMemory
 impl StaticMemory
 {
 
-    fn get_var_from_ident (&self, id:&Identifier) -> Option<(&Variable, usize)>
+    fn get_var_from_ident (&self, id:&Identifier) -> Option<(Variable, usize)>
     {
         let mut var_opt = None;
         for (i, scope) in self.scopes.iter().enumerate().rev()
         {
             if let Some(var) = scope.get(id)
             {
-                var_opt = Some((var, i));
+                var_opt = Some((*var, i));
                 break;
             }
         }

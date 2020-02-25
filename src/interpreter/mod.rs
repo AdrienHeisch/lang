@@ -59,7 +59,7 @@ impl Interpreter
     {
         match e
         {
-            Expr::Const(cst) => cst.clone(),
+            Expr::Const(value) => value.clone(),
             Expr::Id(id) => self.memory.get_var(id),
             Expr::Var(id, assign_expr) => {
                 // mem.get_var(id); //TODO check if variable exists

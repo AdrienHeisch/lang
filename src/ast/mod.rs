@@ -36,7 +36,16 @@ impl<'e> Ast<'e>
 
 }
 
+// #region IDENTIFIER
 pub type Identifier = [u8; 16];
+
+pub fn make_identifier (id:&str) -> Identifier
+{
+    let mut identifier = Identifier::default();
+    identifier[0..id.len()].copy_from_slice(id.as_bytes());
+    identifier
+}
+// #endregion
 
 // #region EXPR
 #[derive(Debug, Clone)]
@@ -78,7 +87,7 @@ impl<'a> Expr<'a>
 pub enum Token<'a>
 {
     Id(&'a str),
-    Const(LangVal), //String ?
+    Const(LangVal),
     Op(Op, bool),
     DelimOpen(Delimiter),
     DelimClose(Delimiter),

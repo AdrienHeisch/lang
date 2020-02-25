@@ -17,7 +17,7 @@ pub trait Memory
     fn print_memory (&self) -> ();
 }
 
-#[derive(Clone, Debug)]
+#[derive(Copy, Clone, Debug)]
 enum VarType //TODO replace with enum discriminants ?
 {
     Number,
