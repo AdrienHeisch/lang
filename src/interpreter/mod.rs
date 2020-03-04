@@ -1,43 +1,48 @@
-pub mod memory;
-
 use crate::{
-    ast::{ Expr, Op },
-    langval::LangVal,
+    ast::{ Identifier, Expr, Op },
+    env::Environment,
+    memory::{ Memory, Pointer },
+    langval::{ LangVal, LangType },
     utils
 };
-use memory::{
-    Memory,
-    // vec_memory::VecMemory as MemType,
-    // table_memory::TableMemory as MemType,
-    // hashmap_memory::HashMapMemory as MemType,
-    static_memory::StaticMemory as MemType,
-    // dumb_memory::DumbMemory as MemType,
-};
-use std::collections::HashMap;
 
-const F32_EQUALITY_THRESHOLD:f32 = 1e-6;
+const F32_EQ_THRESHOLD:f32 = 1e-6;
 
 pub struct Interpreter
 {
-    memory: MemType,
-    globals: HashMap<String, ()>
+    memory: Memory,
+    stack: [Pointer; 256],
+    env: Environment
 }
 
 impl Interpreter
 {
-
+    
     pub fn new () -> Self
     {
         Self
         {
-            memory: MemType::new(),
-            globals: HashMap::new()
+            memory: Memory::new(),
+            stack: [Default::default(); 256],
+            env: Default::default()
         }
     }
 
+    // ----- INTERP
+
     pub fn interpret (&mut self, exprs:&[&Expr])
     {
-        self.memory = MemType::new(); //TODO REMOVE THIS
+        #[cfg(benchmark)]
+        {
+            self.stack = [Default::default(); 256];
+            self.env = Environment
+            {
+                locals: [([0; 16], 0); 256],
+                locals_count: 0,
+                scope_depth: 0
+            };
+            self.memory = Memory::new();
+        }
 
         #[cfg(not(benchmark))]
         println!("Program stdout :");
@@ -50,50 +55,53 @@ impl Interpreter
         println!();
     }
 
-    pub fn get_memory (&self) -> &impl Memory
-    {
-        &self.memory
-    }
-
     fn expr (&mut self, e:&Expr) -> LangVal
     {
+        use Expr::*;
         match e
         {
-            Expr::Const(value) => value.clone(),
-            Expr::Id(id) => self.memory.get_var(id),
-            Expr::Var(id, assign_expr) => {
-                // mem.get_var(id); //TODO check if variable exists
-                self.assign(&Expr::Id(*id), assign_expr) //FIXME re assigning variable with different size can lead to problems -> forbid re assigning ?
+            Const(value) => value.clone(),
+            Id(id) => self.memory.get_var(&self.get_pointer(id).unwrap()),
+            Var(id, assign_expr) => {
+                //TODO check if variable exists ?
+                let value = self.expr(assign_expr);
+                let ptr = self.declare(id, value.as_type());
+                self.stack[self.env.locals_count as usize - 1] = self.memory.set_var(ptr, &value);
+                value
+                //FIXME re assigning variable with different size can lead to problems -> forbid re assigning ?
             }, //DESIGN should re assignation be allowed ?
-            Expr::UnOp(op, e) => self.unop(*op, e),
-            Expr::BinOp(op, is_assign, e1, e2) => self.binop(*op, *is_assign, e1, e2),
-            Expr::Parent(e) => self.expr(e),
-            Expr::Call(e, args) => self.call(e, args),
-            Expr::Block(exprs) => {
-                self.memory.open_scope();
-                let out = if !exprs.is_empty()
+            UnOp(op, e) => self.unop(*op, e),
+            BinOp { op, is_assign, left, right } => self.binop(*op, *is_assign, left, right),
+            Parent(e) => self.expr(e),
+            Call { name, args } => self.call(name, args),
+            FnDecl {..} => {
+                LangVal::Void
+            },
+            // Struct {..} => unimplemented!(),
+            Field(_, _) => unimplemented!(),
+            Block(exprs) => {
+                if !exprs.is_empty()
                 {
+                    self.env.open_scope();
                     for e in exprs.iter().take(exprs.len() - 1) {
                         self.expr(e);
                     }
-                    self.expr(exprs.iter().last().unwrap())
+                    let ret = self.expr(exprs.iter().last().unwrap());
+                    self.env.close_scope();
+                    ret
                 }
                 else {
                     LangVal::Void
-                };
-                //TODO only in debug mode ?
-                //if there is no more scopes to close, prints memory
-                self.memory.close_scope();
-                out
+                }
             },
-            Expr::If(cond, e, else_) => {
+            If { cond, then, elze } => {
                 match self.expr(cond)
                 {
                     LangVal::Bool(b) => {
                         if b {
-                            self.expr(e)
-                        } else if else_.is_some() {
-                            self.expr(else_.unwrap())
+                            self.expr(then)
+                        } else if let Some(elze) = elze {
+                            self.expr(elze)
                         } else {
                             LangVal::Void
                         }
@@ -104,28 +112,25 @@ impl Interpreter
                     }
                 }
             },
-            Expr::While(cond, e) => {
+            While { cond, body } => {
                 loop
                 {
-                    match self.expr(cond)
+                    match self.expr(cond) //TODO this should not be checked at runtime
                     {
                         LangVal::Bool(b) => {
                             if b {
-                                self.expr(e);
+                                self.expr(body);
                             } else {
                                 break;
                             }
                         },
-                        _ => {
-                            eprintln!("Invalid condition : {:?}", cond); //TODO this should not be checked at runtime
-                            panic!();
-                        }
+                        _ => panic!("Invalid condition : {:?}", cond)
                     }
                 }
                 LangVal::Void
             },
-            Expr::End => LangVal::Void, //TODO ?
-            /* Expr::Invalid => {
+            End => LangVal::Void,
+            /* Invalid => {
                 eprintln!("Invalid expression : {:?}", e);
                 panic!();
             } */
@@ -140,111 +145,102 @@ impl Interpreter
                 match op
                 {
                     Op::Sub => LangVal::Number(-f),
-                    _ => {
-                        eprintln!("Invalid operator : {:?}", op);
-                        panic!();
-                    }
+                    _ => panic!("Invalid operator : {:?}", op)
                 }
             },
             LangVal::Bool(b) => {
                 match op
                 {
                     Op::Not => LangVal::Bool(!b),
-                    _ => {
-                        eprintln!("Invalid operator : {:?}", op);
-                        panic!();
-                    }
+                    _ => panic!("Invalid operator : {:?}", op)
                 }
             },
-            cst => {
-                eprintln!("Invalid operation : {:?}{}", op, cst);
-                panic!();
-            }
+            value => panic!("Invalid operation : {:?}{:?}", op, value)
         }
     }
 
     fn binop (&mut self, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> LangVal
     {
+        use { Op::*, LangVal::* };
         match (self.expr(e1), self.expr(e2))
         {
-            (LangVal::Number(f1), LangVal::Number(f2)) => { //TODO match types instead of using guards (Dynamic.id) ?
+            (Number(f1), Number(f2)) => {
                 if is_assign {
                     let value = self.binop(op, false, e1, e2);
-                    self.assign(e1, &Expr::Const(value))
+                    self.assign(e1, value)
                 } else {
+                    use utils::compare_floats;
                     match op
                     {
-                        Op::Assign      => self.assign(e1, e2),
-                        Op::Equal       => LangVal::Bool( utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
-                        Op::NotEqual    => LangVal::Bool(!utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
-                        Op::Gt          => LangVal::Bool(f1 > f2),
-                        Op::Gte         => LangVal::Bool(f1 > f2 || utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
-                        Op::Lt          => LangVal::Bool(f1 < f2 || utils::compare_floats(f1, f2, F32_EQUALITY_THRESHOLD)),
-                        Op::Lte         => LangVal::Bool(f1 <= f2),
-                        Op::Add         => LangVal::Number(f1 + f2),
-                        Op::Sub         => LangVal::Number(f1 - f2),
-                        Op::Mult        => LangVal::Number(f1 * f2),
-                        Op::Div         => LangVal::Number(f1 / f2),
-                        _ => {
-                            eprintln!("Invalid operator : {:?}", op);
-                            panic!();
-                        }
+                        Assign => {
+                            let value = self.expr(e2);
+                            self.assign(e1, value)
+                        },
+                        Equal       => Bool( compare_floats(f1, f2, F32_EQ_THRESHOLD)),
+                        NotEqual    => Bool(!compare_floats(f1, f2, F32_EQ_THRESHOLD)),
+                        Gt          => Bool(f1 > f2),
+                        Gte         => Bool(f1 > f2 || compare_floats(f1, f2, F32_EQ_THRESHOLD)),
+                        Lt          => Bool(f1 < f2 || compare_floats(f1, f2, F32_EQ_THRESHOLD)),
+                        Lte         => Bool(f1 <= f2),
+                        Add         => Number(f1 + f2),
+                        Sub         => Number(f1 - f2),
+                        Mult        => Number(f1 * f2),
+                        Div         => Number(f1 / f2),
+                        _ => panic!("Invalid operator : {:?}", op)
                     }
                 }
             },
-            (LangVal::Str(s1), LangVal::Str(s2)) => {
+            (Str(s1), Str(s2)) => {
                 if is_assign {
                     let value = self.binop(op, false, e1, e2);
-                    self.assign(e1, &Expr::Const(value))
+                    self.assign(e1, value)
                 } else {
                     match op
                     {
-                        Op::Assign      => self.assign(e1, e2),
-                        Op::Equal       => LangVal::Bool(s1 == s2),
-                        Op::NotEqual    => LangVal::Bool(s1 != s2),
-                        Op::Add         => LangVal::Str(s1 + &s2),
-                        _ => {
-                            eprintln!("Invalid operator : {:?}", op);
-                            panic!();
-                        }
+                        Assign => {
+                            let value = self.expr(e2);
+                            self.assign(e1, value)
+                        },
+                        Equal       => Bool(s1 == s2),
+                        NotEqual    => Bool(s1 != s2),
+                        Add         => Str(s1 + &s2),
+                        _ => panic!("Invalid operator : {:?}", op)
                     }
                 }
             },
-            (LangVal::Bool(b1), LangVal::Bool(b2)) => {
+            (Bool(b1), Bool(b2)) => {
                 match op
                 {
-                    Op::Assign      => self.assign(e1, e2),
-                    Op::Equal       => LangVal::Bool(b1 == b2),
-                    Op::NotEqual    => LangVal::Bool(b1 != b2),
-                    Op::BoolAnd     => LangVal::Bool(b1 && b2),
-                    Op::BoolOr      => LangVal::Bool(b1 || b2),
-                    _ => {
-                        eprintln!("Invalid operator : {:?}", op);
-                        panic!();
-                    }
+                    Assign => {
+                        let value = self.expr(e2);
+                        self.assign(e1, value)
+                    },
+                    Equal       => Bool(b1 == b2),
+                    NotEqual    => Bool(b1 != b2),
+                    BoolAnd     => Bool(b1 && b2),
+                    BoolOr      => Bool(b1 || b2),
+                    _ => panic!("Invalid operator : {:?}", op)
                 }
             },
             (e1, e2) => {
-                eprintln!("Invalid operation : {:?} {:?} {:?}", e1, op, e2);
-                panic!();
-                // Const::Void
+                panic!("Invalid operation : {:?} {:?} {:?}", e1, op, e2);
+                // Void
             }
         }
     }
 
-    fn assign (&mut self, to:&Expr, from:&Expr) -> LangVal
+    fn assign (&mut self, to:&Expr, value:LangVal) -> LangVal
     {
-        let value = self.expr(from);
-        match to
-        {
-            Expr::Id(id) => {
-                self.memory.set_var(id, &value);
-            },
-            _ => {
-                eprintln!("Can't assign {:?} to {:?}", from, to);
-                panic!();
-            }
+        if let Expr::Id(id) = to {
+            self.stack[self.env.locals_count as usize - 1] = self.memory.set_var(self.get_pointer(id).unwrap(), &value);
+        } else {
+            panic!("Can't assign {:?} to {:?}", value, to);
         }
+        /* match to
+        {
+            Expr::Id(id) => self.stack[self.env.locals_count as usize] = self.memory.set_var(self.get_pointer(id).unwrap(), &value),
+            _ => panic!("Can't assign {:?} to {:?}", value, to)
+        } */
         value
     }
 
@@ -270,7 +266,7 @@ impl Interpreter
                         #[cfg(not(benchmark))]
                         {
                             println!("\nMemory state :");
-                            self.memory.print_memory();
+                            self.print_locals();
                         }
                         LangVal::Void
                     },
@@ -285,6 +281,61 @@ impl Interpreter
                 panic!();
             }
         }
+    }
+
+    // ----- VARIABLES
+    
+    pub fn declare (&mut self, id:&Identifier, t:LangType) -> Pointer
+    {
+        let ptr = self.memory.make_pointer_for_type(t);
+        self.env.locals[self.env.locals_count as usize] = (*id, self.env.scope_depth);
+        self.stack[self.env.locals_count as usize] = ptr;
+        if let Some(n) = self.env.locals_count.checked_add(1) {
+            self.env.locals_count = n;
+        } else {
+            panic!("Too many locals.");
+        }
+        ptr
+    }
+
+    fn get_pointer (&self, id:&Identifier) -> Option<Pointer>
+    {
+        for i in (0..self.env.locals_count as usize).rev()
+        {
+            let (id_, _) = self.env.locals[i];
+            if *id == id_ {
+                return Some(self.stack[i]);
+            }
+        }
+        None
+    }
+    
+    #[allow(dead_code)]
+    pub fn print_locals (&self)
+    {
+        println!("Locals:");
+        let mut current_depth = if self.env.scope_depth > 0 {
+            self.env.scope_depth + 1
+        } else {
+            0
+        };
+
+        for i in (0..self.env.locals_count as usize).rev()
+        {
+            let (id, depth) = self.env.locals[i];
+
+            if current_depth > depth {
+                current_depth = depth;
+                println!("----- Depth: {} -----", current_depth);
+            }
+
+            let id_str = String::from_utf8(id.iter().take_while(|i| **i != 0).cloned().collect()).ok().unwrap();
+            let ptr = self.get_pointer(&id).unwrap();
+            println!("{} => {:?} => {:?}", id_str, ptr, self.memory.get_var(&ptr));
+        }
+
+        println!();
+        self.memory.print_ram();
     }
 
 }

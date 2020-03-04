@@ -1,7 +1,9 @@
+// mod analyzer;
 mod parser;
 mod lexer;
 
-use crate::langval::LangVal;
+use crate::langval::{ LangVal };
+use std::collections::VecDeque;
 use typed_arena::Arena;
 
 pub struct Ast<'e>
@@ -14,19 +16,30 @@ pub struct Ast<'e>
 impl<'e> Ast<'e>
 {
 
-    pub fn from_str (program:&str) -> Self
+    pub fn new (tokens:&VecDeque<Token>) -> Self
     {
         let arena = Arena::new();
         let top_level;
         unsafe {
             let arena_ref = &*(&arena as *const Arena<Expr>);
-            top_level = parser::parse(arena_ref, &lexer::lex(program));
+            top_level = parser::parse(arena_ref, &tokens);
         }
-        Self
+        let ast = Self
         {
             arena,
             top_level
-        }
+        };
+        // analyzer::analyze(&ast);
+        
+        #[cfg(not(benchmark))]
+        println!("exprs:  {:?}\n", ast.top_level);
+
+        ast
+    }
+
+    pub fn from_str (program:&str) -> Self
+    {
+        Self::new(&lexer::lex(program))
     }
 
     pub fn get_top_level (&self) -> &Vec<&Expr>
@@ -48,21 +61,26 @@ pub fn make_identifier (id:&str) -> Identifier
 // #endregion
 
 // #region EXPR
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum Expr<'a>
 {
     Const   (LangVal),
-    Id      (Identifier), //TODO replace string with a numeric id
-    Var     (Identifier, &'a Expr<'a>), //TODO shouldn't this string be a Expr::Id ?
-    UnOp    (Op, &'a Expr<'a>),
-    BinOp   (Op, bool, &'a Expr<'a>, &'a Expr<'a>),
+    Id      (Identifier),
+    Var     (Identifier, &'a Expr<'a>), //TODO allow declaration without initialization
+    Block   (Box<[&'a Expr<'a>]>),
     Parent  (&'a Expr<'a>),
-    Call    (&'a Expr<'a>, Vec<&'a Expr<'a>>),
-    // FnDecl  (u8, &'a Expr<'a>),
-    Block   (Vec<&'a Expr<'a>>),
-    If      (&'a Expr<'a>, &'a Expr<'a>, Option<&'a Expr<'a>>),
-    While   (&'a Expr<'a>, &'a Expr<'a>),
-    End
+    // --- Operation
+    Field   (&'a Expr<'a>, &'a Expr<'a>),
+    UnOp    (Op, &'a Expr<'a>),
+    BinOp   { op: Op, is_assign: bool, left: &'a Expr<'a>, right: &'a Expr<'a> },
+    Call    { name: &'a Expr<'a>, args: Box<[&'a Expr<'a>]> },
+    // --- Declaration
+    FnDecl  { arity:u8, body:&'a Expr<'a> },
+    // Struct  { name:Identifier, fields: Box<[/* ( */Identifier/* , LangType) */]> },
+    // --- Control Flow
+    If      { cond: &'a Expr<'a>, then: &'a Expr<'a>, elze: Option<&'a Expr<'a>>  },
+    While   { cond: &'a Expr<'a>, body: &'a Expr<'a> },
+    End //TODO this seems to be useless
 }
 
 impl<'a> Expr<'a>
@@ -72,9 +90,16 @@ impl<'a> Expr<'a>
     {
         match self
         {
-            Expr::Block(_) => true,
-            Expr::If(_, expr, _) => Self::is_block(expr),
-            Expr::While(_, expr) => Self::is_block(expr),
+            Expr::Block{..}         => true,
+            Expr::If{then, elze, ..}      => {
+                if let Some(elze) = elze {
+                    Self::is_block(elze)
+                } else {
+                    Self::is_block(then)
+                }
+            },
+            Expr::While{body, ..}   => Self::is_block(body),
+            Expr::FnDecl{body, ..}  => Self::is_block(body),
             _ => false
         }
     }
@@ -92,6 +117,7 @@ pub enum Token<'a>
     DelimOpen(Delimiter),
     DelimClose(Delimiter),
     Comma,
+    Dot,
     Semicolon,
     Eof,
     Nil
@@ -167,25 +193,36 @@ impl Op
 
     pub fn priority (self) -> u8
     {
+        use Op::*;
         match self
         {
-            Op::Not => 0,
-            Op::Mod => 1,
-            Op::Mult => 2,
-            Op::Div => 2,
-            Op::Add => 3,
-            Op::Sub => 3,
-            Op::Equal => 4,
-            Op::NotEqual => 4,
-            Op::Gt => 4,
-            Op::Gte => 4,
-            Op::Lt => 4,
-            Op::Lte => 4,
-            Op::BoolAnd => 5,
-            Op::BoolOr => 6,
-            Op::Assign => 7
+            Not => 0,
+            Mod => 1,
+            Mult => 2,
+            Div => 2,
+            Add => 3,
+            Sub => 3,
+            Equal => 4,
+            NotEqual => 4,
+            Gt => 4,
+            Gte => 4,
+            Lt => 4,
+            Lte => 4,
+            BoolAnd => 5,
+            BoolOr => 6,
+            Assign => 7
         }
     }
+
+    /* pub fn returns_bool (self) -> bool
+    {
+        use Op::*;
+        match self
+        {
+            Equal | NotEqual | Gt | Gte | Lt | Lte | BoolAnd | BoolOr => true,
+            _ => false
+        }
+    } */
 
 }
 // #endregion
@@ -195,7 +232,7 @@ impl Op
 #[allow(dead_code)]
 pub mod benchmarks
 {
-    use crate::BENCHMARK_ITERATIONS as ITERATIONS;
+    use crate::benchmarks::ITERATIONS;
     use super::{ lexer, parser };
     use std::time::Instant;
 

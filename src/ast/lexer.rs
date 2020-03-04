@@ -119,6 +119,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
         c if c.is_delimiter_open() => Token::DelimOpen(Delimiter::from_char(c)),
         c if c.is_delimiter_close() => Token::DelimClose(Delimiter::from_char(c)),
         ',' => Token::Comma,
+        '.' => Token::Dot,
         ';' => Token::Semicolon,
         EOF => Token::Eof,
         c if c.is_whitespace() => {

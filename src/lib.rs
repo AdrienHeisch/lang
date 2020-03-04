@@ -1,23 +1,22 @@
 mod ast;
+mod env;
 mod interpreter;
-// mod vm;
 mod langval;
+mod memory;
 mod utils;
+// mod vm;
 
 // #[cfg(test)]
 // mod tests;
 
 pub fn eval (program:&str)
 {
-    let ast = ast::Ast::from_str(program);
     let mut interp = interpreter::Interpreter::new();
-    interp.interpret(ast.get_top_level());
-
-    use interpreter::memory::Memory;
-    interp.get_memory().print_memory();
+    let ast = ast::Ast::from_str(program);
+    interp.interpret(&ast.get_top_level());
+    // use interpreter::memory::Memory;
+    interp.print_locals();
 }
-
-pub const BENCHMARK_ITERATIONS:u32 = 6_000_000;
 
 /* // #[cfg(test)]
 pub mod test_exports
@@ -31,8 +30,9 @@ pub mod test_exports
 pub mod benchmarks
 {
     use crate::{ ast, interpreter };
-    use crate::BENCHMARK_ITERATIONS as ITERATIONS;
     use std::time::{ Instant };
+
+    pub const ITERATIONS:u32 = 6_000_000;
 
     /* pub fn benchmark () -> Result<(), std::io::Error>
     {
@@ -97,7 +97,7 @@ pub mod benchmarks
         let expr = ast.get_top_level();
         let now = Instant::now();
         let mut interp = interpreter::Interpreter::new();
-        for _ in 0..ITERATIONS { interp.interpret(expr); }
+        for _ in 0..ITERATIONS { interp.interpret(&expr); }
         println!("Interp: {}ms", now.elapsed().as_millis());
     }
 

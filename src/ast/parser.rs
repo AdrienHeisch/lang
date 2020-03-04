@@ -1,223 +1,338 @@
-use super::{ Expr, Op, Token, Delimiter, make_identifier };
-use std::collections::VecDeque;
+use super::{ Expr, Op, Token, Delimiter, Identifier, make_identifier };
+use crate::env::Environment;
+use std::collections::{ VecDeque };
+use std::cell::{ RefCell };
 use typed_arena::Arena;
 
-macro_rules! next {
-    ($tokens:ident) => {
-        if let Some(item) = $tokens.next() {
-            item
-        } else {
-            &Token::Eof
-        }
-    };
-}
-
-macro_rules! peek {
-    ($tokens:ident) => {
-        if let Some(item) = $tokens.peek() {
-            item
-        } else {
-            &Token::Eof
-        }
-    };
-}
-
-//DESIGN should blocks return last expression only if there is no semicolon like rust ?
 pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> Vec<&'a Expr<'a>>
 {
-    let mut statements:Vec<&Expr> = Vec::new();
-    let mut tk_iter:TkIter = tokens.iter().peekable();
-
-    loop
-    {
-        statements.push(parse_statement(arena, &mut tk_iter));
-        if tk_iter.peek().is_none() { break; }
-    }
-
-    #[cfg(not(benchmark))]
-    println!("exprs:  {:?}\n", statements);
-
-    statements
-    // arena.alloc(Expr::Block(statements))
+    Parser::new(arena, tokens).parse()
 }
 
-fn parse_statement<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a>
+struct Parser<'a, 'b>
 {
-    let expr = parse_expr(arena, tokens);
+    arena: &'a Arena<Expr<'a>>,
+    tokens: RefCell<TkIter<'b>>,
+    env: RefCell<Environment>, //TODO refactor with environments (see interpreter)
+    globals: Vec<Identifier>
+}
 
-    if peek!(tokens) == &Token::Semicolon {
-        next!(tokens);
-    } else {
-        match &expr
-        {
-            e if e.is_block() => (),
-            Expr::End => (),
-            _ => {
-                eprintln!("Expected Semicolon, got : {:?}", peek!(tokens));
-                panic!();
-            }
+impl<'a, 'b> Parser<'a, 'b>
+{
+
+    fn new (arena:&'a Arena<Expr<'a>>, tokens:&'b VecDeque<Token<'b>>) -> Self
+    {
+        Parser {
+            arena,
+            tokens: RefCell::new(tokens.iter().peekable()),
+            env: Default::default(),
+            globals: vec!(super::make_identifier("print"))
         }
     }
 
-    expr
-}
+    // ----- PARSING -----
 
-fn parse_expr<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter) -> &'a Expr<'a>
-{
-    match next!(tokens)
+    //DESIGN should blocks return last expression only if there is no semicolon like rust ?
+    pub fn parse (&mut self) -> Vec<&'a Expr<'a>>
     {
-        Token::Op(op, _) => arena.alloc(Expr::UnOp(*op, parse_expr(arena, tokens))),
-        Token::Const(value) => parse_expr_next(arena, tokens, arena.alloc(Expr::Const(value.clone()))),
-        Token::Id(id) => {
-            parse_structure(arena, tokens, id)
-        },
-        Token::DelimOpen(Delimiter::Pr) => {
-            let e = parse_expr(arena, tokens);
-            match next!(tokens)
+        let mut statements = Vec::new();
+
+        self.open_scope();
+        loop
+        {
+            statements.push(self.parse_statement());
+            if self.tokens.borrow_mut().peek().is_none() { break; }
+        }
+        self.close_scope();
+
+        sort_functions_first(&mut statements);
+
+        statements
+    }
+
+    fn parse_statement (&self) -> &'a Expr<'a>
+    {
+        let expr = self.parse_expr();
+
+        if self.peek() == &Token::Semicolon {
+            self.next();
+        } else {
+            match &expr
             {
-                Token::DelimClose(Delimiter::Pr) => parse_expr_next(arena, tokens, arena.alloc(Expr::Parent(e))),
+                e if e.is_block() => (),
+                Expr::End => (),
                 _ => {
-                    eprintln!("Unclosed delimiter \"(\"");
-                    panic!();
+                    eprintln!("{:?}", expr);
+                    panic!("Expected Semicolon, got : {:?}", self.peek());
                 }
             }
-        },
-        Token::DelimOpen(Delimiter::Br) => {
-            let mut exprs:Vec<&Expr> = Vec::new();
-            while *peek!(tokens) != Token::DelimClose(Delimiter::Br) {
-                exprs.push(&parse_statement(arena, tokens));
-            }
-            next!(tokens);
-            arena.alloc(Expr::Block(exprs))
-        },
-        Token::Eof => arena.alloc(Expr::End),
-        tk => {
-            eprintln!("Unexpected token : {:?}", tk);
-            panic!();
+        }
+
+        expr
+    }
+
+    fn parse_expr (&self) -> &'a Expr<'a>
+    {
+        match self.next()
+        {
+            Token::Op(op, _) => self.arena.alloc(Expr::UnOp(*op, self.parse_expr())),
+            Token::Const(value) => self.parse_expr_next(self.arena.alloc(Expr::Const(value.clone()))),
+            Token::Id(id) => {
+                self.parse_structure(id)
+            },
+            Token::DelimOpen(Delimiter::Pr) => {
+                match self.next()
+                {
+                    Token::DelimClose(Delimiter::Pr) => {
+                        let e = self.parse_expr();
+                        self.parse_expr_next(self.arena.alloc(Expr::Parent(e)))
+                    },
+                    _ => {
+                        panic!("Unclosed delimiter : {:?}", Delimiter::Pr);
+                    }
+                }
+            },
+            Token::DelimOpen(Delimiter::Br) => {
+                self.open_scope();
+
+                let mut statements:Vec<&Expr> = Vec::new();
+                while *self.peek() != Token::DelimClose(Delimiter::Br) { //FIXME infinite loop on unclosed bracket
+                    statements.push(self.parse_statement());
+                }
+                self.next();
+
+                self.close_scope();
+                
+                sort_functions_first(&mut statements);
+                self.arena.alloc(Expr::Block(statements.into_boxed_slice()))
+            },
+            Token::Eof => self.arena.alloc(Expr::End),
+            tk => panic!("Unexpected token : {:?}", tk)
         }
     }
-}
 
-fn parse_expr_next<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, e:&'a Expr<'a>) -> &'a Expr<'a>
-{
-    match peek!(tokens)
+    //TODO assert previous expression
+    fn parse_expr_next (&self, e:&'a Expr<'a>) -> &'a Expr<'a>
     {
-        Token::Op(op, is_assign) => {
-            next!(tokens);
-            make_binop(arena, op, *is_assign, e, parse_expr(arena, tokens))
-        },
-        Token::DelimOpen(Delimiter::Pr) => {
-            next!(tokens);
-            arena.alloc(Expr::Call(e, make_expr_list(arena, tokens, Delimiter::Pr)))
-        },
-        _ => e
+        match self.peek()
+        {
+            Token::Op(op, is_assign) => {
+                self.next();
+                self.make_binop(*op, *is_assign, e, self.parse_expr())
+            },
+            Token::DelimOpen(Delimiter::Pr) => {
+                self.next();
+                self.arena.alloc(Expr::Call { name: e, args: self.make_expr_list(Delimiter::Pr).into_boxed_slice() })
+            },
+            Token::Dot => {
+                self.next();
+                self.arena.alloc(Expr::Field(e, self.parse_expr()))
+            }
+            _ => e
+        }
     }
-}
 
-fn parse_structure<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, id:&str) -> &'a Expr<'a>
-{
-    match id
+    fn parse_structure (&self, id:&str) -> &'a Expr<'a>
     {
-        "var" => {
-            match next!(tokens)
-            {
-                Token::Id(id) => {
-                    arena.alloc(Expr::Var(
-                        make_identifier(id),
-                        match peek!(tokens)
+        match id
+        {
+            "var" => {
+                match self.next()
+                {
+                    Token::Id(id) => {
+                        let id = make_identifier(id);
+                        let value = match self.peek()
                         {
                             Token::Op(Op::Assign, _) => {
-                                next!(tokens);
-                                parse_expr(arena, tokens)
+                                self.next();
+                                self.parse_expr()
                             },
-                            tk => {
-                                eprintln!("Expected assign operator, got : {:?}", tk);
-                                panic!();
-                            }
-                        }
-                    ))
+                            tk => panic!("Expected assign operator, got : {:?}", tk) //TODO uninitialized var
+                        };
+                        self.declare_local(&id, true); //TODO uninitialized var
+                        self.arena.alloc(Expr::Var(id, value))
+                    }
+                    tk => panic!("Expected identifier, got : {:?}", tk)
                 }
-                tk => {
-                    eprintln!("Expected identifier, got : {:?}", tk);
-                    panic!();
-                }
-            }
-        },
-        "if" => {
-            let cond = parse_expr(arena, tokens);
-            let then = parse_expr(arena, tokens);
-            let else_ = match peek!(tokens)
-            {
-                Token::Id("else") => {
-                    next!(tokens);
-                    Some(parse_expr(arena, tokens))
-                },
-                _ => None
-            };
-            arena.alloc(Expr::If(cond, then, else_))
-        },
-        "while" => {
-            let cond = parse_expr(arena, tokens);
-            let then = parse_expr(arena, tokens);
-            arena.alloc(Expr::While(cond, then))
-        },
-        id => parse_expr_next(arena, tokens, arena.alloc(Expr::Id(make_identifier(id))))
-    }
-}
-
-fn make_binop<'a> (arena:&'a Arena<Expr<'a>>, op:&Op, is_assign:bool, el:&'a Expr<'a>, er:&'a Expr<'a>) -> &'a Expr<'a>
-{
-    let priority = if is_assign {
-        std::u8::MAX
-    } else {
-        op.priority()
-    };
-
-    match er
-    {
-        Expr::BinOp(op_, is_assign_, el_, er_) => {
-            if priority <= op_.priority() {
-                arena.alloc(Expr::BinOp(*op_, *is_assign_, make_binop(arena, op, is_assign, el, el_), er_))
-            } else {
-                arena.alloc(Expr::BinOp(*op, is_assign, el, er))
-            }
-        },
-        _ => arena.alloc(Expr::BinOp(*op, is_assign, el, er))
-    }
-}
-
-fn make_expr_list<'a> (arena:&'a Arena<Expr<'a>>, tokens:&mut TkIter, delimiter:Delimiter) -> Vec<&'a Expr<'a>>
-{
-    let mut expr_list = Vec::new();
-    if *peek!(tokens) == Token::DelimClose(delimiter) {
-        next!(tokens);
-        return expr_list;
-    }
-
-    loop
-    {
-        expr_list.push(parse_expr(arena, tokens));
-        match peek!(tokens)
-        {
-            Token::Comma => {
-                next!(tokens);
             },
-            Token::DelimClose(c) if *c == delimiter => {
-                next!(tokens);
-                break;
+            "if" => {
+                let cond = self.parse_expr();
+                let then = self.parse_expr();
+                let elze = match self.peek()
+                {
+                    Token::Id("else") => {
+                        self.next();
+                        Some(self.parse_expr())
+                    },
+                    _ => None
+                };
+                self.arena.alloc(Expr::If { cond, then, elze })
             },
-            Token::Eof => {
-                eprintln!("Unclosed parenthese.");
-                panic!();
+            "while" => {
+                let cond = self.parse_expr();
+                let body = self.parse_expr();
+                self.arena.alloc(Expr::While { cond, body })
             },
-            tk => {
-                eprintln!("Expected Comma or DelimClose('{:?}'), got  {:?}", delimiter, tk);
-                panic!();
+            "fn" => {
+                let name = match self.next() {
+                    Token::Id(s) => *s,
+                    tk => panic!("Expected identifier, got : {:?}", tk)
+                };
+                let arity = match self.peek()
+                {
+                    Token::DelimOpen(Delimiter::Pr) => {
+                        self.next();
+                        let arity = self.make_expr_list(Delimiter::Pr).len();
+                        if arity > u8::max_value().into() { panic!("Too many arguments !"); }
+                        arity as u8
+                    },
+                    tk => {
+                        panic!("Expected open parenthese, got : {:?}", tk);
+                    }
+                };
+                let body = self.parse_expr();
+                println!("function name: {:?}", name);
+                self.arena.alloc(Expr::FnDecl { arity, body })
+            },
+            /* "struct" => {
+                let name = match self.next() {
+                    Token::Id(s) => *s,
+                    tk => panic!("Expected identifier, got : {:?}", tk)
+                };
+                
+            }, */
+            id_str => {
+                let id = make_identifier(id_str);
+                if !self.check_id_exists(&id) {
+                    panic!("Unknown identifier : {}", id_str);
+                };
+                self.parse_expr_next(self.arena.alloc(Expr::Id(id)))
             }
         }
     }
-    
-    expr_list
+
+    fn make_binop (&self, op:Op, is_assign:bool, left:&'a Expr<'a>, right:&'a Expr<'a>) -> &'a Expr<'a>
+    {
+        let priority = if is_assign {
+            std::u8::MAX
+        } else {
+            op.priority()
+        };
+
+        match right
+        {
+            Expr::BinOp { op:op_, is_assign:is_assign_, left:left_, right:right_ } if priority <= op_.priority() =>
+                    self.arena.alloc(Expr::BinOp { op:*op_, is_assign:*is_assign_, left:self.make_binop(op, is_assign, left, left_), right:right_ }),
+            _ =>    self.arena.alloc(Expr::BinOp { op, is_assign, left, right })
+        }
+    }
+
+    fn make_expr_list (&self, delimiter:Delimiter) -> Vec<&'a Expr<'a>>
+    {
+        let mut expr_list = Vec::new();
+        if *self.peek() == Token::DelimClose(delimiter) {
+            self.next();
+            return expr_list;
+        }
+
+        loop
+        {
+            expr_list.push(self.parse_expr());
+            match self.peek()
+            {
+                Token::Comma => { self.next(); },
+                Token::DelimClose(c) if *c == delimiter => {
+                    self.next();
+                    break;
+                },
+                Token::Eof => panic!("Unclosed delimiter : {:?}", delimiter),
+                tk => {
+                    eprintln!("Expr list: {:?}", expr_list);
+                    panic!("Expected Comma or DelimClose('{:?}'), got  {:?}", delimiter, tk);
+                }
+            }
+        }
+        
+        expr_list
+    }
+
+    // ----- TOKEN ITERATOR -----
+
+    fn peek (&self) -> &Token
+    {
+        if let Some(item) = self.tokens.borrow_mut().peek() {
+            item
+        } else {
+            &Token::Eof
+        }
+    }
+
+    fn next (&self) -> &Token
+    {
+        if let Some(item) = self.tokens.borrow_mut().next() {
+            item
+        } else {
+            &Token::Eof
+        }
+    }
+
+    // ----- SCOPES -----
+
+    fn open_scope (&self)
+    {
+        self.env.borrow_mut().open_scope();
+    }
+
+    fn close_scope (&self)
+    {
+        self.env.borrow_mut().close_scope();
+    }
+
+    fn declare_local (&self, id:&Identifier, init:bool)
+    {
+        let n_locals = self.env.borrow().locals_count;
+        self.env.borrow_mut().locals[n_locals as usize] = (*id, init.into());
+        if let Some(n_locals) = n_locals.checked_add(1) {
+            self.env.borrow_mut().locals_count = n_locals;
+        } else {
+            panic!("Too many locals.");
+        }
+    }
+
+    fn check_id_exists (&self, id:&Identifier) -> bool
+    {
+        if self.globals.contains(id) {
+            return true;
+        }
+        
+        let env = self.env.borrow();
+        for i in (0..env.locals_count as usize).rev()
+        {
+            let (id_, _) = env.locals[i];
+            if *id == id_ {
+                return true;
+            }
+        }
+
+        false
+    }
+
+}
+
+// ----- UTILITY -----
+
+fn sort_functions_first (statements:&mut [&Expr])
+{
+    statements.sort_by(|e1, e2| {
+        use std::cmp::Ordering;
+        match (e1, e2) {
+            (Expr::FnDecl {..}, Expr::FnDecl {..})    => Ordering::Equal,
+            (Expr::FnDecl {..}, _)     => Ordering::Less,
+            (_, Expr::FnDecl {..})     => Ordering::Greater,
+            (_, _)                      => Ordering::Equal,
+        }
+        
+    });
 }
 
 type TkIter<'l> = std::iter::Peekable<std::collections::vec_deque::Iter<'l, Token<'l>>>;
