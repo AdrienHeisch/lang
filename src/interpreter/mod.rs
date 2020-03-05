@@ -8,14 +8,22 @@ use crate::{
 
 const F32_EQ_THRESHOLD:f32 = 1e-6;
 
-pub struct Interpreter
+pub struct Interpreter<'e>
 {
     memory: Memory,
-    stack: [Pointer; 256],
+    stack: [PtrOrFn<'e>; 256], //TODO STACK_SIZE
+    frame_ptr: u8,
     env: Environment
 }
 
-impl Interpreter
+#[derive(Debug, Clone)]
+enum PtrOrFn<'e>
+{
+    Ptr(Pointer),
+    Fn(Box<[Identifier]>, Expr<'e>)
+}
+
+impl<'e> Interpreter<'e>
 {
     
     pub fn new () -> Self
@@ -23,27 +31,23 @@ impl Interpreter
         Self
         {
             memory: Memory::new(),
-            stack: [Default::default(); 256],
-            env: Default::default()
+            stack: unsafe {
+                let mut arr:[_; 256] = std::mem::MaybeUninit::uninit().assume_init();
+                let value = PtrOrFn::Ptr(Default::default());
+                for item in &mut arr[..] {
+                    *item = std::mem::transmute_copy(&value);
+                }
+                arr
+            },
+            frame_ptr: 0,
+            env: Environment::new()
         }
     }
 
     // ----- INTERP
 
-    pub fn interpret (&mut self, exprs:&[&Expr])
+    pub fn interpret (&mut self, exprs:&[&Expr<'e>])
     {
-        #[cfg(benchmark)]
-        {
-            self.stack = [Default::default(); 256];
-            self.env = Environment
-            {
-                locals: [([0; 16], 0); 256],
-                locals_count: 0,
-                scope_depth: 0
-            };
-            self.memory = Memory::new();
-        }
-
         #[cfg(not(benchmark))]
         println!("Program stdout :");
         
@@ -55,45 +59,37 @@ impl Interpreter
         println!();
     }
 
-    fn expr (&mut self, e:&Expr) -> LangVal
+    #[allow(dead_code)]
+    pub fn reset (&mut self)
+    {
+        self.memory = Memory::new();
+        unsafe {
+            let value = PtrOrFn::Ptr(Default::default());
+            for item in &mut self.stack[..] {
+                std::ptr::copy_nonoverlapping(&value, item, 1);
+            }
+        };
+        self.frame_ptr = 0;
+        self.env = Environment::new();
+    }
+
+    fn expr (&mut self, e:&Expr<'e>) -> LangVal
     {
         use Expr::*;
         match e
         {
+            // --- Values
             Const(value) => value.clone(),
-            Id(id) => self.memory.get_var(&self.get_pointer(id).unwrap()),
-            Var(id, assign_expr) => {
-                //TODO check if variable exists ?
-                let value = self.expr(assign_expr);
-                let ptr = self.declare(id, value.as_type());
-                self.stack[self.env.locals_count as usize - 1] = self.memory.set_var(ptr, &value);
-                value
-                //FIXME re assigning variable with different size can lead to problems -> forbid re assigning ?
-            }, //DESIGN should re assignation be allowed ?
-            UnOp(op, e) => self.unop(*op, e),
-            BinOp { op, is_assign, left, right } => self.binop(*op, *is_assign, left, right),
-            Parent(e) => self.expr(e),
-            Call { name, args } => self.call(name, args),
-            FnDecl {..} => {
-                LangVal::Void
-            },
-            // Struct {..} => unimplemented!(),
-            Field(_, _) => unimplemented!(),
-            Block(exprs) => {
-                if !exprs.is_empty()
-                {
-                    self.env.open_scope();
-                    for e in exprs.iter().take(exprs.len() - 1) {
-                        self.expr(e);
+            Id(id) => {
+                self.memory.get_var(&if let PtrOrFn::Ptr(ptr) = self.get_pointer(id).unwrap()
+                    {
+                        ptr
+                    } else {
+                        panic!("Tried to use function as value.") //TODO //DESIGN functions as values ?
                     }
-                    let ret = self.expr(exprs.iter().last().unwrap());
-                    self.env.close_scope();
-                    ret
-                }
-                else {
-                    LangVal::Void
-                }
+                )
             },
+            // --- Control Flow
             If { cond, then, elze } => {
                 match self.expr(cond)
                 {
@@ -129,6 +125,45 @@ impl Interpreter
                 }
                 LangVal::Void
             },
+            // --- Operations
+            UnOp(op, e) => self.unop(*op, e),
+            BinOp { op, is_assign, left, right } => self.binop(*op, *is_assign, left, right),
+            Call { name, args } => self.call(name, args),
+            Field(_, _) => unimplemented!(),
+            // --- Declarations
+            Var(id, assign_expr) => {
+                //TODO check if variable exists ?
+                //DESIGN should re assignation be allowed ?
+                //FIXME re assigning variable with different size can lead to problems -> forbid re assigning ?
+                let value = self.expr(assign_expr);
+                let ptr = self.declare_var(id, value.as_type());
+                //TODO remove this hack
+                self.stack[self.frame_ptr as usize + self.env.locals_count as usize - 1] = PtrOrFn::Ptr(self.memory.set_var(ptr, &value));
+                value
+            }, 
+            FnDecl { id, params, body } => {
+                self.declare_fn(id, params.clone(), body);
+                // println!("{:?}", self.stack[self.env.locals_count as usize - 1]);
+                LangVal::Void
+            },
+            // Struct {..} => unimplemented!(),
+            // --- Others
+            Block(exprs) => {
+                if !exprs.is_empty()
+                {
+                    self.env.open_scope();
+                    for e in exprs.iter().take(exprs.len() - 1) {
+                        self.expr(e);
+                    }
+                    let ret = self.expr(exprs.iter().last().unwrap());
+                    self.env.close_scope();
+                    ret
+                }
+                else {
+                    LangVal::Void
+                }
+            },
+            Parent(e) => self.expr(e),
             End => LangVal::Void,
             /* Invalid => {
                 eprintln!("Invalid expression : {:?}", e);
@@ -137,9 +172,9 @@ impl Interpreter
         }
     }
 
-    fn unop (&mut self, op:Op, e:&Expr) -> LangVal
+    fn unop (&mut self, op:Op, e_right:&Expr<'e>) -> LangVal
     {
-        match self.expr(e)
+        match self.expr(e_right)
         {
             LangVal::Number(f) => {
                 match op
@@ -159,22 +194,22 @@ impl Interpreter
         }
     }
 
-    fn binop (&mut self, op:Op, is_assign:bool, e1:&Expr, e2:&Expr) -> LangVal
+    fn binop (&mut self, op:Op, is_assign:bool, e_left:&Expr<'e>, e_right:&Expr<'e>) -> LangVal
     {
         use { Op::*, LangVal::* };
-        match (self.expr(e1), self.expr(e2))
+        match (self.expr(e_left), self.expr(e_right))
         {
             (Number(f1), Number(f2)) => {
                 if is_assign {
-                    let value = self.binop(op, false, e1, e2);
-                    self.assign(e1, value)
+                    let value = self.binop(op, false, e_left, e_right);
+                    self.assign(e_left, value)
                 } else {
                     use utils::compare_floats;
                     match op
                     {
                         Assign => {
-                            let value = self.expr(e2);
-                            self.assign(e1, value)
+                            let value = self.expr(e_right);
+                            self.assign(e_left, value)
                         },
                         Equal       => Bool( compare_floats(f1, f2, F32_EQ_THRESHOLD)),
                         NotEqual    => Bool(!compare_floats(f1, f2, F32_EQ_THRESHOLD)),
@@ -192,14 +227,14 @@ impl Interpreter
             },
             (Str(s1), Str(s2)) => {
                 if is_assign {
-                    let value = self.binop(op, false, e1, e2);
-                    self.assign(e1, value)
+                    let value = self.binop(op, false, e_left, e_right);
+                    self.assign(e_left, value)
                 } else {
                     match op
                     {
                         Assign => {
-                            let value = self.expr(e2);
-                            self.assign(e1, value)
+                            let value = self.expr(e_right);
+                            self.assign(e_left, value)
                         },
                         Equal       => Bool(s1 == s2),
                         NotEqual    => Bool(s1 != s2),
@@ -212,8 +247,8 @@ impl Interpreter
                 match op
                 {
                     Assign => {
-                        let value = self.expr(e2);
-                        self.assign(e1, value)
+                        let value = self.expr(e_right);
+                        self.assign(e_left, value)
                     },
                     Equal       => Bool(b1 == b2),
                     NotEqual    => Bool(b1 != b2),
@@ -229,24 +264,24 @@ impl Interpreter
         }
     }
 
-    fn assign (&mut self, to:&Expr, value:LangVal) -> LangVal
+    fn assign (&mut self, e_to:&Expr, value:LangVal) -> LangVal
     {
-        if let Expr::Id(id) = to {
-            self.stack[self.env.locals_count as usize - 1] = self.memory.set_var(self.get_pointer(id).unwrap(), &value);
+        if let Expr::Id(id) = e_to {
+            self.memory.set_var(if let PtrOrFn::Ptr(ptr) = self.get_pointer(id).unwrap()
+            {
+                ptr
+            } else {
+                panic!("Tried to use function as value.") //TODO //DESIGN functions as values ?
+            }, &value);
         } else {
-            panic!("Can't assign {:?} to {:?}", value, to);
+            panic!("Can't assign {:?} to {:?}", value, e_to);
         }
-        /* match to
-        {
-            Expr::Id(id) => self.stack[self.env.locals_count as usize] = self.memory.set_var(self.get_pointer(id).unwrap(), &value),
-            _ => panic!("Can't assign {:?} to {:?}", value, to)
-        } */
         value
     }
 
-    fn call (&mut self, e:&Expr, args:&[&Expr]) -> LangVal
+    fn call (&mut self, e_id:&Expr<'e>, args:&[&Expr<'e>]) -> LangVal
     {
-        match e
+        match e_id
         {
             Expr::Id(id) => {
                 match id
@@ -271,8 +306,36 @@ impl Interpreter
                         LangVal::Void
                     },
                     id => {
-                        eprintln!("Unknown function identifier : {}", std::str::from_utf8(id).ok().unwrap());
-                        panic!();
+                        // eprintln!("Unknown function identifier : {}", std::str::from_utf8(id).ok().unwrap());
+                        let (params, body) = if let PtrOrFn::Fn(params, body) = self.get_pointer(id).unwrap() //TODO env / args
+                        {
+                            (params, body)
+                        } else {
+                            panic!("Tried to call on a value.") //TODO //DESIGN functions as values ?
+                        };
+
+                        let values_and_params = args.iter().map(|arg| self.expr(arg)).zip(params.iter()).collect::<Vec<_>>();
+
+                        let prev_frame_ptr = self.frame_ptr;
+                        self.frame_ptr += self.env.locals_count;
+
+                        let prev_env = std::mem::replace(&mut self.env, Environment::new());
+                        
+                        if params.len() != args.len() {
+                            panic!("Invalid number of arguments.");
+                        }
+
+                        for (value, param) in values_and_params {
+                            let ptr = self.declare_var(param, value.as_type());
+                            self.memory.set_var(ptr, &value);
+                        }
+
+                        let out = self.expr(&body);
+
+                        self.frame_ptr = prev_frame_ptr;
+                        std::mem::replace(&mut self.env, prev_env);
+
+                        out
                     }
                 }
             },
@@ -284,27 +347,44 @@ impl Interpreter
     }
 
     // ----- VARIABLES
+
+    pub fn declare_fn (&mut self, id:&Identifier, params:Box<[Identifier]>, body:&Expr<'e>)
+    {
+        self.env.locals[self.env.locals_count as usize] = (*id, self.env.scope_depth);
+        self.stack[self.frame_ptr as usize + self.env.locals_count as usize] = PtrOrFn::Fn(params, body.clone());
+        if let Some(n) = self.env.locals_count.checked_add(1) {
+            self.env.locals_count = n;
+            /* if self.frame_ptr.checked_add(self.env.locals_count).is_none() {
+                panic!("Stack overflow.");
+            } */
+        } else {
+            panic!("Too many locals.");
+        }
+    }
     
-    pub fn declare (&mut self, id:&Identifier, t:LangType) -> Pointer
+    pub fn declare_var (&mut self, id:&Identifier, t:LangType) -> Pointer
     {
         let ptr = self.memory.make_pointer_for_type(t);
         self.env.locals[self.env.locals_count as usize] = (*id, self.env.scope_depth);
-        self.stack[self.env.locals_count as usize] = ptr;
+        self.stack[self.frame_ptr as usize + self.env.locals_count as usize] = PtrOrFn::Ptr(ptr);
         if let Some(n) = self.env.locals_count.checked_add(1) {
             self.env.locals_count = n;
+            /* if self.frame_ptr.checked_add(self.env.locals_count).is_none() {
+                panic!("Stack overflow.");
+            } */
         } else {
             panic!("Too many locals.");
         }
         ptr
     }
 
-    fn get_pointer (&self, id:&Identifier) -> Option<Pointer>
+    fn get_pointer (&self, id:&Identifier) -> Option<PtrOrFn<'e>>
     {
         for i in (0..self.env.locals_count as usize).rev()
         {
             let (id_, _) = self.env.locals[i];
             if *id == id_ {
-                return Some(self.stack[i]);
+                return Some(self.stack[self.frame_ptr as usize + i].clone());
             }
         }
         None
@@ -330,7 +410,11 @@ impl Interpreter
             }
 
             let id_str = String::from_utf8(id.iter().take_while(|i| **i != 0).cloned().collect()).ok().unwrap();
-            let ptr = self.get_pointer(&id).unwrap();
+            let ptr = if let PtrOrFn::Ptr(ptr) = self.get_pointer(&id).unwrap() {
+                ptr
+            } else {
+                continue;
+            };
             println!("{} => {:?} => {:?}", id_str, ptr, self.memory.get_var(&ptr));
         }
 

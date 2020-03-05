@@ -3,6 +3,7 @@ use crate::langval::{ LangVal, LangType };
 //IN BYTES
 const MEMORY_SIZE:usize = 32;
 
+//TODO retry other types of memory with fixed benchmarking
 //TODO stack, faster heap allocator ?
 //RESEARCH look at C stack heap implementations (stack growing from the end)
 pub struct Memory
@@ -44,8 +45,8 @@ impl Memory
         for byte in self.ram.iter_mut() {
             *byte = u8::default();
         }
-        for state in self.allocation_map.iter_mut() {
-            *state = false;
+        for is_allocated in self.allocation_map.iter_mut() {
+            *is_allocated = false;
         }
     }
 
@@ -149,7 +150,8 @@ impl Memory
             let init_pos = pos;
             'inner: for i in init_pos..(init_pos + len)
             {
-                if self.allocation_map[i] {
+                let is_allocated = self.allocation_map[i];
+                if is_allocated {
                     is_valid = false;
                 } else if !is_valid
                 {
@@ -167,8 +169,8 @@ impl Memory
             }
         };
 
-        for i in pos..(pos + len) {
-            self.allocation_map[i] = true;
+        for is_allocated in self.allocation_map.iter_mut().skip(pos).take(len) {//pos..(pos + len) {
+            *is_allocated = true;
         }
         ptr
     }
@@ -176,9 +178,11 @@ impl Memory
     //FIXME memory is never freed !
     fn free (&mut self, ptr:&RawPointer) //RESEARCH shift everything to the right so there is always free memory on the left ?
     {
-        for i in (ptr.pos)..(ptr.pos + ptr.len) {
-            self.ram[i] = u8::default(); //TODO this is unnecessary
-            self.allocation_map[i] = false;
+        for byte in self.ram.iter_mut().skip(ptr.pos).take(ptr.len) {
+            *byte = u8::default(); //TODO this is probably useless
+        }
+        for state in self.allocation_map.iter_mut().skip(ptr.pos).take(ptr.len) {
+            *state = false;
         }
     }
 

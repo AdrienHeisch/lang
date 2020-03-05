@@ -25,7 +25,7 @@ impl<'a, 'b> Parser<'a, 'b>
         Parser {
             arena,
             tokens: RefCell::new(tokens.iter().peekable()),
-            env: Default::default(),
+            env: RefCell::new(Environment::new()),
             globals: vec!(super::make_identifier("print"))
         }
     }
@@ -37,13 +37,11 @@ impl<'a, 'b> Parser<'a, 'b>
     {
         let mut statements = Vec::new();
 
-        self.open_scope();
         loop
         {
             statements.push(self.parse_statement());
             if self.tokens.borrow_mut().peek().is_none() { break; }
         }
-        self.close_scope();
 
         sort_functions_first(&mut statements);
 
@@ -136,25 +134,6 @@ impl<'a, 'b> Parser<'a, 'b>
     {
         match id
         {
-            "var" => {
-                match self.next()
-                {
-                    Token::Id(id) => {
-                        let id = make_identifier(id);
-                        let value = match self.peek()
-                        {
-                            Token::Op(Op::Assign, _) => {
-                                self.next();
-                                self.parse_expr()
-                            },
-                            tk => panic!("Expected assign operator, got : {:?}", tk) //TODO uninitialized var
-                        };
-                        self.declare_local(&id, true); //TODO uninitialized var
-                        self.arena.alloc(Expr::Var(id, value))
-                    }
-                    tk => panic!("Expected identifier, got : {:?}", tk)
-                }
-            },
             "if" => {
                 let cond = self.parse_expr();
                 let then = self.parse_expr();
@@ -173,26 +152,49 @@ impl<'a, 'b> Parser<'a, 'b>
                 let body = self.parse_expr();
                 self.arena.alloc(Expr::While { cond, body })
             },
+            "var" => { //TODO implicit types ?
+                match self.next()
+                {
+                    Token::Id(id) => {
+                        let id = make_identifier(id);
+                        let value = match self.peek()
+                        {
+                            Token::Op(Op::Assign, _) => {
+                                self.next();
+                                self.parse_expr()
+                            },
+                            tk => panic!("Expected assign operator, got : {:?}", tk) //TODO uninitialized var
+                        };
+                        self.declare_local(&id, true); //TODO uninitialized var
+                        self.arena.alloc(Expr::Var(id, value))
+                    }
+                    tk => panic!("Expected identifier, got : {:?}", tk)
+                }
+            },
             "fn" => {
-                let name = match self.next() {
-                    Token::Id(s) => *s,
+                let id = match self.next() {
+                    Token::Id(id) => make_identifier(id),
                     tk => panic!("Expected identifier, got : {:?}", tk)
                 };
-                let arity = match self.peek()
+
+                let params = match self.peek()
                 {
-                    Token::DelimOpen(Delimiter::Pr) => {
+                    Token::DelimOpen(Delimiter::Pr) => { //TODO create function environment here
                         self.next();
-                        let arity = self.make_expr_list(Delimiter::Pr).len();
-                        if arity > u8::max_value().into() { panic!("Too many arguments !"); }
-                        arity as u8
+                        self.make_params_list(Delimiter::Pr).into_boxed_slice()
                     },
                     tk => {
                         panic!("Expected open parenthese, got : {:?}", tk);
                     }
                 };
+                
+                let arity = params.len() as u8;
+                if arity > u8::max_value() { panic!("Too many arguments !"); }
+
                 let body = self.parse_expr();
-                println!("function name: {:?}", name);
-                self.arena.alloc(Expr::FnDecl { arity, body })
+
+                self.declare_local(&id, true); //TODO uninitialized var
+                self.arena.alloc(Expr::FnDecl { id, params, body })
             },
             /* "struct" => {
                 let name = match self.next() {
@@ -225,6 +227,41 @@ impl<'a, 'b> Parser<'a, 'b>
                     self.arena.alloc(Expr::BinOp { op:*op_, is_assign:*is_assign_, left:self.make_binop(op, is_assign, left, left_), right:right_ }),
             _ =>    self.arena.alloc(Expr::BinOp { op, is_assign, left, right })
         }
+    }
+
+    //TODO use a predicate in make_expr_list insead of a specific method
+    fn make_params_list (&self, delimiter:Delimiter) -> Vec<Identifier>
+    {
+        let mut params_list = Vec::new();
+        if *self.peek() == Token::DelimClose(delimiter) {
+            self.next();
+            return params_list;
+        }
+
+        loop
+        {
+            let tk = self.next();
+            if let Token::Id(id) = tk { //TODO remove this (function environment)
+                let id = make_identifier(id);
+                self.declare_local(&id, true);
+                params_list.push(id);
+            } else {
+                panic!("Expected identifier, got : {:?}", tk);
+            };
+
+            match self.next()
+            {
+                Token::Comma => continue,
+                Token::DelimClose(c) if *c == delimiter => break,
+                Token::Eof => panic!("Unclosed delimiter : {:?}", delimiter),
+                tk => {
+                    eprintln!("Expr list: {:?}", params_list);
+                    panic!("Expected Comma or DelimClose('{:?}'), got  {:?}", delimiter, tk);
+                }
+            }
+        }
+        
+        params_list
     }
 
     fn make_expr_list (&self, delimiter:Delimiter) -> Vec<&'a Expr<'a>>
@@ -306,14 +343,12 @@ impl<'a, 'b> Parser<'a, 'b>
         }
         
         let env = self.env.borrow();
-        for i in (0..env.locals_count as usize).rev()
-        {
-            let (id_, _) = env.locals[i];
-            if *id == id_ {
+        for (id_, _) in env.locals.iter().take(env.locals_count.into()).rev() {
+            if id == id_ {
                 return true;
             }
         }
-
+        
         false
     }
 
@@ -336,3 +371,24 @@ fn sort_functions_first (statements:&mut [&Expr])
 }
 
 type TkIter<'l> = std::iter::Peekable<std::collections::vec_deque::Iter<'l, Token<'l>>>;
+
+#[allow(dead_code)]
+pub fn benchmark ()
+{
+    use crate::benchmarks::ITERATIONS;
+    use super::lexer;
+    use std::time::{ Instant, Duration };
+
+    let program = std::fs::read_to_string("./code.lang").unwrap();
+    let tokens = lexer::lex(&program);
+    let mut duration = Duration::new(0, 0);
+    for _ in 0..ITERATIONS
+    {
+        let arena = typed_arena::Arena::new();
+        let mut parser = Parser::new(&arena, &tokens);
+        let now = Instant::now();
+        parser.parse();
+        duration += now.elapsed();
+    }
+    println!("Parsing: {}ms", duration.as_millis());
+}

@@ -61,25 +61,27 @@ pub fn make_identifier (id:&str) -> Identifier
 // #endregion
 
 // #region EXPR
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum Expr<'a>
 {
+    // --- Values
     Const   (LangVal),
     Id      (Identifier),
-    Var     (Identifier, &'a Expr<'a>), //TODO allow declaration without initialization
-    Block   (Box<[&'a Expr<'a>]>),
-    Parent  (&'a Expr<'a>),
-    // --- Operation
+    // --- Control Flow
+    If      { cond: &'a Expr<'a>, then: &'a Expr<'a>, elze: Option<&'a Expr<'a>>  },
+    While   { cond: &'a Expr<'a>, body: &'a Expr<'a> },
+    // --- Operations
     Field   (&'a Expr<'a>, &'a Expr<'a>),
     UnOp    (Op, &'a Expr<'a>),
     BinOp   { op: Op, is_assign: bool, left: &'a Expr<'a>, right: &'a Expr<'a> },
     Call    { name: &'a Expr<'a>, args: Box<[&'a Expr<'a>]> },
-    // --- Declaration
-    FnDecl  { arity:u8, body:&'a Expr<'a> },
+    // --- Declarations
+    Var     (Identifier, &'a Expr<'a>), //TODO allow declaration without initialization
+    FnDecl  { id:Identifier, params:Box<[Identifier]>, body:&'a Expr<'a> },
     // Struct  { name:Identifier, fields: Box<[/* ( */Identifier/* , LangType) */]> },
-    // --- Control Flow
-    If      { cond: &'a Expr<'a>, then: &'a Expr<'a>, elze: Option<&'a Expr<'a>>  },
-    While   { cond: &'a Expr<'a>, body: &'a Expr<'a> },
+    // --- Others
+    Block   (Box<[&'a Expr<'a>]>),
+    Parent  (&'a Expr<'a>),
     End //TODO this seems to be useless
 }
 
@@ -109,9 +111,9 @@ impl<'a> Expr<'a>
 
 // #region TOKEN
 #[derive(Debug, PartialEq)]
-pub enum Token<'a>
+pub enum Token<'s>
 {
-    Id(&'a str),
+    Id(&'s str),
     Const(LangVal),
     Op(Op, bool),
     DelimOpen(Delimiter),
@@ -232,26 +234,6 @@ impl Op
 #[allow(dead_code)]
 pub mod benchmarks
 {
-    use crate::benchmarks::ITERATIONS;
-    use super::{ lexer, parser };
-    use std::time::Instant;
-
-    pub fn benchmark_lexer ()
-    {
-        let program = std::fs::read_to_string("./code.lang").unwrap();
-        let now = Instant::now();
-        for _ in 0..ITERATIONS { lexer::lex(&program); }
-        println!("Lexing: {}ms", now.elapsed().as_millis());
-    }
-
-    pub fn benchmark_parser ()
-    {
-        let program = std::fs::read_to_string("./code.lang").unwrap();
-        let tokens = lexer::lex(&program);
-        let expr_arena = typed_arena::Arena::new();
-        let now = Instant::now();
-        for _ in 0..ITERATIONS { parser::parse(&expr_arena, &tokens); }
-        println!("Parsing: {}ms", now.elapsed().as_millis());
-    }
-
+    pub use super::lexer::benchmark as benchmark_lexer;
+    pub use super::parser::benchmark as benchmark_parser;
 }

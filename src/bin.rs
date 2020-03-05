@@ -14,8 +14,8 @@ fn main () -> Result<(), std::io::Error>
     
     #[cfg(benchmark)]
     {
-        lang::benchmarks::benchmark_lexer();
-        lang::benchmarks::benchmark_parser();
+        // lang::benchmarks::benchmark_lexer();
+        // lang::benchmarks::benchmark_parser();
         lang::benchmarks::benchmark_interpreter();
     }
     

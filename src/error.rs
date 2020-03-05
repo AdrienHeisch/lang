@@ -1,5 +1,5 @@
 #[derive(Debug)]
-pub struct Error
+pub struct Error //TODO error handling
 {
     pub msg: String,
     pub from: usize,
