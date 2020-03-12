@@ -1,36 +1,57 @@
 use crate::langval::LangVal;
-use super::{ Op, Token, Delimiter };
+use super::{ Op, Token, TokenDef, Position, Delimiter, Error };
 use std::collections::VecDeque;
 
 //DESIGN define how strict the lexer should be (unexpected characters are currently ignored)
-pub fn lex (program:&str) -> VecDeque<Token>
+pub fn lex<'s> (program:&'s str) -> (VecDeque<Token<'s, 's>>, Vec<Error>) //TODO retest vecdeque vs vec
 {
-    let mut pos:usize = 0;
     let mut tokens = VecDeque::new();
+    let mut errors = Vec::new();
+    let mut pos:usize = 0;
 
     while pos < program.len()
     {
-        let (token, len) = get_token(program, pos);
-        pos += len;
-        match token
+        match get_token(program, pos)
         {
-            Token::Eof => break,
-            Token::Nil => (),
-            _ => tokens.push_back(token)
+            (Ok(token_def), len) => {
+                match token_def
+                {
+                    TokenDef::Eof => break,
+                    TokenDef::Nil => (),
+                    _ => {
+                        tokens.push_back(Token {
+                            def: token_def,
+                            src: program,
+                            pos: Position(pos, pos + len)
+                        })
+                    }
+                }
+                pos += len;
+            },
+            (Err(chars), len) => {
+                let error = Error {
+                    msg: format!("Unexpected characters : {:?}", chars),
+                    pos: Position(pos, pos + len).get_full(program)
+                };
+
+                if cfg!(lang_panic_on_error) {
+                    panic!("{}", error);
+                } else {
+                    errors.push(error);
+                }
+                pos += len;
+            }
         }
     }
     
-    tokens.push_back(Token::Eof);
+    tokens.push_back(Token { def: TokenDef::Eof, src: program, pos: Position::zero() });
 
-    #[cfg(not(benchmark))]
-    println!("tokens: {:?}\n", tokens);
-
-    tokens
+    (tokens, errors)
 }
 
 // #[inline(never)] //used for profiling
 #[allow(clippy::cognitive_complexity)] //TODO split into smaller functions ?
-fn get_token (program:&str, mut pos:usize) -> (Token, usize)
+fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
 {
     let mut len:usize = 1;
     let bytes = program.as_bytes();
@@ -64,9 +85,9 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
             }
             match read_cursor!()
             {
-                "true" => Token::Const(LangVal::Bool(true)),
-                "false" => Token::Const(LangVal::Bool(false)),
-                id => Token::Id(id)
+                "true" => TokenDef::Const(LangVal::Bool(true)),
+                "false" => TokenDef::Const(LangVal::Bool(false)),
+                id => TokenDef::Id(id)
             }
         },
         c if c.is_numeric() => {
@@ -78,19 +99,19 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                     if !is_float {
                         is_float = true;
                     } else {
-                        unexpected_char(c);
+                        return (Err(collect_unexpected_chars(program, c, &mut pos, &mut len)), len);
                     }
                 } else if !c.is_numeric() { break; }
                 len += 1;
             }
-            Token::Const(LangVal::Number(read_cursor!().parse().unwrap()))
+            TokenDef::Const(LangVal::Number(read_cursor!().parse().unwrap()))
         },
         c if c.is_operator() => {
             match get_char!()
             {
                 '/' => { //COMMENT
                     while get_char!() != '\n' && get_char!() != EOF { len += 1; }
-                    Token::Nil
+                    TokenDef::Nil
                 },
                 _ => { //OP
                     loop
@@ -99,8 +120,7 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                         if !c.is_operator() { break; }
                         len += 1;
                     }
-                    let op = Op::from_string(read_cursor!());
-                    Token::Op(op.0, op.1)
+                    TokenDef::Op(Op::from_string(read_cursor!()))
                 }
             }
         },
@@ -112,16 +132,16 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                 if c == '"' { break; }
                 len += 1;
             }
-            let tk = Token::Const(LangVal::Str(String::from(read_cursor!())));
+            let tk = TokenDef::Const(LangVal::Str(String::from(read_cursor!())));
             len += 2;
             tk
         },
-        c if c.is_delimiter_open() => Token::DelimOpen(Delimiter::from_char(c)),
-        c if c.is_delimiter_close() => Token::DelimClose(Delimiter::from_char(c)),
-        ',' => Token::Comma,
-        '.' => Token::Dot,
-        ';' => Token::Semicolon,
-        EOF => Token::Eof,
+        c @ '(' | c @ '[' | c @ '{' => TokenDef::DelimOpen (Delimiter::from_char(c)),
+        c @ ')' | c @ ']' | c @ '}' => TokenDef::DelimClose(Delimiter::from_char(c)),
+        ',' => TokenDef::Comma,
+        '.' => TokenDef::Dot,
+        ';' => TokenDef::Semicolon,
+        EOF => TokenDef::Eof,
         c if c.is_whitespace() => {
             loop
             {
@@ -129,28 +149,29 @@ fn get_token (program:&str, mut pos:usize) -> (Token, usize)
                 if !c.is_whitespace() { break; }
                 len += 1;
             }
-            Token::Nil
+            TokenDef::Nil
         },
-        c => {
-            unexpected_char(c);
-            Token::Nil
-        }
+        c => return (Err(collect_unexpected_chars(program, c, &mut pos, &mut len)), len)
     };
 
-    (token, len)
+    (Ok(token), len)
 }
 
-fn unexpected_char (c:char)
+fn collect_unexpected_chars (program:&str, first_char:char, pos:&mut usize, len:&mut usize) -> String
 {
-    eprintln!("Unexpected char : {}", c);
-    panic!();
+    let mut chars = first_char.to_string();
+    *pos += 1;
+    while let (Err(chars_), len_) = get_token(program, *pos) {
+        chars += &chars_;
+        *pos += 1;
+        *len += len_;
+    }
+    chars
 }
 
 trait CharExt
 {
     fn is_operator (&self) -> bool;
-    fn is_delimiter_open (&self) -> bool;
-    fn is_delimiter_close (&self) -> bool;
 }
 
 impl CharExt for char
@@ -162,16 +183,6 @@ impl CharExt for char
             '=' | '+' | '-' | '*' | '/' | '<' | '>' | '|' | '&' | '!' => true,
             _ => false
         }
-    }
-
-    fn is_delimiter_open (&self) -> bool
-    {
-        *self == '(' || *self == '[' || *self == '{'
-    }
-
-    fn is_delimiter_close (&self) -> bool
-    {
-        *self == ')' || *self == ']' || *self == '}'
     }
 }
 
@@ -185,10 +196,7 @@ impl Delimiter
             '(' | ')' => Delimiter::Pr,
             '{' | '}' => Delimiter::Br,
             '[' | ']' => Delimiter::SqBr,
-            _ => {
-                eprintln!("Invalid delimiter : {}", c);
-                panic!();
-            }
+            _ => panic!("Invalid delimiter : {}", c)
         }
     }
 

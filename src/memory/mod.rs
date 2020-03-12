@@ -15,7 +15,7 @@ pub struct Memory
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct Pointer
 {
-    t: LangType,
+    pub t: LangType,
     ptr: RawPointer
 }
 
@@ -110,6 +110,11 @@ impl Memory
         ptr
     }
 
+    pub fn free_ptr (&mut self, ptr:&Pointer)
+    {
+        self.free(&ptr.ptr);
+    }
+
     #[allow(dead_code)]
     pub fn print_ram (&self)
     {
@@ -126,8 +131,7 @@ impl Memory
     fn alloc (&mut self, len:usize) -> RawPointer
     {
         if len > MEMORY_SIZE {
-            eprintln!("Tried to allocate more bytes than the memory can contain : {} / {}", len, MEMORY_SIZE);
-            panic!();
+            panic!("Tried to allocate more bytes than the memory can contain : {} / {}", len, MEMORY_SIZE);
         }
 
         let mut pos = 0;
@@ -141,7 +145,7 @@ impl Memory
                     eprintln!("----------");
                     self.print_ram();
                     eprintln!("----------");
-                    panic!();
+                    panic!("OUT OF MEMORY !");
                 }
                 pos += 1;
             }
@@ -175,7 +179,6 @@ impl Memory
         ptr
     }
 
-    //FIXME memory is never freed !
     fn free (&mut self, ptr:&RawPointer) //RESEARCH shift everything to the right so there is always free memory on the left ?
     {
         for byte in self.ram.iter_mut().skip(ptr.pos).take(ptr.len) {

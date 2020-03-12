@@ -4,21 +4,19 @@ pub struct Environment
 {
     pub locals: [(Identifier, u8); 256], //TODO max locals ? (u8?)
     pub locals_count: u8,
-    pub scope_depth: u8,
-    // pub parent: Option<Box<Environment>>
+    pub scope_depth: u8
 }
 
 impl Environment
 {
 
-    pub fn new (/* parent:Option<Box<Environment>> */) -> Self
+    pub fn new () -> Self
     {
         Environment
         {
             locals: [(Default::default(), 0); 256],
             locals_count: 0,
-            scope_depth: 0,
-            // parent
+            scope_depth: 0
         }
     }
     
@@ -44,13 +42,21 @@ impl Environment
         {
             let (_, depth) = self.locals[i];
             if depth > self.scope_depth {
-                self.locals[i] = Default::default();
+                // self.locals[i] = Default::default(); //TODO probably useless
                 self.locals_count -= 1;
             } else {
                 break;
             }
         }
         n_locals - self.locals_count
+    }
+
+    pub fn clear (&mut self) -> u8
+    {
+        let n_locals = self.locals_count;
+        self.scope_depth = 0;
+        self.locals_count = 0;
+        n_locals
     }
 
 }

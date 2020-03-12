@@ -1,11 +1,6 @@
 var a = 2.1 * 3.1 + 7.1;
-var c = a * 5.1;
+var b = 42;
+b += 58;
+
+var c = a + 5.1;
 a *= 2.1;
-
-fn sum (n1, n2) {
-    var value = n1 + n2;
-    print(n1, " + ", n2, " = ", value);
-    value;
-}
-
-var s = sum(a, c);

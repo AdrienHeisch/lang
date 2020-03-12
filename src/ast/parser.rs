@@ -1,39 +1,57 @@
-use super::{ Expr, Op, Token, Delimiter, Identifier, make_identifier };
+use super::{ Expr, ExprDef, Op, Token, TokenDef, Position, FullPosition, Delimiter, Identifier, IdentifierTools, Error };
 use crate::env::Environment;
 use std::collections::{ VecDeque };
 use std::cell::{ RefCell };
 use typed_arena::Arena;
 
-pub fn parse<'a> (arena:&'a Arena<Expr<'a>>, tokens:&VecDeque<Token>) -> Vec<&'a Expr<'a>>
+pub fn parse<'e, 't, 's> (arena:&'e Arena<Expr<'e, 's>>, tokens:&'t VecDeque<Token<'t, 's>>) -> (Vec<&'e Expr<'e, 's>>, Vec<Error>)
 {
     Parser::new(arena, tokens).parse()
 }
 
-struct Parser<'a, 'b>
+struct Parser<'e, 't, 's> //TODO any way to avoid all these refcells ?
 {
-    arena: &'a Arena<Expr<'a>>,
-    tokens: RefCell<TkIter<'b>>,
-    env: RefCell<Environment>, //TODO refactor with environments (see interpreter)
+    arena: &'e Arena<Expr<'e, 's>>,
+    tokens: RefCell<TkIter<'t, 's>>,
+    env: RefCell<Environment>,
+    errors: RefCell<Vec<Error>>,
     globals: Vec<Identifier>
 }
 
-impl<'a, 'b> Parser<'a, 'b>
+type TkIter<'t, 's> = std::iter::Peekable<std::collections::vec_deque::Iter<'t, Token<'t, 's>>>;
+
+impl<'e, 't, 's> Parser<'e, 't, 's>
 {
 
-    fn new (arena:&'a Arena<Expr<'a>>, tokens:&'b VecDeque<Token<'b>>) -> Self
+    fn new (arena:&'e Arena<Expr<'e, 's>>, tokens:&'t VecDeque<Token<'t, 's>>) -> Self
     {
         Parser {
             arena,
             tokens: RefCell::new(tokens.iter().peekable()),
             env: RefCell::new(Environment::new()),
-            globals: vec!(super::make_identifier("print"))
+            errors: RefCell::new(Vec::new()),
+            globals: vec!(Identifier::make("print"), Identifier::make("printmem"))
         }
+    }
+
+    fn push_error (&self, msg:String, pos:FullPosition)
+    {
+        let error = Error { msg, pos };
+        if cfg!(lang_panic_on_error) {
+            panic!("{}", error);
+        } else {
+            self.errors.borrow_mut().push(error);
+        }
+    }
+
+    fn make_invalid (&self, src:&'s str, pos:Position) -> &'e Expr<'e, 's>
+    {
+        self.arena.alloc(Expr { def: ExprDef::Invalid, src, pos })
     }
 
     // ----- PARSING -----
 
-    //DESIGN should blocks return last expression only if there is no semicolon like rust ?
-    pub fn parse (&mut self) -> Vec<&'a Expr<'a>>
+    pub fn parse (&mut self) -> (Vec<&'e Expr<'e, 's>>, Vec<Error>)
     {
         let mut statements = Vec::new();
 
@@ -45,23 +63,26 @@ impl<'a, 'b> Parser<'a, 'b>
 
         sort_functions_first(&mut statements);
 
-        statements
+        let errors = RefCell::new(Vec::new());
+        self.errors.swap(&errors);
+
+        (statements, errors.into_inner())
     }
 
-    fn parse_statement (&self) -> &'a Expr<'a>
+    fn parse_statement (&self) -> &'e Expr<'e, 's>
     {
         let expr = self.parse_expr();
 
-        if self.peek() == &Token::Semicolon {
+        if self.peek().def == TokenDef::Semicolon {
             self.next();
         } else {
-            match &expr
+            match &expr.def
             {
-                e if e.is_block() => (),
-                Expr::End => (),
+                _ if expr.is_block() => (),
+                ExprDef::End => (),
                 _ => {
-                    eprintln!("{:?}", expr);
-                    panic!("Expected Semicolon, got : {:?}", self.peek());
+                    let tk = self.peek();
+                    self.push_error(format!("Expected Semicolon, got : {:?}", tk.def), tk.get_full_pos())
                 }
             }
         }
@@ -69,32 +90,50 @@ impl<'a, 'b> Parser<'a, 'b>
         expr
     }
 
-    fn parse_expr (&self) -> &'a Expr<'a>
+    fn parse_expr (&self) -> &'e Expr<'e, 's>
     {
-        match self.next()
+        let tk = self.next();
+        match &tk.def
         {
-            Token::Op(op, _) => self.arena.alloc(Expr::UnOp(*op, self.parse_expr())),
-            Token::Const(value) => self.parse_expr_next(self.arena.alloc(Expr::Const(value.clone()))),
-            Token::Id(id) => {
-                self.parse_structure(id)
+            TokenDef::Op(op) => {
+                let e = self.parse_expr();
+                self.arena.alloc(Expr { def: ExprDef::UnOp(*op, e), src: tk.src, pos: tk.pos + e.pos })
             },
-            Token::DelimOpen(Delimiter::Pr) => {
-                match self.next()
+            TokenDef::Const(value) => self.parse_expr_next(self.arena.alloc(Expr { def: ExprDef::Const(value.clone()), src: tk.src, pos: tk.pos })),
+            TokenDef::Id(_) => {
+                self.parse_structure(tk)
+            },
+            TokenDef::DelimOpen(Delimiter::Pr) => {
+                let tk = self.next();
+                match tk.def
                 {
-                    Token::DelimClose(Delimiter::Pr) => {
+                    TokenDef::DelimClose(Delimiter::Pr) => {
                         let e = self.parse_expr();
-                        self.parse_expr_next(self.arena.alloc(Expr::Parent(e)))
+                        self.parse_expr_next(self.arena.alloc(Expr { def: ExprDef::Parent(e), src: tk.src, pos: tk.pos }))
                     },
                     _ => {
-                        panic!("Unclosed delimiter : {:?}", Delimiter::Pr);
+                        self.push_error(format!("Unclosed delimiter : {:?}", Delimiter::Pr), tk.get_full_pos());
+                        self.make_invalid(tk.src, tk.pos)
                     }
                 }
             },
-            Token::DelimOpen(Delimiter::Br) => {
+            //DESIGN should blocks return last expression only if there is no semicolon like rust ?
+            TokenDef::DelimOpen(Delimiter::Br) => {
                 self.open_scope();
 
                 let mut statements:Vec<&Expr> = Vec::new();
-                while *self.peek() != Token::DelimClose(Delimiter::Br) { //FIXME infinite loop on unclosed bracket
+                while {
+                    let peek = self.peek();
+                    match peek.def
+                    {
+                        TokenDef::DelimClose(Delimiter::Br) => false,
+                        TokenDef::Eof => {
+                            self.push_error("Unclosed bracket.".to_owned(), tk.get_full_pos());
+                            false
+                        },
+                        _ => true
+                    }
+                } {
                     statements.push(self.parse_statement());
                 }
                 self.next();
@@ -102,214 +141,254 @@ impl<'a, 'b> Parser<'a, 'b>
                 self.close_scope();
                 
                 sort_functions_first(&mut statements);
-                self.arena.alloc(Expr::Block(statements.into_boxed_slice()))
+                self.arena.alloc(Expr { def: ExprDef::Block(statements.into_boxed_slice()), src: tk.src, pos: tk.pos })
             },
-            Token::Eof => self.arena.alloc(Expr::End),
-            tk => panic!("Unexpected token : {:?}", tk)
+            TokenDef::Eof => self.arena.alloc(Expr { def: ExprDef::End, src: tk.src, pos: tk.pos }),
+            _ => {
+                self.push_error(format!("Unexpected token : {:?}", tk.def), tk.get_full_pos());
+                self.make_invalid(tk.src, tk.pos)
+            }
         }
     }
 
     //TODO assert previous expression
-    fn parse_expr_next (&self, e:&'a Expr<'a>) -> &'a Expr<'a>
+    fn parse_expr_next (&self, e:&'e Expr<'e, 's>) -> &'e Expr<'e, 's>
     {
-        match self.peek()
+        let tk = self.peek();
+        match tk.def
         {
-            Token::Op(op, is_assign) => {
+            TokenDef::Op(op) => {
                 self.next();
-                self.make_binop(*op, *is_assign, e, self.parse_expr())
+                self.make_binop(op, e, self.parse_expr())
             },
-            Token::DelimOpen(Delimiter::Pr) => {
+            TokenDef::DelimOpen(Delimiter::Pr) => {
                 self.next();
-                self.arena.alloc(Expr::Call { name: e, args: self.make_expr_list(Delimiter::Pr).into_boxed_slice() })
+                let (expr_list, tk_delim_close) = self.make_expr_list(tk);
+                self.arena.alloc(Expr {
+                    def: ExprDef::Call { name: e, args: expr_list.into_boxed_slice() },
+                    src: tk.src, 
+                    pos: e.pos + tk_delim_close.pos
+                })
             },
-            Token::Dot => {
+            TokenDef::Dot => {
                 self.next();
-                self.arena.alloc(Expr::Field(e, self.parse_expr()))
+                self.arena.alloc(Expr { def: ExprDef::Field(e, self.parse_expr()), src: tk.src, pos: tk.pos })
             }
             _ => e
         }
     }
 
-    fn parse_structure (&self, id:&str) -> &'a Expr<'a>
+    fn parse_structure (&self, tk_identifier:&Token<'t, 's>) -> &'e Expr<'e, 's>
     {
+        let id = if let TokenDef::Id(id) = tk_identifier.def {
+            id
+        } else {
+            return self.make_invalid(tk_identifier.src, tk_identifier.pos);
+        };
+        let src = tk_identifier.src;
+        let pos = tk_identifier.pos;
+
         match id
         {
             "if" => {
                 let cond = self.parse_expr();
                 let then = self.parse_expr();
-                let elze = match self.peek()
+                let mut pos = pos + cond.pos + then.pos;
+
+                let elze = match self.peek().def
                 {
-                    Token::Id("else") => {
+                    TokenDef::Id("else") => {
                         self.next();
                         Some(self.parse_expr())
                     },
                     _ => None
                 };
-                self.arena.alloc(Expr::If { cond, then, elze })
+                if let Some(elze) = elze { pos += elze.pos };
+
+                self.arena.alloc(Expr { def: ExprDef::If { cond, then, elze }, src: tk_identifier.src, pos })
             },
             "while" => {
                 let cond = self.parse_expr();
                 let body = self.parse_expr();
-                self.arena.alloc(Expr::While { cond, body })
+                self.arena.alloc(Expr { def: ExprDef::While { cond, body }, src: tk_identifier.src, pos: pos + cond.pos + body.pos })
             },
-            "var" => { //TODO implicit types ?
-                match self.next()
+            "var" => { //TODO explicit types ?
+                let tk = self.next();
+                match &tk.def
                 {
-                    Token::Id(id) => {
-                        let id = make_identifier(id);
-                        let value = match self.peek()
+                    TokenDef::Id(id) => {
+                        let pos = pos + tk.pos;
+                        let id = Identifier::make(id);
+                        let tk = self.peek();
+                        let value = match &tk.def
                         {
-                            Token::Op(Op::Assign, _) => {
+                            TokenDef::Op(Op::Assign) => {
                                 self.next();
                                 self.parse_expr()
                             },
-                            tk => panic!("Expected assign operator, got : {:?}", tk) //TODO uninitialized var
+                            _ => { //TODO uninitialized var
+                                self.push_error(format!("Expected assign operator, got : {:?}", tk.def), tk.get_full_pos());
+                                self.make_invalid(src, pos)
+                            }
                         };
                         self.declare_local(&id, true); //TODO uninitialized var
-                        self.arena.alloc(Expr::Var(id, value))
+                        self.arena.alloc(Expr { def: ExprDef::Var(id, value), src, pos: pos + value.pos })
                     }
-                    tk => panic!("Expected identifier, got : {:?}", tk)
+                    _ => {
+                        self.push_error(format!("Expected identifier, got : {:?}", tk.def), tk.get_full_pos());
+                        self.make_invalid(src, pos)
+                    }
                 }
             },
             "fn" => {
-                let id = match self.next() {
-                    Token::Id(id) => make_identifier(id),
-                    tk => panic!("Expected identifier, got : {:?}", tk)
+                let tk = self.next();
+                let id = match &tk.def {
+                    TokenDef::Id(id) => Identifier::make(id),
+                    _ => {
+                        self.push_error(format!("Expected identifier, got : {:?}", tk.def), tk.get_full_pos());
+                        Default::default()
+                    }
                 };
 
-                let params = match self.peek()
+                let prev_env = RefCell::new(Environment::new());
+                self.env.swap(&prev_env);
+
+                let tk = self.peek();
+                let params = match &tk.def
                 {
-                    Token::DelimOpen(Delimiter::Pr) => { //TODO create function environment here
+                    TokenDef::DelimOpen(Delimiter::Pr) => {
                         self.next();
-                        self.make_params_list(Delimiter::Pr).into_boxed_slice()
+                        self.make_params_list(tk).into_boxed_slice()
                     },
-                    tk => {
-                        panic!("Expected open parenthese, got : {:?}", tk);
+                    _ => {
+                        self.push_error(format!("Expected open parenthese, got : {:?}", tk.def), tk.get_full_pos());
+                        Default::default()
                     }
                 };
                 
                 let arity = params.len() as u8;
-                if arity > u8::max_value() { panic!("Too many arguments !"); }
+                if arity > u8::max_value() { self.push_error("Too many parameters !".to_owned(), tk.get_full_pos()); } //TODO position
 
                 let body = self.parse_expr();
 
+                self.env.swap(&prev_env);
+
                 self.declare_local(&id, true); //TODO uninitialized var
-                self.arena.alloc(Expr::FnDecl { id, params, body })
+                self.arena.alloc(Expr { def: ExprDef::FnDecl { id, params, body }, src, pos: tk.pos })
             },
             /* "struct" => {
-                let name = match self.next() {
-                    Token::Id(s) => *s,
-                    tk => panic!("Expected identifier, got : {:?}", tk)
+                let tk = self.next();
+                let id = match &tk.def {
+                    TokenDef::Id(id) => Identifier::make(id),
+                    _ => {
+                        self.push_error(&format!("Expected identifier, got : {:?}", tk.def), tk.pos);
+                        Default::default()
+                    }
                 };
-                
             }, */
             id_str => {
-                let id = make_identifier(id_str);
+                let id = Identifier::make(id_str);
                 if !self.check_id_exists(&id) {
-                    panic!("Unknown identifier : {}", id_str);
+                    self.push_error(format!("Unknown identifier : {}", id_str), tk_identifier.get_full_pos()); //_FIXME throws an error if function is declared after using it
+                    // println!("At {} -> Unknown identifier : {}", tk_identifier.get_full_pos(), id_str); //DESIGN maybe there should only be closures (no non-capturing local functions)
                 };
-                self.parse_expr_next(self.arena.alloc(Expr::Id(id)))
+                self.parse_expr_next(self.arena.alloc(Expr { def: ExprDef::Id(id), src, pos }))
             }
         }
     }
 
-    fn make_binop (&self, op:Op, is_assign:bool, left:&'a Expr<'a>, right:&'a Expr<'a>) -> &'a Expr<'a>
+    fn make_binop (&self, op:Op, left:&'e Expr<'e, 's>, right:&'e Expr<'e, 's>) -> &'e Expr<'e, 's>
     {
-        let priority = if is_assign {
-            std::u8::MAX
+        match &right.def
+        {
+            ExprDef::BinOp { op:op_, left:left_, right:right_ } if op.priority() <= op_.priority() =>
+                    self.arena.alloc(Expr { def: ExprDef::BinOp { op:*op_, left:self.make_binop(op, left, left_), right:right_ }, src: left.src, pos: left.pos + right.pos }),
+            _ =>    self.arena.alloc(Expr { def: ExprDef::BinOp { op, left, right }, src: left.src, pos: left.pos + right.pos })
+        }
+    }
+
+    fn make_params_list (&self, tk_delim_open:&Token<'t, 's>) -> Vec<Identifier>
+    {
+        self.__make_list(tk_delim_open, |list:&mut Vec<Identifier>| {
+            let tk = self.peek();
+            if let TokenDef::Id(id) = tk.def {
+                self.next();
+                let id = Identifier::make(id);
+                self.declare_local(&id, true);
+                list.push(id);
+            } else {
+                self.push_error(format!("Expected identifier, got : {:?}", tk.def), tk.get_full_pos());
+                list.push(Default::default());
+            };
+        }).0
+    }
+
+    fn make_expr_list (&self, tk_delim_open:&Token<'t, 's>) -> (Vec<&'e Expr<'e, 's>>, &Token<'t, 's>)
+    {
+        self.__make_list(tk_delim_open, |list:&mut Vec<&'e Expr<'e, 's>>| {
+            list.push(self.parse_expr());
+        })
+    }
+
+    #[doc(hidden)]
+    fn __make_list<T> (&self, tk_delim_open:&Token<'t, 's>, add_item:impl Fn(&mut Vec<T>)) -> (Vec<T>, &Token<'t, 's>)
+    {
+        let mut list = Vec::new();
+        
+        let delimiter = if let TokenDef::DelimOpen(delimiter) = tk_delim_open.def {
+            delimiter
         } else {
-            op.priority()
+            panic!("Only a TokenDef::DelimOpen should be passed here.");
         };
 
-        match right
-        {
-            Expr::BinOp { op:op_, is_assign:is_assign_, left:left_, right:right_ } if priority <= op_.priority() =>
-                    self.arena.alloc(Expr::BinOp { op:*op_, is_assign:*is_assign_, left:self.make_binop(op, is_assign, left, left_), right:right_ }),
-            _ =>    self.arena.alloc(Expr::BinOp { op, is_assign, left, right })
-        }
-    }
-
-    //TODO use a predicate in make_expr_list insead of a specific method
-    fn make_params_list (&self, delimiter:Delimiter) -> Vec<Identifier>
-    {
-        let mut params_list = Vec::new();
-        if *self.peek() == Token::DelimClose(delimiter) {
-            self.next();
-            return params_list;
+        if self.peek().def == TokenDef::DelimClose(delimiter) {
+            return (list, self.next());
         }
 
         loop
         {
-            let tk = self.next();
-            if let Token::Id(id) = tk { //TODO remove this (function environment)
-                let id = make_identifier(id);
-                self.declare_local(&id, true);
-                params_list.push(id);
-            } else {
-                panic!("Expected identifier, got : {:?}", tk);
-            };
+            add_item(&mut list);
 
-            match self.next()
+            let tk = self.peek();
+            match tk.def
             {
-                Token::Comma => continue,
-                Token::DelimClose(c) if *c == delimiter => break,
-                Token::Eof => panic!("Unclosed delimiter : {:?}", delimiter),
-                tk => {
-                    eprintln!("Expr list: {:?}", params_list);
-                    panic!("Expected Comma or DelimClose('{:?}'), got  {:?}", delimiter, tk);
-                }
-            }
-        }
-        
-        params_list
-    }
-
-    fn make_expr_list (&self, delimiter:Delimiter) -> Vec<&'a Expr<'a>>
-    {
-        let mut expr_list = Vec::new();
-        if *self.peek() == Token::DelimClose(delimiter) {
-            self.next();
-            return expr_list;
-        }
-
-        loop
-        {
-            expr_list.push(self.parse_expr());
-            match self.peek()
-            {
-                Token::Comma => { self.next(); },
-                Token::DelimClose(c) if *c == delimiter => {
+                TokenDef::Comma => {
                     self.next();
+                },
+                TokenDef::DelimClose(delimiter_) if delimiter_ == delimiter => {
                     break;
                 },
-                Token::Eof => panic!("Unclosed delimiter : {:?}", delimiter),
-                tk => {
-                    eprintln!("Expr list: {:?}", expr_list);
-                    panic!("Expected Comma or DelimClose('{:?}'), got  {:?}", delimiter, tk);
+                TokenDef::Eof => {
+                    self.push_error(format!("Unclosed delimiter : {}", delimiter.to_str(false)), tk_delim_open.get_full_pos());
+                    break;
+                },
+                _ => {
+                    self.push_error(format!("Expected , or {}, got {:?}", delimiter.to_str(true), tk.def), tk.get_full_pos());
+                    break;
                 }
             }
         }
         
-        expr_list
+        (list, self.next())
     }
 
     // ----- TOKEN ITERATOR -----
 
-    fn peek (&self) -> &Token
+    fn peek (&self) -> &Token<'t, 's>
     {
         if let Some(item) = self.tokens.borrow_mut().peek() {
             item
         } else {
-            &Token::Eof
+            &Token { def: TokenDef::Eof, src: "", pos: Position(0, 0) }
         }
     }
 
-    fn next (&self) -> &Token
+    fn next (&self) -> &Token<'t, 's>
     {
         if let Some(item) = self.tokens.borrow_mut().next() {
             item
         } else {
-            &Token::Eof
+            panic!("Unexpected end of file.");
         }
     }
 
@@ -328,11 +407,12 @@ impl<'a, 'b> Parser<'a, 'b>
     fn declare_local (&self, id:&Identifier, init:bool)
     {
         let n_locals = self.env.borrow().locals_count;
-        self.env.borrow_mut().locals[n_locals as usize] = (*id, init.into());
+        self.env.borrow_mut().locals[n_locals as usize] = (*id, if init { 1 } else { 0 });
         if let Some(n_locals) = n_locals.checked_add(1) {
             self.env.borrow_mut().locals_count = n_locals;
         } else {
-            panic!("Too many locals.");
+            // self.push_error("Too many locals.", tk.get_full_pos());
+            panic!("Too many locals."); //TODO better error handling here
         }
     }
 
@@ -360,17 +440,15 @@ fn sort_functions_first (statements:&mut [&Expr])
 {
     statements.sort_by(|e1, e2| {
         use std::cmp::Ordering;
-        match (e1, e2) {
-            (Expr::FnDecl {..}, Expr::FnDecl {..})    => Ordering::Equal,
-            (Expr::FnDecl {..}, _)     => Ordering::Less,
-            (_, Expr::FnDecl {..})     => Ordering::Greater,
+        match (&e1.def, &e2.def) {
+            (ExprDef::FnDecl {..}, ExprDef::FnDecl {..})    => Ordering::Equal,
+            (ExprDef::FnDecl {..}, _)     => Ordering::Less,
+            (_, ExprDef::FnDecl {..})     => Ordering::Greater,
             (_, _)                      => Ordering::Equal,
         }
         
     });
 }
-
-type TkIter<'l> = std::iter::Peekable<std::collections::vec_deque::Iter<'l, Token<'l>>>;
 
 #[allow(dead_code)]
 pub fn benchmark ()
@@ -380,7 +458,11 @@ pub fn benchmark ()
     use std::time::{ Instant, Duration };
 
     let program = std::fs::read_to_string("./code.lang").unwrap();
-    let tokens = lexer::lex(&program);
+    let (tokens, errors) = lexer::lex(&program);
+    if !errors.is_empty() {
+        println!("Parsing: couldn't proceed to benchmark due to lexing errors.");
+        return;
+    }
     let mut duration = Duration::new(0, 0);
     for _ in 0..ITERATIONS
     {

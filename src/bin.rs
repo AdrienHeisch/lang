@@ -12,21 +12,20 @@ fn main () -> Result<(), std::io::Error>
     // let args:Vec<String> = std::env::args().collect();
     // let path = args[1];
     
-    #[cfg(benchmark)]
+    if cfg!(lang_benchmark)
     {
-        // lang::benchmarks::benchmark_lexer();
-        // lang::benchmarks::benchmark_parser();
+        lang::benchmarks::benchmark_lexer();
+        lang::benchmarks::benchmark_parser();
         lang::benchmarks::benchmark_interpreter();
+    } else {
+        eval_file("./code.lang")?;
     }
-    
-    #[cfg(not(benchmark))]
-    eval_file("./code.lang")?;
 
     Ok(())
 }
 
 fn eval_file (path:&str) -> Result<(), std::io::Error>
 {
-    eval(&std::fs::read_to_string(path)?);
+    if eval(&std::fs::read_to_string(path)?).is_ok() {}; //TODO use result
     Ok(())
 }
