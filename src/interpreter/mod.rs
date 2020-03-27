@@ -1,6 +1,6 @@
 use crate::{
-    ast::{ Identifier, Expr, ExprDef, Op, Error, FullPosition },
-    env::Environment,
+    ast::{ Identifier, Expr, ExprDef, Op, Error, FullPosition, WithPosition },
+    env::{ Environment, Context },
     memory::{ Memory, Pointer },
     langval::{ LangVal, LangType },
     utils
@@ -23,13 +23,13 @@ enum PtrOrFn<'e, 's> //TODO function pointers in memory, points to a value in a 
     Fn(Box<[Identifier]>, Expr<'e, 's>)
 }
 
-/* macro_rules! val {
-    ($expr:expr) => {
-        match $expr { Ok(val) => val, e @ Err(_) => return e }
-    };
-} */
+enum ResultErr
+{
+    Error(Error),
+    Return(LangVal),
+    Nothing
+}
 
-//FIXME use of FullPosition::zero() where there is currently no way to get the actual position
 impl<'e, 's> Interpreter<'e, 's>
 {
     
@@ -47,7 +47,7 @@ impl<'e, 's> Interpreter<'e, 's>
                 arr
             },
             frame_ptr: 0,
-            env: Environment::new()
+            env: Environment::new(Context::TopLevel)
         }
     }
 
@@ -60,7 +60,7 @@ impl<'e, 's> Interpreter<'e, 's>
         }
         
         for e in exprs {
-            if let Err(error) = self.expr(e) { return Err(error); }
+            if let Err(ResultErr::Error(error)) = self.expr(e) { return Err(error); }
         }
 
         if cfg!(not(lang_benchmark)) {
@@ -81,20 +81,20 @@ impl<'e, 's> Interpreter<'e, 's>
             }
         };
         self.frame_ptr = 0;
-        self.env = Environment::new();
+        self.env = Environment::new(Context::TopLevel);
     }
 
-    fn throw (&mut self, msg:String, pos:FullPosition) -> Error
+    fn throw (&mut self, msg:String, pos:FullPosition) -> ResultErr
     {
         let error = Error { msg, pos };
         if cfg!(lang_panic_on_error) {
             panic!("{}", error);
         } else {
-            error
+            ResultErr::Error(error)
         }
     }
 
-    fn expr (&mut self, expr:&Expr<'e, 's>) -> Result<LangVal, Error>
+    fn expr (&mut self, expr:&Expr<'e, 's>) -> Result<LangVal, ResultErr>
     {
         use ExprDef::*;
         Ok(match &expr.def
@@ -147,19 +147,19 @@ impl<'e, 's> Interpreter<'e, 's>
                 match self.unop(*op, right)
                 {
                     Ok(val) => val,
-                    Err(Some(error)) => return Err(error),
-                    Err(None) => return Err(self.throw(format!("Invalid operation : {}{:?}", op.to_string(), right.def), expr.get_full_pos()))
+                    Err(ResultErr::Nothing) => return Err(self.throw(format!("Invalid operation : {}{:?}", op.to_string(), right.def), expr.get_full_pos())),
+                    err @ Err(_) => return err
                 }
             },
             BinOp { op, left, right } => {
                 match self.binop(*op, left, right)
                 {
                     Ok(val) => val,
-                    Err(Some(error)) => return Err(error),
-                    Err(None) => return Err(self.throw(format!("Invalid operation : {:?} {} {:?}", left.def, op.to_string(), right.def), expr.get_full_pos()))
+                    Err(ResultErr::Nothing) => return Err(self.throw(format!("Invalid operation : {:?} {} {:?}", left.def, op.to_string(), right.def), expr.get_full_pos())),
+                    err @ Err(_) => return err
                 }
             },
-            Call { name, args } => self.call(name, args)?,
+            Call { id, args } => self.call(id, args)?,
             Field(_, _) => unimplemented!(),
             // --- Declarations
             Var(id, assign_expr) => {
@@ -183,16 +183,21 @@ impl<'e, 's> Interpreter<'e, 's>
                 }
                 LangVal::Void
             },
-            // Struct {..} => unimplemented!(),
+            StructDecl {..} => unimplemented!(),
             // --- Others
             Block(exprs) => {
                 if !exprs.is_empty()
                 {
                     self.env.open_scope();
-                    for e in exprs.iter().take(exprs.len() - 1) {
-                        self.expr(e)?;
+                    let mut ret = LangVal::Void;
+                    for expr in exprs.iter() {
+                        ret = match self.expr(expr)
+                        {
+                            Ok(val) => val,
+                            err @ Err(_) => return err
+                        };
                     }
-                    let ret = self.expr(exprs.iter().last().unwrap())?;
+                    // let ret = self.expr(exprs.iter().last().unwrap())?;
                     let n_vars = self.env.close_scope();
                     self.free_unused_stack(n_vars as usize);
                     ret
@@ -202,13 +207,22 @@ impl<'e, 's> Interpreter<'e, 's>
                 }
             },
             Parent(e) => self.expr(e)?,
+            Return(e) => {
+                if let Context::Function = self.env.get_context() {
+                    return Err(ResultErr::Return(self.expr(e)?));
+                } else {
+                    return Err(self.throw("Can't return from top-level".to_owned(), e.get_full_pos()));
+                }
+            },
             End => LangVal::Void,
             Invalid => return Err(self.throw(format!("Invalid expression : {:?}", expr), expr.get_full_pos()))
         })
     }
 
-    fn unop (&mut self, op:Op, e_right:&Expr<'e, 's>) -> Result<LangVal, Option<Error>>
+    fn unop (&mut self, op:Op, e_right:&Expr<'e, 's>) -> Result<LangVal, ResultErr>
     {
+        use ResultErr::Nothing;
+
         let value = self.expr(e_right)?;
 
         Ok(match value
@@ -217,33 +231,26 @@ impl<'e, 's> Interpreter<'e, 's>
                 match op
                 {
                     Op::Sub => LangVal::Number(-f),
-                    _ => return Err(None)
+                    _ => return Err(Nothing)
                 }
             },
             LangVal::Bool(b) => {
                 match op
                 {
                     Op::Not => LangVal::Bool(!b),
-                    _ => return Err(None)
+                    _ => return Err(Nothing)
                 }
             },
-            _ => return Err(None)
+            _ => return Err(Nothing)
         })
     }
 
-    fn binop (&mut self, op:Op, e_left:&Expr<'e, 's>, e_right:&Expr<'e, 's>) -> Result<LangVal, Option<Error>>
+    fn binop (&mut self, op:Op, e_left:&Expr<'e, 's>, e_right:&Expr<'e, 's>) -> Result<LangVal, ResultErr>
     {
-        let value_left = match self.expr(e_right)
-        {
-            Ok(val) => val,
-            Err(error) => return Err(Some(error))
-        };
-
-        let value_right = match self.expr(e_right)
-        {
-            Ok(val) => val,
-            Err(error) => return Err(Some(error))
-        };
+        use ResultErr::Nothing;
+        
+        let value_left = self.expr(e_left)?;
+        let value_right = self.expr(e_right)?;
 
         use { Op::*, LangVal::* };
         Ok(match (value_left, value_right)
@@ -254,7 +261,7 @@ impl<'e, 's> Interpreter<'e, 's>
                 {
                     Assign => {
                         let value = self.expr(e_right)?;
-                        self.assign(e_left, value)?
+                        self.assign(e_left, e_right.downcast(value))?
                     },
                     Equal       =>   Bool( compare_floats(l, r, F32_EQ_THRESHOLD)),
                     NotEqual    =>   Bool(!compare_floats(l, r, F32_EQ_THRESHOLD)),
@@ -267,12 +274,12 @@ impl<'e, 's> Interpreter<'e, 's>
                     Mult        => Number(l * r),
                     Div         => Number(l / r),
                     Mod         => Number(l % r),
-                    AddAssign   => self.assign(e_left, Number(l + r))?,
-                    SubAssign   => self.assign(e_left, Number(l - r))?,
-                    MultAssign  => self.assign(e_left, Number(l * r))?,
-                    DivAssign   => self.assign(e_left, Number(l / r))?,
-                    ModAssign   => self.assign(e_left, Number(l % r))?,
-                    _ => return Err(None)
+                    AddAssign   => self.assign(e_left, e_right.downcast(Number(l + r)))?,
+                    SubAssign   => self.assign(e_left, e_right.downcast(Number(l - r)))?,
+                    MultAssign  => self.assign(e_left, e_right.downcast(Number(l * r)))?,
+                    DivAssign   => self.assign(e_left, e_right.downcast(Number(l / r)))?,
+                    ModAssign   => self.assign(e_left, e_right.downcast(Number(l % r)))?,
+                    _ => return Err(Nothing)
                 }
             },
             (Str(l), Str(r)) => {
@@ -280,13 +287,13 @@ impl<'e, 's> Interpreter<'e, 's>
                 {
                     Assign => {
                         let value = self.expr(e_right)?;
-                        self.assign(e_left, value)?
+                        self.assign(e_left, e_right.downcast(value))?
                     },
                     Equal       => Bool(l == r),
                     NotEqual    => Bool(l != r),
                     Add         =>  Str(l + &r),
-                    AddAssign   => self.assign(e_left, Str(l + &r))?,
-                    _ => return Err(None)
+                    AddAssign   => self.assign(e_left, e_right.downcast(Str(l + &r)))?,
+                    _ => return Err(Nothing)
                 }
             },
             (Bool(l), Bool(r)) => {
@@ -294,20 +301,20 @@ impl<'e, 's> Interpreter<'e, 's>
                 {
                     Assign => {
                         let value = self.expr(e_right)?;
-                        self.assign(e_left, value)?
+                        self.assign(e_left, e_right.downcast(value))?
                     },
                     Equal       => Bool(l == r),
                     NotEqual    => Bool(l != r),
                     BoolAnd     => Bool(l && r),
                     BoolOr      => Bool(l || r),
-                    _ => return Err(None)
+                    _ => return Err(Nothing)
                 }
             },
-            (_, _) => return Err(None)
+            (_, _) => return Err(Nothing)
         })
     }
 
-    fn assign (&mut self, e_to:&Expr, value:LangVal) -> Result<LangVal, Error>
+    fn assign (&mut self, e_to:&Expr, value:WithPosition<LangVal>) -> Result<LangVal, ResultErr>
     {
         if let ExprDef::Id(id) = &e_to.def {
             self.memory.set_var(if let PtrOrFn::Ptr(ptr) = self.get_pointer(id).unwrap()
@@ -315,15 +322,14 @@ impl<'e, 's> Interpreter<'e, 's>
                 ptr
             } else {
                 panic!("Tried to use function as value.") //TODO //DESIGN functions as values ?
-            }, &value);
+            }, &value.def);
         } else {
-            // return Err(self.throw(format!("Can't assign {:?} to {:?}", value, e_to), FullPosition::zero()));
-            panic!("Can't assign {:?} to {:?}", value, e_to);
+            return Err(self.throw(format!("Can't assign {:?} to {:?}", value, e_to), value.get_full_pos()));
         }
-        Ok(value)
+        Ok(value.def)
     }
 
-    fn call (&mut self, e_id:&Expr<'e, 's>, args:&[&Expr<'e, 's>]) -> Result<LangVal, Error> //TODO globals
+    fn call (&mut self, e_id:&Expr<'e, 's>, args:&[&Expr<'e, 's>]) -> Result<LangVal, ResultErr> //TODO globals
     {
         Ok(match &e_id.def
         {
@@ -360,14 +366,22 @@ impl<'e, 's> Interpreter<'e, 's>
 
                         let values_and_params = args.iter().map(|arg| self.expr(arg)).zip(params.iter()).collect::<Vec<_>>();
 
+                        let args_pos = if args.is_empty() {
+                            e_id.get_full_pos()
+                        } else {
+                            args.iter().skip(1).fold(args[0].pos, |acc, arg| acc + arg.pos).get_full(e_id.src)
+                        };
+
                         let prev_frame_ptr = self.frame_ptr;
                         self.frame_ptr += self.env.locals_count;
 
-                        let prev_env = std::mem::replace(&mut self.env, Environment::new());
+                        let prev_env = std::mem::replace(&mut self.env, Environment::new(Context::Function));
+
+                        // self.declare_fn(id, params: Box<[Identifier]>, body: &Expr<'e, 's>)
                         
                         if params.len() != args.len() {
-                            panic!("Invalid number of arguments.");
-                            // return Err(self.throw("Invalid number of arguments.".to_owned(), FullPosition::zero()));
+                            // panic!("Invalid number of arguments.");
+                            return Err(self.throw("Invalid number of arguments.".to_owned(), args_pos));
                         }
 
                         for (value, param) in values_and_params {
@@ -380,7 +394,16 @@ impl<'e, 's> Interpreter<'e, 's>
                             self.memory.set_var(ptr, &value);
                         }
 
-                        let out = self.expr(&body)?;
+                        let out = match self.expr(&body)
+                        {
+                            Ok(val) => val,
+                            Err(e) => match e
+                            {
+                                ResultErr::Return(val) => val,
+                                error @ ResultErr::Error(_) => return Err(error),
+                                ResultErr::Nothing => panic!("Should not happen.")
+                            }
+                        };
 
                         let n_vars = self.env.clear();
                         self.free_unused_stack(n_vars as usize);
@@ -480,4 +503,12 @@ impl<'e, 's> Interpreter<'e, 's>
         self.memory.print_ram();
     }
 
+}
+
+impl From<Error> for ResultErr
+{
+    fn from (error:Error) -> Self
+    {
+        ResultErr::Error(error)
+    }
 }

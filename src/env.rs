@@ -4,20 +4,32 @@ pub struct Environment
 {
     pub locals: [(Identifier, u8); 256], //TODO max locals ? (u8?)
     pub locals_count: u8,
-    pub scope_depth: u8
+    pub scope_depth: u8,
+    context:Context
+}
+
+pub enum Context {
+    TopLevel,
+    Function
 }
 
 impl Environment
 {
 
-    pub fn new () -> Self
+    pub fn new (context:Context) -> Self
     {
         Environment
         {
             locals: [(Default::default(), 0); 256],
             locals_count: 0,
-            scope_depth: 0
+            scope_depth: 0,
+            context
         }
+    }
+
+    pub fn get_context (&self) -> &Context
+    {
+        &self.context
     }
     
     pub fn open_scope (&mut self)

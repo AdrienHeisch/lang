@@ -76,7 +76,7 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
     
     let token = match bytes[pos] as char
     {
-        c if c.is_lowercase() || c == '_' => {
+        'a'..='z' | 'A'..='Z' | '_' => {
             loop
             {
                 let c = get_char!();
@@ -90,7 +90,7 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
                 id => TokenDef::Id(id)
             }
         },
-        c if c.is_numeric() => {
+        '0'..='9' => {
             let mut is_float = false;
             loop
             {
@@ -106,23 +106,15 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
             }
             TokenDef::Const(LangVal::Number(read_cursor!().parse().unwrap()))
         },
-        c if c.is_operator() => {
-            match get_char!()
-            {
-                '/' => { //COMMENT
-                    while get_char!() != '\n' && get_char!() != EOF { len += 1; }
-                    TokenDef::Nil
-                },
-                _ => { //OP
-                    loop
-                    {
-                        let c = get_char!();
-                        if !c.is_operator() { break; }
-                        len += 1;
-                    }
-                    TokenDef::Op(Op::from_string(read_cursor!()))
-                }
+        '/' if { get_char!() == '/' } => { //COMMENT
+            while get_char!() != '\n' && get_char!() != EOF { len += 1; }
+            TokenDef::Nil
+        },
+        '=' | '+' | '-' | '*' | '/' | '<' | '>' | '|' | '&' | '!' => {
+            while let '=' | '+' | '-' | '*' | '/' | '<' | '>' | '|' | '&' | '!' = get_char!() {
+                len += 1;
             }
+            TokenDef::Op(Op::from_string(read_cursor!()))
         },
         '"' => {
             pos += 1;
@@ -142,7 +134,7 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
         '.' => TokenDef::Dot,
         ';' => TokenDef::Semicolon,
         EOF => TokenDef::Eof,
-        c if c.is_whitespace() => {
+        ' ' | '\x09'..='\x0d' => {
             loop
             {
                 let c = get_char!();
@@ -167,23 +159,6 @@ fn collect_unexpected_chars (program:&str, first_char:char, pos:&mut usize, len:
         *len += len_;
     }
     chars
-}
-
-trait CharExt
-{
-    fn is_operator (&self) -> bool;
-}
-
-impl CharExt for char
-{
-    fn is_operator (&self) -> bool
-    {
-        match self
-        {
-            '=' | '+' | '-' | '*' | '/' | '<' | '>' | '|' | '&' | '!' => true,
-            _ => false
-        }
-    }
 }
 
 impl Delimiter

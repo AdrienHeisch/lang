@@ -1,5 +1,5 @@
 use super::{ Expr, ExprDef, Op, Token, TokenDef, Position, FullPosition, Delimiter, Identifier, IdentifierTools, Error };
-use crate::env::Environment;
+use crate::env::{ Environment, Context };
 use std::collections::{ VecDeque };
 use std::cell::{ RefCell };
 use typed_arena::Arena;
@@ -28,7 +28,7 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
         Parser {
             arena,
             tokens: RefCell::new(tokens.iter().peekable()),
-            env: RefCell::new(Environment::new()),
+            env: RefCell::new(Environment::new(Context::TopLevel)),
             errors: RefCell::new(Vec::new()),
             globals: vec!(Identifier::make("print"), Identifier::make("printmem"))
         }
@@ -76,7 +76,7 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
         if self.peek().def == TokenDef::Semicolon {
             self.next();
         } else {
-            match &expr.def
+            match expr.def
             {
                 _ if expr.is_block() => (),
                 ExprDef::End => (),
@@ -128,7 +128,7 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
                     {
                         TokenDef::DelimClose(Delimiter::Br) => false,
                         TokenDef::Eof => {
-                            self.push_error("Unclosed bracket.".to_owned(), tk.get_full_pos());
+                            self.push_error("Unclosed delimiter {.".to_owned(), tk.get_full_pos());
                             false
                         },
                         _ => true
@@ -165,7 +165,7 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
                 self.next();
                 let (expr_list, tk_delim_close) = self.make_expr_list(tk);
                 self.arena.alloc(Expr {
-                    def: ExprDef::Call { name: e, args: expr_list.into_boxed_slice() },
+                    def: ExprDef::Call { id: e, args: expr_list.into_boxed_slice() },
                     src: tk.src, 
                     pos: e.pos + tk_delim_close.pos
                 })
@@ -214,13 +214,13 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
             },
             "var" => { //TODO explicit types ?
                 let tk = self.next();
-                match &tk.def
+                match tk.def
                 {
                     TokenDef::Id(id) => {
                         let pos = pos + tk.pos;
                         let id = Identifier::make(id);
                         let tk = self.peek();
-                        let value = match &tk.def
+                        let value = match tk.def
                         {
                             TokenDef::Op(Op::Assign) => {
                                 self.next();
@@ -240,9 +240,13 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
                     }
                 }
             },
-            "fn" => {
+            "return" => {
+                let e = self.parse_expr();
+                self.arena.alloc(Expr { def: ExprDef::Return(e), src, pos: pos + e.pos })
+            },
+            "fn" => { //TODO return statement ?
                 let tk = self.next();
-                let id = match &tk.def {
+                let id = match tk.def {
                     TokenDef::Id(id) => Identifier::make(id),
                     _ => {
                         self.push_error(format!("Expected identifier, got : {:?}", tk.def), tk.get_full_pos());
@@ -250,46 +254,71 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
                     }
                 };
 
-                let prev_env = RefCell::new(Environment::new());
+                let prev_env = RefCell::new(Environment::new(Context::Function));
                 self.env.swap(&prev_env);
 
                 let tk = self.peek();
-                let params = match &tk.def
+                let (params, end_tk) = match tk.def
                 {
                     TokenDef::DelimOpen(Delimiter::Pr) => {
                         self.next();
-                        self.make_params_list(tk).into_boxed_slice()
+                        let (params, end_tk) = self.make_ident_list(tk);
+                        (params.into_boxed_slice(), end_tk)
                     },
                     _ => {
-                        self.push_error(format!("Expected open parenthese, got : {:?}", tk.def), tk.get_full_pos());
-                        Default::default()
+                        self.push_error(format!("Expected (, got : {:?}", tk.def), tk.get_full_pos());
+                        (Default::default(), tk)
                     }
                 };
                 
                 let arity = params.len() as u8;
-                if arity > u8::max_value() { self.push_error("Too many parameters !".to_owned(), tk.get_full_pos()); } //TODO position
+                if arity > u8::max_value() { self.push_error("Too many parameters !".to_owned(), end_tk.get_full_pos()); }
 
                 let body = self.parse_expr();
 
                 self.env.swap(&prev_env);
 
+                //TODO recursion ?
                 self.declare_local(&id, true); //TODO uninitialized var
-                self.arena.alloc(Expr { def: ExprDef::FnDecl { id, params, body }, src, pos: tk.pos })
+                self.arena.alloc(Expr { def: ExprDef::FnDecl { id, params, body }, src, pos: pos + body.pos })
             },
-            /* "struct" => {
+            "struct" => {
+                let mut pos = pos;
                 let tk = self.next();
-                let id = match &tk.def {
+                let id = match tk.def {
                     TokenDef::Id(id) => Identifier::make(id),
                     _ => {
-                        self.push_error(&format!("Expected identifier, got : {:?}", tk.def), tk.pos);
+                        self.push_error(format!("Expected identifier, got : {:?}", tk.def), tk.get_full_pos());
                         Default::default()
                     }
                 };
-            }, */
+
+                let tk = self.peek();
+                let fields = match tk.def
+                {
+                    TokenDef::DelimOpen(Delimiter::Br) => {
+                        self.next();
+                        let (fields, tk_delim_close) = self.make_ident_list(tk);
+                        pos += tk_delim_close.pos;
+                        fields.into_boxed_slice()
+                    },
+                    _ => {
+                        self.push_error(format!("Expected {{, got : {:?}", tk.def), tk.get_full_pos());
+                        Default::default()
+                    }
+                };
+
+                if let Context::TopLevel = self.env.borrow().get_context() {
+                    self.push_error("Can't declare a struct here.".to_owned(), pos.get_full(src));
+                    self.make_invalid(src, pos)
+                } else {
+                    self.arena.alloc(Expr { def: ExprDef::StructDecl { id, fields }, src, pos })
+                }
+            },
             id_str => {
                 let id = Identifier::make(id_str);
                 if !self.check_id_exists(&id) {
-                    self.push_error(format!("Unknown identifier : {}", id_str), tk_identifier.get_full_pos()); //_FIXME throws an error if function is declared after using it
+                    self.push_error(format!("Unknown identifier : {}", id_str), tk_identifier.get_full_pos()); //FIXME throws an error if function is used before being declared
                     // println!("At {} -> Unknown identifier : {}", tk_identifier.get_full_pos(), id_str); //DESIGN maybe there should only be closures (no non-capturing local functions)
                 };
                 self.parse_expr_next(self.arena.alloc(Expr { def: ExprDef::Id(id), src, pos }))
@@ -299,15 +328,15 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
 
     fn make_binop (&self, op:Op, left:&'e Expr<'e, 's>, right:&'e Expr<'e, 's>) -> &'e Expr<'e, 's>
     {
-        match &right.def
+        match right.def
         {
             ExprDef::BinOp { op:op_, left:left_, right:right_ } if op.priority() <= op_.priority() =>
-                    self.arena.alloc(Expr { def: ExprDef::BinOp { op:*op_, left:self.make_binop(op, left, left_), right:right_ }, src: left.src, pos: left.pos + right.pos }),
+                    self.arena.alloc(Expr { def: ExprDef::BinOp { op:op_, left:self.make_binop(op, left, left_), right:right_ }, src: left.src, pos: left.pos + right.pos }),
             _ =>    self.arena.alloc(Expr { def: ExprDef::BinOp { op, left, right }, src: left.src, pos: left.pos + right.pos })
         }
     }
 
-    fn make_params_list (&self, tk_delim_open:&Token<'t, 's>) -> Vec<Identifier>
+    fn make_ident_list (&self, tk_delim_open:&Token<'t, 's>) -> (Vec<Identifier>, &Token<'t, 's>)
     {
         self.__make_list(tk_delim_open, |list:&mut Vec<Identifier>| {
             let tk = self.peek();
@@ -320,7 +349,7 @@ impl<'e, 't, 's> Parser<'e, 't, 's>
                 self.push_error(format!("Expected identifier, got : {:?}", tk.def), tk.get_full_pos());
                 list.push(Default::default());
             };
-        }).0
+        })
     }
 
     fn make_expr_list (&self, tk_delim_open:&Token<'t, 's>) -> (Vec<&'e Expr<'e, 's>>, &Token<'t, 's>)

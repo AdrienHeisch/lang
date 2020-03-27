@@ -20,9 +20,9 @@ impl<'e, 's> Ast<'e, 's>
     {
         let (tokens, mut errors) = lexer::lex(program);
 
-        /* if cfg!(not(lang_benchmark)) {
-            println!("tokens: {:?}\n", tokens.iter().map(|tk| &tk.def));
-        } */
+        if cfg!(not(lang_benchmark)) {
+            println!("tokens: {:?}\n", tokens.iter().map(|tk| &tk.def).collect::<Vec<_>>());
+        }
 
         let (ast, mut more_errors) = Self::from_tokens(&tokens);
         errors.append(&mut more_errors);
@@ -41,9 +41,13 @@ impl<'e, 's> Ast<'e, 's>
             errors = pair.1;
         }
         
-        /* if cfg!(not(lang_benchmark)) {
-            println!("exprs:  {:?}\n", top_level.iter().map(|e| &e.def));
-        } */
+        if cfg!(not(lang_benchmark)) {
+            println!("exprs:");
+            for e in top_level.iter() {
+                println!("\t{:?}", e.def);
+            }
+            println!();
+        }
 
         (Ast { arena, top_level }, errors)
     }
@@ -89,23 +93,24 @@ pub type Expr<'e, 's> = WithPosition<'s, ExprDef<'e, 's>>;
 pub enum ExprDef<'e, 's>
 {
     // --- Values
-    Const   (LangVal),
-    Id      (Identifier),
+    Const       (LangVal),
+    Id          (Identifier),
     // --- Control Flow
-    If      { cond: &'e Expr<'e, 's>, then: &'e Expr<'e, 's>, elze: Option<&'e Expr<'e, 's>>  },
-    While   { cond: &'e Expr<'e, 's>, body: &'e Expr<'e, 's> },
+    If          { cond: &'e Expr<'e, 's>, then: &'e Expr<'e, 's>, elze: Option<&'e Expr<'e, 's>>  },
+    While       { cond: &'e Expr<'e, 's>, body: &'e Expr<'e, 's> },
     // --- Operations
-    Field   (&'e Expr<'e, 's>, &'e Expr<'e, 's>),
-    UnOp    (Op, &'e Expr<'e, 's>),
-    BinOp   { op: Op, left: &'e Expr<'e, 's>, right: &'e Expr<'e, 's> },
-    Call    { name: &'e Expr<'e, 's>, args: Box<[&'e Expr<'e, 's>]> },
+    Field       (&'e Expr<'e, 's>, &'e Expr<'e, 's>),
+    UnOp        (Op, &'e Expr<'e, 's>),
+    BinOp       { op: Op, left: &'e Expr<'e, 's>, right: &'e Expr<'e, 's> },
+    Call        { id: &'e Expr<'e, 's>, args: Box<[&'e Expr<'e, 's>]> },
     // --- Declarations
-    Var     (Identifier, &'e Expr<'e, 's>), //TODO allow declaration without initialization
-    FnDecl  { id:Identifier, params:Box<[Identifier]>, body:&'e Expr<'e, 's> },
-    // Struct  { name:Identifier, fields: Box<[/* ( */Identifier/* , LangType) */]> },
+    Var         (Identifier, &'e Expr<'e, 's>), //TODO allow declaration without initialization
+    FnDecl      { id:Identifier, params:Box<[Identifier]>, body:&'e Expr<'e, 's> },
+    StructDecl  { id:Identifier, fields:Box<[Identifier]> },
     // --- Others
-    Block   (Box<[&'e Expr<'e, 's>]>),
-    Parent  (&'e Expr<'e, 's>),
+    Block       (Box<[&'e Expr<'e, 's>]>),
+    Parent      (&'e Expr<'e, 's>),
+    Return      (&'e Expr<'e, 's>),
     Invalid,
     End //TODO this seems to be useless
 }
@@ -127,6 +132,7 @@ impl<'e, 's> Expr<'e, 's>
             },
             ExprDef::While{body, ..}    => Self::is_block(body),
             ExprDef::FnDecl{body, ..}   => Self::is_block(body),
+            ExprDef::StructDecl{..}     => true,
             _ => false
         }
     }
@@ -314,7 +320,7 @@ impl Op
 // #endregion
 
 // #region POSITION
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct WithPosition<'s, T> where T : std::fmt::Debug
 {
     pub def: T,
@@ -333,8 +339,17 @@ pub struct FullPosition
     len: usize
 }
 
+impl<'s, T> std::fmt::Debug for WithPosition<'s, T> where T : std::fmt::Debug
+{
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
+    {
+        write!(f, "{:?}", self.def)
+    }
+}
+
 impl<'s, T> WithPosition<'s, T> where T : std::fmt::Debug
 {
+    
     pub fn get_full_pos (&self) -> FullPosition
     {
         self.pos.get_full(self.src)
@@ -347,7 +362,7 @@ impl<'s, T> WithPosition<'s, T> where T : std::fmt::Debug
         } else {
             (left.pos + right.pos).get_full(left.src)
         }
-    }
+    } */
 
     pub fn downcast<U> (&self, def:U) -> WithPosition<U> where U : std::fmt::Debug
     {
@@ -357,7 +372,7 @@ impl<'s, T> WithPosition<'s, T> where T : std::fmt::Debug
             src: self.src,
             pos: self.pos
         }
-    } */
+    }
 
 }
 
@@ -398,7 +413,7 @@ impl std::ops::AddAssign for Position
     }
 }
 
-impl FullPosition
+/* impl FullPosition
 {
     pub fn zero () -> Self
     {
@@ -409,7 +424,7 @@ impl FullPosition
             len: 0
         }
     }
-}
+} */
 
 impl std::fmt::Display for FullPosition
 {
