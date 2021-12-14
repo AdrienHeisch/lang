@@ -3,7 +3,7 @@ use crate::memory::Pointer; //TODO remove this
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LangVal
+pub enum LangVal //TODO should belong to interp
 {
     Number(f64),
     // Str(String), //TODO get rid of this

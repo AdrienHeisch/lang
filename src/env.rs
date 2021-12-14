@@ -1,5 +1,6 @@
 use crate::ast::Identifier;
 
+#[derive(Clone, Copy)]
 pub struct Environment
 {
     pub locals: [(Identifier, u8); 256], //TODO max locals ? (u8?)
@@ -8,6 +9,7 @@ pub struct Environment
     context:Context
 }
 
+#[derive(Clone, Copy)]
 pub enum Context {
     TopLevel,
     Function

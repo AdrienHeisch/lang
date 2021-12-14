@@ -436,7 +436,7 @@ impl std::fmt::Display for FullPosition
 // #endregion
 
 // #region OP
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Error
 {
     pub msg: String,
