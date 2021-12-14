@@ -1,6 +1,3 @@
-#[allow(unused_imports)]
-use lang::{ eval, compile };
-
 //TODO PROFILING
 //TODO use a logging framework
 //TODO find a name and push to github ?
@@ -27,7 +24,7 @@ fn main () -> Result<(), std::io::Error>
 
 fn eval_file (path:&str) -> Result<(), std::io::Error>
 {
-    eval(&std::fs::read_to_string(path)?);
-    // compile(&std::fs::read_to_string(path)?);
+    lang::eval(&std::fs::read_to_string(path)?);
+    // lang::compile(&std::fs::read_to_string(path)?);
     Ok(())
 }

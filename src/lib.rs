@@ -8,27 +8,16 @@ mod memory;
 mod utils;
 mod vm;
 
-fn make_ast (program:&str) -> (ast::Ast, bool)
-{
-    let (ast, parse_errors) = ast::Ast::from_str(program);
-
-    let error_free = parse_errors.is_empty();
-    
-    if error_free {
-        for error in parse_errors {
-            println!("{}", error);
-        }
-    }
-    
-    (ast, error_free)
-}
-
 pub fn eval (program:&str)
 {
-    let (ast, error_free) = make_ast(program);
+    let (ast, parse_errors) = ast::Ast::from_str(program);
     let mut interp = interpreter::Interpreter::new();
 
-    if cfg!(lang_ignore_parse_errors) || error_free {
+    for error in &parse_errors {
+        println!("{}", error);
+    }
+
+    if cfg!(lang_ignore_parse_errors) || parse_errors.is_empty() {
         if let Err(error) = interp.interpret(ast.get_top_level()) {
             println!("{} -> {}", error.pos.get_full(program), error.msg);
         } else {
@@ -39,12 +28,18 @@ pub fn eval (program:&str)
 
 pub fn compile (program:&str)
 {
-    let (ast, _error_free) = make_ast(program); //TODO errors ?
+    let (ast, parse_errors) = ast::Ast::from_str(program);
     let mut compiler = vm::Compiler::new();
 
-    compiler.compile(ast.get_top_level());
-    compiler.print_bytecode();
-    compiler.memory.print_ram();
+    for error in &parse_errors {
+        println!("{}", error);
+    }
+
+    if cfg!(lang_ignore_parse_errors) || parse_errors.is_empty() {
+        compiler.compile(ast.get_top_level());
+        compiler.print_bytecode();
+        compiler.memory.print_ram();
+    }
 }
 
 #[allow(dead_code)]
