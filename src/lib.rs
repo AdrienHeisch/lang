@@ -1,5 +1,4 @@
 #![allow(dead_code)]
-
 mod ast;
 mod env;
 mod interpreter;
@@ -14,13 +13,13 @@ pub fn eval (program:&str)
     let mut interp = interpreter::Interpreter::new();
 
     for error in &parse_errors {
-        println!("{}", error);
+        println!("{} -> {}", error.pos.get_full(program), error.msg);
     }
 
     if cfg!(lang_ignore_parse_errors) || parse_errors.is_empty() {
         if let Err(error) = interp.interpret(ast.get_top_level()) {
             println!("{} -> {}", error.pos.get_full(program), error.msg);
-        } else {
+        } else if cfg!(lang_interp_print_locals) {
             interp.print_locals();
         }
     }

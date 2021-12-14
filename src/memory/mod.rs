@@ -3,6 +3,7 @@ use crate::langval::{ LangVal, LangType };
 //IN BYTES
 const MEMORY_SIZE:usize = 32;
 
+//TODO shouldnt use LangVal
 //TODO retry other types of memory with fixed benchmarking
 //TODO stack, faster heap allocator ?
 //RESEARCH look at C stack heap implementations (stack growing from the end)

@@ -1,4 +1,3 @@
-// mod analyzer;
 mod parser;
 mod lexer;
 
@@ -8,7 +7,6 @@ use typed_arena::Arena;
 
 pub struct Ast<'e>
 {
-    #[allow(dead_code)] // This is where all the Expr instances live, they are accessed using top_level
     arena: Arena<Expr<'e>>,
     top_level: Vec<&'e Expr<'e>>
 }
@@ -24,14 +22,12 @@ impl<'e> Ast<'e>
             println!("tokens: {:?}\n", tokens.iter().map(|tk| &tk.def).collect::<Vec<_>>());
         }
 
-        let (arena, top_level, mut more_errors) = Self::from_tokens(&tokens);
-        let ast = Ast { arena, top_level };
+        let (ast, mut more_errors) = Self::from_tokens(&tokens);
         errors.append(&mut more_errors);
         (ast, errors)
     }
 
-    //TODO probably useless
-    pub fn from_tokens (tokens:&VecDeque<Token>) -> (Arena<Expr<'e>>, Vec<&'e Expr<'e>>, Vec<Error>)
+    pub fn from_tokens (tokens:&VecDeque<Token>) -> (Self, Vec<Error>)
     {
         let arena = Arena::new();
         let top_level; let errors;
@@ -50,7 +46,7 @@ impl<'e> Ast<'e>
             println!();
         }
 
-        (arena, top_level, errors)
+        (Ast { arena, top_level }, errors)
     }
 
     pub fn get_top_level (&self) -> &Vec<&Expr>
@@ -77,14 +73,6 @@ impl IdentifierTools for Identifier
         identifier
     }
 }
-/* 
-impl std::fmt::Display for Identifier
-{
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
-    {
-        write!(f, "{}", crate::utils::slice_to_string(self))
-    }
-} */
 // #endregion
 
 // #region EXPR
