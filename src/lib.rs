@@ -46,7 +46,6 @@ pub fn compile (program:&str)
     let (ast, error_free) = make_ast(program);
     let mut compiler = vm::Compiler::new();
 
-    if !error_free { panic!("implement error handling"); }
     compiler.compile(ast.get_top_level());
     compiler.print_bytecode();
     compiler.memory.print_ram();

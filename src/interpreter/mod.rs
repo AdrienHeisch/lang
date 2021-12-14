@@ -38,16 +38,8 @@ impl<'e, 's> Interpreter<'e, 's>
         Self
         {
             memory: Memory::new(),
-            stack: unsafe {
-                let mut arr:[_; 8] = std::mem::MaybeUninit::uninit().assume_init();
-                let value = PtrOrFn::Ptr(Default::default());
-                for item in &mut arr[..] {
-                    // *item = std::mem::transmute_copy(&value);
-                    let ptr = item as *mut PtrOrFn;
-                    *ptr = value.clone();
-                }
-                arr
-            },
+            stack: { [(); 8].map(|_| PtrOrFn::Ptr(Default::default())) },
+            // stack: [PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default())],
             frame_ptr: 0,
             env: Environment::new(Context::TopLevel)
         }

@@ -62,6 +62,7 @@ impl Memory
                 t: LangType::Bool,
                 ptr: self.alloc(std::mem::size_of::<bool>())
             },
+            //TODO implement strings
             /* LangType::Str => Pointer {
                 t: LangType::Str,
                 ptr: self.alloc(1)
@@ -144,7 +145,8 @@ impl Memory
         let ptr = loop
         {
             while self.allocation_map[pos] {
-                if pos + len > MEMORY_SIZE - 1 { //TODO RETURN ERROR INSTEAD
+                //TODO RETURN ERROR INSTEAD
+                if pos + len > MEMORY_SIZE - 1 {
                     eprintln!("----------");
                     eprintln!("OUT OF MEMORY !");
                     eprintln!("Tried to allocate {} bytes at index {}", len, pos);
@@ -163,8 +165,7 @@ impl Memory
                 let is_allocated = self.allocation_map[i];
                 if is_allocated {
                     is_valid = false;
-                } else if !is_valid
-                {
+                } else if !is_valid {
                     pos = i;
                     next_pos_found = true;
                     break 'inner;
