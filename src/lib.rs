@@ -4,31 +4,52 @@ mod interpreter;
 mod langval;
 mod memory;
 mod utils;
-// mod vm;
+mod vm;
 
-pub fn eval (program:&str) -> Result<(), ()>
+fn make_ast (program:&str) -> (ast::Ast, bool)
 {
-    let mut interp = interpreter::Interpreter::new();
     let (ast, parse_errors) = ast::Ast::from_str(program);
 
     let error_free = parse_errors.is_empty();
     
-    if !error_free {
+    if error_free {
         for error in parse_errors {
             println!("{}", error);
         }
     }
+    
+    (ast, error_free)
+}
+
+pub fn eval (program:&str) -> Result<(), ()>
+{
+    let (ast, error_free) = make_ast(program);
+    let mut interp = interpreter::Interpreter::new();
 
     if cfg!(lang_ignore_parse_errors) || error_free {
-        if let Err(error) = interp.interpret(&ast.get_top_level()) {
+        if let Err(error) = interp.interpret(ast.get_top_level()) {
             println!("{}", error);
         } else {
             interp.print_locals();
+            /* let ast2 = make_ast("a *= 2;").0;
+            if interp.interpret(ast2.get_top_level()).is_ok() {};
+            interp.print_locals(); */
         }
         Ok(())
     } else {
         Err(())
     }
+}
+
+pub fn compile (program:&str)
+{
+    let (ast, error_free) = make_ast(program);
+    let mut compiler = vm::Compiler::new();
+
+    if !error_free { panic!("implement error handling"); }
+    compiler.compile(ast.get_top_level());
+    compiler.print_bytecode();
+    compiler.memory.print_ram();
 }
 
 #[allow(dead_code)]
@@ -54,7 +75,7 @@ pub mod benchmarks
 
         let expr = ast.get_top_level();
         let mut interp = interpreter::Interpreter::new();
-        if interp.interpret(&expr).is_err() {
+        if interp.interpret(expr).is_err() {
             println!("Interp: couldn't proceed to benchmark due to runtime errors.");
             return;
         }
@@ -66,7 +87,7 @@ pub mod benchmarks
             let now = Instant::now();
             
             #[allow(unused_must_use)]
-            { interp.interpret(&expr); }
+            { interp.interpret(expr); }
 
             duration += now.elapsed();
         }

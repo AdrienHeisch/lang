@@ -36,7 +36,7 @@ impl<'e, 's> Ast<'e, 's>
         let top_level; let errors;
         unsafe {
             let arena_ref = &*(&arena as *const Arena<Expr<'e, 's>>);
-            let pair = parser::parse(arena_ref, &tokens);
+            let pair = parser::parse(arena_ref, tokens);
             top_level = pair.0;
             errors = pair.1;
         }

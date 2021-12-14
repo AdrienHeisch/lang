@@ -56,17 +56,21 @@ impl Memory
         {
             LangType::Number => Pointer {
                 t: LangType::Number,
-                ptr: self.alloc(std::mem::size_of::<f32>())
+                ptr: self.alloc(std::mem::size_of::<f64>())
             },
             LangType::Bool => Pointer {
                 t: LangType::Bool,
                 ptr: self.alloc(std::mem::size_of::<bool>())
             },
-            LangType::Str => Pointer {
+            /* LangType::Str => Pointer {
                 t: LangType::Str,
                 ptr: self.alloc(1)
-            },
+            }, */
             LangType::Obj   => unimplemented!(),
+            LangType::FnPtr => Pointer {
+                t: LangType::FnPtr,
+                ptr: self.alloc(std::mem::size_of::<usize>())
+            },
             LangType::Void => panic!() //DESIGN make pointer for Void ?
         }
     }
@@ -76,16 +80,17 @@ impl Memory
         match ptr.t
         {
             LangType::Number => {
-                LangVal::Number(f32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
+                LangVal::Number(f64::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3], self.ram[ptr.ptr.pos + 4], self.ram[ptr.ptr.pos + 5], self.ram[ptr.ptr.pos + 6], self.ram[ptr.ptr.pos + 7]]))
             },
             LangType::Bool  => LangVal::Bool(self.access(&ptr.ptr)[0] == 1),
-            LangType::Str   => LangVal::Str(String::from_utf8(self.access(&ptr.ptr).to_vec()).ok().unwrap()),
+            // LangType::Str   => LangVal::Str(String::from_utf8(self.access(&ptr.ptr).to_vec()).ok().unwrap()),
             LangType::Obj   => unimplemented!(),
+            LangType::FnPtr => unimplemented!(),
             LangType::Void  => LangVal::Void,
         }
     }
 
-    pub fn set_var (&mut self, mut ptr:Pointer, value:&LangVal) -> Pointer //TODO remove return
+    pub fn set_var (&mut self, ptr:Pointer, value:&LangVal) -> Pointer //TODO remove return
     {
         use LangVal::*;
         match value
@@ -96,15 +101,16 @@ impl Memory
             Bool(b) => {
                 self.access_mut(&ptr.ptr)[0] = if *b { 1u8 } else { 0u8 };
             },
-            Str(s) =>  {
+            /* Str(s) =>  {
                 let bytes = s.as_bytes();
                 let len = bytes.len();
                 if len != ptr.ptr.len {
                     self.realloc(&mut ptr, len);
                 }
                 self.access_mut(&ptr.ptr).copy_from_slice(bytes);
-            },
+            }, */
             Obj(_) => unimplemented!(),
+            FnPtr(_) => unimplemented!(),
             Void => panic!() //DESIGN set var to Void ?
         }
         ptr

@@ -3,7 +3,7 @@ use super::{ Op, Token, TokenDef, Position, Delimiter, Error };
 use std::collections::VecDeque;
 
 //DESIGN define how strict the lexer should be (unexpected characters are currently ignored)
-pub fn lex<'s> (program:&'s str) -> (VecDeque<Token<'s, 's>>, Vec<Error>) //TODO retest vecdeque vs vec
+pub fn lex (program:&str) -> (VecDeque<Token>, Vec<Error>) //TODO retest vecdeque vs vec
 {
     let mut tokens = VecDeque::new();
     let mut errors = Vec::new();
@@ -116,7 +116,7 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
             }
             TokenDef::Op(Op::from_string(read_cursor!()))
         },
-        '"' => {
+        /* '"' => {
             pos += 1;
             loop
             {
@@ -127,7 +127,7 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
             let tk = TokenDef::Const(LangVal::Str(String::from(read_cursor!())));
             len += 2;
             tk
-        },
+        }, */
         c @ '(' | c @ '[' | c @ '{' => TokenDef::DelimOpen (Delimiter::from_char(c)),
         c @ ')' | c @ ']' | c @ '}' => TokenDef::DelimClose(Delimiter::from_char(c)),
         ',' => TokenDef::Comma,

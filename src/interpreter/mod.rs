@@ -6,12 +6,12 @@ use crate::{
     utils
 };
 
-const F32_EQ_THRESHOLD:f32 = 1e-6;
+const F64_EQ_THRESHOLD:f64 = 1e-6;
 
 pub struct Interpreter<'e, 's>
 {
     memory: Memory,
-    stack: [PtrOrFn<'e, 's>; 256], //TODO STACK_SIZE
+    stack: [PtrOrFn<'e, 's>; 8], //TODO STACK_SIZE
     frame_ptr: u8,
     env: Environment
 }
@@ -39,10 +39,12 @@ impl<'e, 's> Interpreter<'e, 's>
         {
             memory: Memory::new(),
             stack: unsafe {
-                let mut arr:[_; 256] = std::mem::MaybeUninit::uninit().assume_init();
+                let mut arr:[_; 8] = std::mem::MaybeUninit::uninit().assume_init();
                 let value = PtrOrFn::Ptr(Default::default());
                 for item in &mut arr[..] {
-                    *item = std::mem::transmute_copy(&value);
+                    // *item = std::mem::transmute_copy(&value);
+                    let ptr = item as *mut PtrOrFn;
+                    *ptr = value.clone();
                 }
                 arr
             },
@@ -256,19 +258,19 @@ impl<'e, 's> Interpreter<'e, 's>
         Ok(match (value_left, value_right)
         {
             (Number(l), Number(r)) => {
-                use utils::compare_floats;
+                use utils::compare_f64;
                 match op
                 {
                     Assign => {
                         let value = self.expr(e_right)?;
                         self.assign(e_left, e_right.downcast(value))?
                     },
-                    Equal       =>   Bool( compare_floats(l, r, F32_EQ_THRESHOLD)),
-                    NotEqual    =>   Bool(!compare_floats(l, r, F32_EQ_THRESHOLD)),
+                    Equal       =>   Bool( compare_f64(l, r, F64_EQ_THRESHOLD)),
+                    NotEqual    =>   Bool(!compare_f64(l, r, F64_EQ_THRESHOLD)),
                     Gt          =>   Bool(l > r),
-                    Gte         =>   Bool(l > r || compare_floats(l, r, F32_EQ_THRESHOLD)),
+                    Gte         =>   Bool(l > r || compare_f64(l, r, F64_EQ_THRESHOLD)),
                     Lt          =>   Bool(l < r),
-                    Lte         =>   Bool(l < r || compare_floats(l, r, F32_EQ_THRESHOLD)),
+                    Lte         =>   Bool(l < r || compare_f64(l, r, F64_EQ_THRESHOLD)),
                     Add         => Number(l + r),
                     Sub         => Number(l - r),
                     Mult        => Number(l * r),
@@ -282,7 +284,7 @@ impl<'e, 's> Interpreter<'e, 's>
                     _ => return Err(Nothing)
                 }
             },
-            (Str(l), Str(r)) => {
+            /* (Str(l), Str(r)) => {
                 match op
                 {
                     Assign => {
@@ -295,7 +297,7 @@ impl<'e, 's> Interpreter<'e, 's>
                     AddAssign   => self.assign(e_left, e_right.downcast(Str(l + &r)))?,
                     _ => return Err(Nothing)
                 }
-            },
+            }, */
             (Bool(l), Bool(r)) => {
                 match op
                 {
@@ -409,7 +411,8 @@ impl<'e, 's> Interpreter<'e, 's>
                         self.free_unused_stack(n_vars as usize);
 
                         self.frame_ptr = prev_frame_ptr;
-                        std::mem::replace(&mut self.env, prev_env);
+                        // std::mem::replace(&mut self.env, prev_env); //what was that
+                        self.env = prev_env;
 
                         out
                     }
@@ -463,7 +466,7 @@ impl<'e, 's> Interpreter<'e, 's>
         for ptr in self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)..].iter().take(n_variables)
         {
             match ptr {
-                PtrOrFn::Ptr(ptr) => self.memory.free_ptr(&ptr),
+                PtrOrFn::Ptr(ptr) => self.memory.free_ptr(ptr),
                 PtrOrFn::Fn(_, _) => ()
             }
         }

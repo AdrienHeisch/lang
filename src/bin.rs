@@ -1,4 +1,4 @@
-use lang::eval;
+use lang::{ eval, compile };
 
 //TODO PROFILING
 //TODO use a logging framework
@@ -26,6 +26,7 @@ fn main () -> Result<(), std::io::Error>
 
 fn eval_file (path:&str) -> Result<(), std::io::Error>
 {
-    if eval(&std::fs::read_to_string(path)?).is_ok() {}; //TODO use result
+    if eval(&std::fs::read_to_string(path)?).is_ok() {};
+    // compile(&std::fs::read_to_string(path)?);
     Ok(())
 }

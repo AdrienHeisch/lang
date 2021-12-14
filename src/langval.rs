@@ -5,11 +5,12 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, PartialEq)]
 pub enum LangVal
 {
-    Number(f32),
-    Str(String), //TODO get rid of this
+    Number(f64),
+    // Str(String), //TODO get rid of this
     Bool(bool),
     #[allow(dead_code)]
     Obj(Pointer), //TODO objects
+    FnPtr(usize),
     Void
 }
 
@@ -17,10 +18,11 @@ pub enum LangVal
 pub enum LangType
 {
     Number,
-    Str,
+    // Str,
     Bool,
     #[allow(dead_code)]
     Obj, //TODO objects
+    FnPtr,
     Void
 }
 
@@ -38,9 +40,10 @@ impl LangVal
         match self
         {
             LangVal::Number(_)  => LangType::Number,
-            LangVal::Str(_)     => LangType::Str,
+            // LangVal::Str(_)     => LangType::Str,
             LangVal::Bool(_)    => LangType::Bool,
             LangVal::Obj(_)     => unimplemented!(),
+            LangVal::FnPtr(_)     => unimplemented!(),
             LangVal::Void       => LangType::Void,
         }
     }
@@ -55,9 +58,10 @@ impl std::fmt::Display for LangVal
         match self
         {
             Number(f_) => write!(f, "{}", f_),
-            Str(s) => write!(f, "{}", s),
+            // Str(s) => write!(f, "{}", s),
             Bool(b) => write!(f, "{}", b),
             Obj(o) => write!(f, "{:?}", o),
+            FnPtr(i) => write!(f, "{:?}", i),
             Void => write!(f, "void")
         }
     }

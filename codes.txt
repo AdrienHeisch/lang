@@ -1,0 +1,24 @@
+var a = 2.1 * 3.1 + 7.1;
+var b = 42;
+b += 58;
+
+var c = a + 5.1;
+a *= 2.1;
+
+struct point {
+    x,
+    y
+}
+
+
+
+
+
+
+fn sum (bool, a, b) {
+    fn double (value) { value * 2; }
+    if bool { return double(a + b); }
+    a + b;
+}
+
+var s = sum(true, 3, 2);
