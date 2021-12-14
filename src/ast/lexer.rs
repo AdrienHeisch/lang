@@ -21,7 +21,6 @@ pub fn lex (program:&str) -> (VecDeque<Token>, Vec<Error>) //TODO retest vecdequ
                     _ => {
                         tokens.push_back(Token {
                             def: token_def,
-                            src: program,
                             pos: Position(pos, pos + len)
                         })
                     }
@@ -30,8 +29,8 @@ pub fn lex (program:&str) -> (VecDeque<Token>, Vec<Error>) //TODO retest vecdequ
             },
             (Err(chars), len) => {
                 let error = Error {
-                    msg: format!("Unexpected characters : {:?}", chars),
-                    pos: Position(pos, pos + len).get_full(program)
+                    msg: format!("Unexpected characters : {:?}", chars), //TODO error code (unexpected vs id too long)
+                    pos: Position(pos, pos + len)
                 };
 
                 if cfg!(lang_panic_on_error) {
@@ -44,7 +43,7 @@ pub fn lex (program:&str) -> (VecDeque<Token>, Vec<Error>) //TODO retest vecdequ
         }
     }
     
-    tokens.push_back(Token { def: TokenDef::Eof, src: program, pos: Position::zero() });
+    tokens.push_back(Token { def: TokenDef::Eof, pos: Position::zero() });
 
     (tokens, errors)
 }
@@ -87,7 +86,16 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
             {
                 "true" => TokenDef::Const(LangVal::Bool(true)),
                 "false" => TokenDef::Const(LangVal::Bool(false)),
-                id => TokenDef::Id(id)
+                id => {
+                    if id.len() < 8 {
+                        let id_bytes = id.as_bytes();
+                        let mut bytes = [0; 8];
+                        bytes[..id_bytes.len()].clone_from_slice(id_bytes);
+                        TokenDef::Id(bytes)
+                    } else {
+                        return (Err(collect_unexpected_chars(program, get_char!(), &mut pos, &mut len)), len);
+                    }
+                }
             }
         },
         '0'..='9' => {

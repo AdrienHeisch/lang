@@ -6,17 +6,17 @@ use crate::langval::{ LangVal };
 use std::collections::VecDeque;
 use typed_arena::Arena;
 
-pub struct Ast<'e, 's>
+pub struct Ast<'e>
 {
     #[allow(dead_code)] // This is where all the Expr instances live, they are accessed using top_level
-    arena: Arena<Expr<'e, 's>>,
-    top_level: Vec<&'e Expr<'e, 's>>
+    arena: Arena<Expr<'e>>,
+    top_level: Vec<&'e Expr<'e>>
 }
 
-impl<'e, 's> Ast<'e, 's>
+impl<'e> Ast<'e>
 {
 
-    pub fn from_str (program:&'s str) -> (Self, Vec<Error>)
+    pub fn from_str (program:&str) -> (Self, Vec<Error>)
     {
         let (tokens, mut errors) = lexer::lex(program);
 
@@ -24,18 +24,19 @@ impl<'e, 's> Ast<'e, 's>
             println!("tokens: {:?}\n", tokens.iter().map(|tk| &tk.def).collect::<Vec<_>>());
         }
 
-        let (ast, mut more_errors) = Self::from_tokens(&tokens);
+        let (arena, top_level, mut more_errors) = Self::from_tokens(&tokens);
+        let ast = Ast { arena, top_level };
         errors.append(&mut more_errors);
         (ast, errors)
     }
 
     //TODO probably useless
-    pub fn from_tokens (tokens:&VecDeque<Token<'_, 's>>) -> (Self, Vec<Error>)
+    pub fn from_tokens (tokens:&VecDeque<Token>) -> (Arena<Expr<'e>>, Vec<&'e Expr<'e>>, Vec<Error>)
     {
         let arena = Arena::new();
         let top_level; let errors;
         unsafe {
-            let arena_ref = &*(&arena as *const Arena<Expr<'e, 's>>);
+            let arena_ref = &*(&arena as *const Arena<Expr<'e>>);
             let pair = parser::parse(arena_ref, tokens);
             top_level = pair.0;
             errors = pair.1;
@@ -49,7 +50,7 @@ impl<'e, 's> Ast<'e, 's>
             println!();
         }
 
-        (Ast { arena, top_level }, errors)
+        (arena, top_level, errors)
     }
 
     pub fn get_top_level (&self) -> &Vec<&Expr>
@@ -60,7 +61,7 @@ impl<'e, 's> Ast<'e, 's>
 }
 
 // #region IDENTIFIER
-pub type Identifier = [u8; 16];
+pub type Identifier = [u8; 8];
 
 trait IdentifierTools
 {
@@ -87,35 +88,35 @@ impl std::fmt::Display for Identifier
 // #endregion
 
 // #region EXPR
-pub type Expr<'e, 's> = WithPosition<'s, ExprDef<'e, 's>>;
+pub type Expr<'e> = WithPosition<ExprDef<'e>>;
 
 #[derive(Debug, Clone)]
-pub enum ExprDef<'e, 's>
+pub enum ExprDef<'e>
 {
     // --- Values
     Const       (LangVal),
     Id          (Identifier),
     // --- Control Flow
-    If          { cond: &'e Expr<'e, 's>, then: &'e Expr<'e, 's>, elze: Option<&'e Expr<'e, 's>>  },
-    While       { cond: &'e Expr<'e, 's>, body: &'e Expr<'e, 's> },
+    If          { cond: &'e Expr<'e>, then: &'e Expr<'e>, elze: Option<&'e Expr<'e>>  },
+    While       { cond: &'e Expr<'e>, body: &'e Expr<'e> },
     // --- Operations
-    Field       (&'e Expr<'e, 's>, &'e Expr<'e, 's>),
-    UnOp        (Op, &'e Expr<'e, 's>),
-    BinOp       { op: Op, left: &'e Expr<'e, 's>, right: &'e Expr<'e, 's> },
-    Call        { id: &'e Expr<'e, 's>, args: Box<[&'e Expr<'e, 's>]> },
+    Field       (&'e Expr<'e>, &'e Expr<'e>),
+    UnOp        (Op, &'e Expr<'e>),
+    BinOp       { op: Op, left: &'e Expr<'e>, right: &'e Expr<'e> },
+    Call        { id: &'e Expr<'e>, args: Box<[&'e Expr<'e>]> },
     // --- Declarations
-    Var         (Identifier, &'e Expr<'e, 's>), //TODO allow declaration without initialization
-    FnDecl      { id:Identifier, params:Box<[Identifier]>, body:&'e Expr<'e, 's> },
+    Var         (Identifier, &'e Expr<'e>),
+    FnDecl      { id:Identifier, params:Box<[Identifier]>, body:&'e Expr<'e> },
     StructDecl  { id:Identifier, fields:Box<[Identifier]> },
     // --- Others
-    Block       (Box<[&'e Expr<'e, 's>]>),
-    Parent      (&'e Expr<'e, 's>),
-    Return      (&'e Expr<'e, 's>),
+    Block       (Box<[&'e Expr<'e>]>),
+    Parent      (&'e Expr<'e>),
+    Return      (&'e Expr<'e>),
     Invalid,
     End //TODO this seems to be useless
 }
 
-impl<'e, 's> Expr<'e, 's>
+impl<'e> Expr<'e>
 {
 
     pub fn is_block (&self) -> bool
@@ -141,12 +142,12 @@ impl<'e, 's> Expr<'e, 's>
 // #endregion
 
 // #region TOKEN
-pub type Token<'t, 's> = WithPosition<'s, TokenDef<'t>>;
+pub type Token = WithPosition<TokenDef>;
 
 #[derive(Debug, PartialEq)]
-pub enum TokenDef<'s>
+pub enum TokenDef
 {
-    Id(&'s str),
+    Id(Identifier),
     Const(LangVal),
     Op(Op),
     DelimOpen(Delimiter),
@@ -168,7 +169,7 @@ pub enum Delimiter
 
 impl Delimiter
 {
-    pub fn to_str (&self, closing:bool) -> &str
+    pub fn to_str<'s> (self, closing:bool) -> &'s str
     {
         use Delimiter::*;
 
@@ -321,17 +322,16 @@ impl Op
 
 // #region POSITION
 #[derive(Clone)]
-pub struct WithPosition<'s, T> where T : std::fmt::Debug
+pub struct WithPosition<T> where T : std::fmt::Debug
 {
     pub def: T,
-    pub src: &'s str, //TODO probably useless, store in Ast
     pub pos: Position,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct Position(usize, usize);
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct FullPosition
 {
     line: usize,
@@ -339,7 +339,7 @@ pub struct FullPosition
     len: usize
 }
 
-impl<'s, T> std::fmt::Debug for WithPosition<'s, T> where T : std::fmt::Debug
+impl<T> std::fmt::Debug for WithPosition<T> where T : std::fmt::Debug
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
     {
@@ -347,12 +347,13 @@ impl<'s, T> std::fmt::Debug for WithPosition<'s, T> where T : std::fmt::Debug
     }
 }
 
-impl<'s, T> WithPosition<'s, T> where T : std::fmt::Debug
+impl<T> WithPosition<T> where T : std::fmt::Debug
 {
     
     pub fn get_full_pos (&self) -> FullPosition
     {
-        self.pos.get_full(self.src)
+        // self.pos.get_full(self.src)
+        FullPosition::default()
     }
 
     /* pub fn add_as_full_pos<U> (left:&Self, right:&WithPosition<U>) -> FullPosition where U : std::fmt::Debug
@@ -369,7 +370,6 @@ impl<'s, T> WithPosition<'s, T> where T : std::fmt::Debug
         WithPosition
         {
             def,
-            src: self.src,
             pos: self.pos
         }
     }
@@ -440,14 +440,14 @@ impl std::fmt::Display for FullPosition
 pub struct Error
 {
     pub msg: String,
-    pub pos: FullPosition
+    pub pos: Position
 }
 
 impl std::fmt::Display for Error
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
     {
-        write!(f, "{} -> {}", self.pos, self.msg)
+        write!(f, "{:?} -> {}", self.pos, self.msg)
     }
 }
 // #endregion

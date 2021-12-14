@@ -1,5 +1,5 @@
 use crate::{
-    ast::{ Identifier, Expr, ExprDef, Op, Error, FullPosition, WithPosition },
+    ast::{ Identifier, Expr, ExprDef, Op, Error, Position, WithPosition },
     env::{ Environment, Context },
     memory::{ Memory, Pointer },
     langval::{ LangVal, LangType },
@@ -8,19 +8,19 @@ use crate::{
 
 const F64_EQ_THRESHOLD:f64 = 1e-6;
 
-pub struct Interpreter<'e, 's>
+pub struct Interpreter<'e>
 {
     memory: Memory,
-    stack: [PtrOrFn<'e, 's>; 8], //TODO STACK_SIZE
+    stack: [PtrOrFn<'e>; 8], //TODO STACK_SIZE
     frame_ptr: u8,
     env: Environment
 }
 
 #[derive(Debug, Clone)]
-enum PtrOrFn<'e, 's> //TODO function pointers in memory, points to a value in a table in the interpreter
+enum PtrOrFn<'e> //TODO function pointers in memory, points to a value in a table in the interpreter
 {
     Ptr(Pointer),
-    Fn(Box<[Identifier]>, Expr<'e, 's>)
+    Fn(Box<[Identifier]>, Expr<'e>)
 }
 
 enum ResultErr
@@ -30,7 +30,7 @@ enum ResultErr
     Nothing
 }
 
-impl<'e, 's> Interpreter<'e, 's>
+impl<'e> Interpreter<'e>
 {
     
     pub fn new () -> Self
@@ -47,7 +47,7 @@ impl<'e, 's> Interpreter<'e, 's>
 
     // ----- INTERP
 
-    pub fn interpret (&mut self, exprs:&[&Expr<'e, 's>]) -> Result<(), Error>
+    pub fn interpret (&mut self, exprs:&[&Expr<'e>]) -> Result<(), Error>
     {
         if cfg!(not(lang_benchmark)) {
             println!("Program stdout :");
@@ -78,7 +78,7 @@ impl<'e, 's> Interpreter<'e, 's>
         self.env = Environment::new(Context::TopLevel);
     }
 
-    fn throw (&mut self, msg:String, pos:FullPosition) -> ResultErr
+    fn throw (&mut self, msg:String, pos:Position) -> ResultErr
     {
         let error = Error { msg, pos };
         if cfg!(lang_panic_on_error) {
@@ -88,7 +88,7 @@ impl<'e, 's> Interpreter<'e, 's>
         }
     }
 
-    fn expr (&mut self, expr:&Expr<'e, 's>) -> Result<LangVal, ResultErr>
+    fn expr (&mut self, expr:&Expr<'e>) -> Result<LangVal, ResultErr>
     {
         use ExprDef::*;
         Ok(match &expr.def
@@ -99,7 +99,7 @@ impl<'e, 's> Interpreter<'e, 's>
                 if let PtrOrFn::Ptr(ptr) = self.get_pointer(id).unwrap() { //TODO remove this unwrap !!
                     self.memory.get_var(&ptr)
                 } else {
-                    return Err(self.throw("Tried to use function as value.".to_owned(), expr.get_full_pos())); //DESIGN functions as values ?
+                    return Err(self.throw("Tried to use function as value.".to_owned(), expr.pos)); //DESIGN functions as values ?
                 }
             },
             // --- Control Flow
@@ -115,7 +115,7 @@ impl<'e, 's> Interpreter<'e, 's>
                             LangVal::Void
                         }
                     },
-                    _ => return Err(self.throw(format!("Invalid condition : {:?}", cond), expr.get_full_pos()))
+                    _ => return Err(self.throw(format!("Invalid condition : {:?}", cond), expr.pos))
                 }
                 
             },
@@ -131,7 +131,7 @@ impl<'e, 's> Interpreter<'e, 's>
                                 break;
                             }
                         },
-                        _ => return Err(self.throw(format!("Invalid condition : {:?}", cond), expr.get_full_pos()))
+                        _ => return Err(self.throw(format!("Invalid condition : {:?}", cond), expr.pos))
                     }
                 }
                 LangVal::Void
@@ -141,7 +141,7 @@ impl<'e, 's> Interpreter<'e, 's>
                 match self.unop(*op, right)
                 {
                     Ok(val) => val,
-                    Err(ResultErr::Nothing) => return Err(self.throw(format!("Invalid operation : {}{:?}", op.to_string(), right.def), expr.get_full_pos())),
+                    Err(ResultErr::Nothing) => return Err(self.throw(format!("Invalid operation : {}{:?}", op.to_string(), right.def), expr.pos)),
                     err @ Err(_) => return err
                 }
             },
@@ -149,7 +149,7 @@ impl<'e, 's> Interpreter<'e, 's>
                 match self.binop(*op, left, right)
                 {
                     Ok(val) => val,
-                    Err(ResultErr::Nothing) => return Err(self.throw(format!("Invalid operation : {:?} {} {:?}", left.def, op.to_string(), right.def), expr.get_full_pos())),
+                    Err(ResultErr::Nothing) => return Err(self.throw(format!("Invalid operation : {:?} {} {:?}", left.def, op.to_string(), right.def), expr.pos)),
                     err @ Err(_) => return err
                 }
             },
@@ -165,7 +165,7 @@ impl<'e, 's> Interpreter<'e, 's>
                 let ptr = match self.declare_var(id, value.as_type())
                 {
                     Ok(ptr) => ptr,
-                    Err(message) => return Err(self.throw(message, expr.get_full_pos()))
+                    Err(message) => return Err(self.throw(message, expr.pos))
                 };
                 //TODO remove this hack
                 self.stack[self.frame_ptr as usize + self.env.locals_count as usize - 1] = PtrOrFn::Ptr(self.memory.set_var(ptr, &value));
@@ -173,7 +173,7 @@ impl<'e, 's> Interpreter<'e, 's>
             }, 
             FnDecl { id, params, body } => {
                 if let Err(message) = self.declare_fn(id, params.clone(), body) {
-                    return Err(self.throw(message, expr.get_full_pos()));
+                    return Err(self.throw(message, expr.pos));
                 }
                 LangVal::Void
             },
@@ -205,15 +205,15 @@ impl<'e, 's> Interpreter<'e, 's>
                 if let Context::Function = self.env.get_context() {
                     return Err(ResultErr::Return(self.expr(e)?));
                 } else {
-                    return Err(self.throw("Can't return from top-level".to_owned(), e.get_full_pos()));
+                    return Err(self.throw("Can't return from top-level".to_owned(), e.pos));
                 }
             },
             End => LangVal::Void,
-            Invalid => return Err(self.throw(format!("Invalid expression : {:?}", expr), expr.get_full_pos()))
+            Invalid => return Err(self.throw(format!("Invalid expression : {:?}", expr), expr.pos))
         })
     }
 
-    fn unop (&mut self, op:Op, e_right:&Expr<'e, 's>) -> Result<LangVal, ResultErr>
+    fn unop (&mut self, op:Op, e_right:&Expr<'e>) -> Result<LangVal, ResultErr>
     {
         use ResultErr::Nothing;
 
@@ -239,7 +239,7 @@ impl<'e, 's> Interpreter<'e, 's>
         })
     }
 
-    fn binop (&mut self, op:Op, e_left:&Expr<'e, 's>, e_right:&Expr<'e, 's>) -> Result<LangVal, ResultErr>
+    fn binop (&mut self, op:Op, e_left:&Expr<'e>, e_right:&Expr<'e>) -> Result<LangVal, ResultErr>
     {
         use ResultErr::Nothing;
         
@@ -318,12 +318,12 @@ impl<'e, 's> Interpreter<'e, 's>
                 panic!("Tried to use function as value.") //TODO //DESIGN functions as values ?
             }, &value.def);
         } else {
-            return Err(self.throw(format!("Can't assign {:?} to {:?}", value, e_to), value.get_full_pos()));
+            return Err(self.throw(format!("Can't assign {:?} to {:?}", value, e_to), value.pos));
         }
         Ok(value.def)
     }
 
-    fn call (&mut self, e_id:&Expr<'e, 's>, args:&[&Expr<'e, 's>]) -> Result<LangVal, ResultErr> //TODO globals
+    fn call (&mut self, e_id:&Expr<'e>, args:&[&Expr<'e>]) -> Result<LangVal, ResultErr> //TODO globals
     {
         Ok(match &e_id.def
         {
@@ -361,9 +361,9 @@ impl<'e, 's> Interpreter<'e, 's>
                         let values_and_params = args.iter().map(|arg| self.expr(arg)).zip(params.iter()).collect::<Vec<_>>();
 
                         let args_pos = if args.is_empty() {
-                            e_id.get_full_pos()
+                            e_id.pos
                         } else {
-                            args.iter().skip(1).fold(args[0].pos, |acc, arg| acc + arg.pos).get_full(e_id.src)
+                            args.iter().skip(1).fold(args[0].pos, |acc, arg| acc + arg.pos)
                         };
 
                         let prev_frame_ptr = self.frame_ptr;
@@ -371,7 +371,7 @@ impl<'e, 's> Interpreter<'e, 's>
 
                         let prev_env = std::mem::replace(&mut self.env, Environment::new(Context::Function));
 
-                        // self.declare_fn(id, params: Box<[Identifier]>, body: &Expr<'e, 's>)
+                        // self.declare_fn(id, params: Box<[Identifier]>, body: &Expr<'e>)
                         
                         if params.len() != args.len() {
                             // panic!("Invalid number of arguments.");
@@ -383,7 +383,7 @@ impl<'e, 's> Interpreter<'e, 's>
                             let ptr = match self.declare_var(param, value.as_type())
                             {
                                 Ok(ptr) => ptr,
-                                Err(message) => return Err(self.throw(message, e_id.get_full_pos()))
+                                Err(message) => return Err(self.throw(message, e_id.pos))
                             };
                             self.memory.set_var(ptr, &value);
                         }
@@ -410,13 +410,13 @@ impl<'e, 's> Interpreter<'e, 's>
                     }
                 }
             },
-            _ => return Err(self.throw(format!("Expected an identifier, got : {:?}", e_id), e_id.get_full_pos()))
+            _ => return Err(self.throw(format!("Expected an identifier, got : {:?}", e_id), e_id.pos))
         })
     }
 
     // ----- VARIABLES
 
-    pub fn declare_fn (&mut self, id:&Identifier, params:Box<[Identifier]>, body:&Expr<'e, 's>) -> Result<(), String>
+    pub fn declare_fn (&mut self, id:&Identifier, params:Box<[Identifier]>, body:&Expr<'e>) -> Result<(), String>
     {
         self.env.locals[self.env.locals_count as usize] = (*id, self.env.scope_depth);
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] = PtrOrFn::Fn(params, body.clone());
@@ -441,7 +441,7 @@ impl<'e, 's> Interpreter<'e, 's>
         Ok(ptr)
     }
 
-    fn get_pointer (&self, id:&Identifier) -> Option<PtrOrFn<'e, 's>>
+    fn get_pointer (&self, id:&Identifier) -> Option<PtrOrFn<'e>>
     {
         for i in (0..self.env.locals_count as usize).rev()
         {

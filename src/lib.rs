@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod ast;
 mod env;
 mod interpreter;
@@ -21,29 +23,23 @@ fn make_ast (program:&str) -> (ast::Ast, bool)
     (ast, error_free)
 }
 
-pub fn eval (program:&str) -> Result<(), ()>
+pub fn eval (program:&str)
 {
     let (ast, error_free) = make_ast(program);
     let mut interp = interpreter::Interpreter::new();
 
     if cfg!(lang_ignore_parse_errors) || error_free {
         if let Err(error) = interp.interpret(ast.get_top_level()) {
-            println!("{}", error);
+            println!("{} -> {}", error.pos.get_full(program), error.msg);
         } else {
             interp.print_locals();
-            /* let ast2 = make_ast("a *= 2;").0;
-            if interp.interpret(ast2.get_top_level()).is_ok() {};
-            interp.print_locals(); */
         }
-        Ok(())
-    } else {
-        Err(())
     }
 }
 
 pub fn compile (program:&str)
 {
-    let (ast, error_free) = make_ast(program);
+    let (ast, _error_free) = make_ast(program); //TODO errors ?
     let mut compiler = vm::Compiler::new();
 
     compiler.compile(ast.get_top_level());

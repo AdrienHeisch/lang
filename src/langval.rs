@@ -1,5 +1,5 @@
 use crate::ast::Identifier;
-use crate::memory::Pointer;
+use crate::memory::Pointer; //TODO remove this
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,7 +20,6 @@ pub enum LangType
     Number,
     // Str,
     Bool,
-    #[allow(dead_code)]
     Obj, //TODO objects
     FnPtr,
     Void

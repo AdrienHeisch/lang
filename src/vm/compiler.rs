@@ -1,5 +1,5 @@
 use crate::ast::{ Expr, ExprDef };
-use crate::langval::{ LangVal, LangType };
+use crate::langval::{ LangVal };
 use crate::memory::Memory;
 
 pub struct Compiler
@@ -8,6 +8,7 @@ pub struct Compiler
     pub chunk: Vec<u8>
 }
 
+#[derive(Copy, Clone)]
 enum OpCode
 {
     Return,
@@ -65,8 +66,8 @@ impl Compiler
 
 impl OpCode
 {
-    fn as_byte (self) -> u8
+    fn as_byte (&self) -> u8
     {
-        self as u8
+        *self as u8
     }
 }

@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use lang::{ eval, compile };
 
 //TODO PROFILING
@@ -26,7 +27,7 @@ fn main () -> Result<(), std::io::Error>
 
 fn eval_file (path:&str) -> Result<(), std::io::Error>
 {
-    if eval(&std::fs::read_to_string(path)?).is_ok() {};
+    eval(&std::fs::read_to_string(path)?);
     // compile(&std::fs::read_to_string(path)?);
     Ok(())
 }
