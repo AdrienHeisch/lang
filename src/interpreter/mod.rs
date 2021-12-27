@@ -6,7 +6,7 @@ use crate::{
     utils
 };
 
-const F64_EQ_THRESHOLD:f64 = 1e-6;
+const F32_EQ_THRESHOLD:f32 = 1e-6;
 const STACK_SIZE:usize = 8;
 
 pub struct Interpreter<'e>
@@ -216,10 +216,10 @@ impl<'e> Interpreter<'e>
 
         Ok(match value
         {
-            LangVal::Number(f) => {
+            LangVal::Float(f) => {
                 match op
                 {
-                    Op::Sub => LangVal::Number(-f),
+                    Op::Sub => LangVal::Float(-f),
                     _ => return Err(Nothing)
                 }
             },
@@ -244,30 +244,30 @@ impl<'e> Interpreter<'e>
         use { Op::*, LangVal::* };
         Ok(match (value_left, value_right)
         {
-            (Number(l), Number(r)) => {
-                use utils::compare_f64;
+            (Float(l), Float(r)) => {
+                use utils::compare_f32;
                 match op
                 {
                     Assign => {
                         let value = self.expr(e_right)?;
                         self.assign(e_left, e_right.downcast(value))?
                     },
-                    Equal       =>   Bool( compare_f64(l, r, F64_EQ_THRESHOLD)),
-                    NotEqual    =>   Bool(!compare_f64(l, r, F64_EQ_THRESHOLD)),
+                    Equal       =>   Bool( compare_f32(l, r, F32_EQ_THRESHOLD)),
+                    NotEqual    =>   Bool(!compare_f32(l, r, F32_EQ_THRESHOLD)),
                     Gt          =>   Bool(l > r),
-                    Gte         =>   Bool(l > r || compare_f64(l, r, F64_EQ_THRESHOLD)),
+                    Gte         =>   Bool(l > r || compare_f32(l, r, F32_EQ_THRESHOLD)),
                     Lt          =>   Bool(l < r),
-                    Lte         =>   Bool(l < r || compare_f64(l, r, F64_EQ_THRESHOLD)),
-                    Add         => Number(l + r),
-                    Sub         => Number(l - r),
-                    Mult        => Number(l * r),
-                    Div         => Number(l / r),
-                    Mod         => Number(l % r),
-                    AddAssign   => self.assign(e_left, e_right.downcast(Number(l + r)))?,
-                    SubAssign   => self.assign(e_left, e_right.downcast(Number(l - r)))?,
-                    MultAssign  => self.assign(e_left, e_right.downcast(Number(l * r)))?,
-                    DivAssign   => self.assign(e_left, e_right.downcast(Number(l / r)))?,
-                    ModAssign   => self.assign(e_left, e_right.downcast(Number(l % r)))?,
+                    Lte         =>   Bool(l < r || compare_f32(l, r, F32_EQ_THRESHOLD)),
+                    Add         => Float(l + r),
+                    Sub         => Float(l - r),
+                    Mult        => Float(l * r),
+                    Div         => Float(l / r),
+                    Mod         => Float(l % r),
+                    AddAssign   => self.assign(e_left, e_right.downcast(Float(l + r)))?,
+                    SubAssign   => self.assign(e_left, e_right.downcast(Float(l - r)))?,
+                    MultAssign  => self.assign(e_left, e_right.downcast(Float(l * r)))?,
+                    DivAssign   => self.assign(e_left, e_right.downcast(Float(l / r)))?,
+                    ModAssign   => self.assign(e_left, e_right.downcast(Float(l % r)))?,
                     _ => return Err(Nothing)
                 }
             },

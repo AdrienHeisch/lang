@@ -40,11 +40,10 @@ impl Compiler
         if let Const(value) = &expr.def {
             self.chunk.push(OpCode::Const.as_byte());
 
-            use std::convert::TryInto;
             let cst = match value
             {
-                LangVal::Number(n) if n.fract() == 0. => (*n as u64).try_into().unwrap(),
-                LangVal::Number(_) => unimplemented!(),
+                LangVal::Int(_) => unimplemented!(),
+                LangVal::Float(_) => unimplemented!(),
                 LangVal::Bool(b) => (*b) as u8,
                 LangVal::Obj(_) => unimplemented!(),
                 LangVal::FnPtr(_) => unimplemented!(),

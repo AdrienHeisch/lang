@@ -55,9 +55,13 @@ impl Memory
     {
         match t
         {
-            LangType::Number => Pointer {
-                t: LangType::Number,
-                ptr: self.alloc(std::mem::size_of::<f64>())
+            LangType::Int => Pointer {
+                t: LangType::Int,
+                ptr: self.alloc(std::mem::size_of::<i32>())
+            },
+            LangType::Float => Pointer {
+                t: LangType::Float,
+                ptr: self.alloc(std::mem::size_of::<f32>())
             },
             LangType::Bool => Pointer {
                 t: LangType::Bool,
@@ -81,8 +85,11 @@ impl Memory
     {
         match ptr.t
         {
-            LangType::Number => {
-                LangVal::Number(f64::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3], self.ram[ptr.ptr.pos + 4], self.ram[ptr.ptr.pos + 5], self.ram[ptr.ptr.pos + 6], self.ram[ptr.ptr.pos + 7]]))
+            LangType::Int => {
+                LangVal::Int(i32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
+            },
+            LangType::Float => {
+                LangVal::Float(f32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
             },
             LangType::Bool  => LangVal::Bool(self.access(&ptr.ptr)[0] == 1),
             // LangType::Str   => LangVal::Str(String::from_utf8(self.access(&ptr.ptr).to_vec()).ok().unwrap()),
@@ -97,7 +104,10 @@ impl Memory
         use LangVal::*;
         match value
         {
-            Number(f) => {
+            Int(i) => {
+                self.access_mut(&ptr.ptr).copy_from_slice(&(*i).to_ne_bytes());
+            },
+            Float(f) => {
                 self.access_mut(&ptr.ptr).copy_from_slice(&(*f).to_ne_bytes());
             },
             Bool(b) => {
