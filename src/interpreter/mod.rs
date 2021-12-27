@@ -7,11 +7,12 @@ use crate::{
 };
 
 const F64_EQ_THRESHOLD:f64 = 1e-6;
+const STACK_SIZE:usize = 8;
 
 pub struct Interpreter<'e>
 {
     memory: Memory,
-    stack: [PtrOrFn<'e>; 8], //TODO STACK_SIZE
+    stack: [PtrOrFn<'e>; STACK_SIZE],
     frame_ptr: u8,
     env: Environment
 }
@@ -38,8 +39,7 @@ impl<'e> Interpreter<'e>
         Self
         {
             memory: Memory::new(),
-            stack: { [(); 8].map(|_| PtrOrFn::Ptr(Default::default())) },
-            // stack: [PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default()), PtrOrFn::Ptr(Default::default())],
+            stack: [(); 8].map(|_| PtrOrFn::Ptr(Default::default())),
             frame_ptr: 0,
             env: Environment::new(Context::TopLevel)
         }
@@ -68,12 +68,7 @@ impl<'e> Interpreter<'e>
     pub fn reset (&mut self)
     {
         self.memory = Memory::new();
-        unsafe {
-            let value = PtrOrFn::Ptr(Default::default());
-            for item in &mut self.stack[..] {
-                std::ptr::copy_nonoverlapping(&value, item, 1);
-            }
-        };
+        self.stack = [(); 8].map(|_| PtrOrFn::Ptr(Default::default()));
         self.frame_ptr = 0;
         self.env = Environment::new(Context::TopLevel);
     }

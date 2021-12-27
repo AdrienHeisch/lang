@@ -11,7 +11,7 @@ pub struct Compiler
 #[derive(Copy, Clone)]
 enum OpCode
 {
-    Return,
+    Goto,
     Const
 }
 

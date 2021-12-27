@@ -36,8 +36,8 @@ fn parse_statement<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>,
     } else {
         match expr.def
         {
-            _ if expr.is_block() => (),
             ExprDef::End => (),
+            _ if expr.is_block() => (),
             _ => {
                 let tk = peek(tokens);
                 push_error(errors, format!("Expected Semicolon, got : {:?}", tk.def), tk.pos)
@@ -77,7 +77,7 @@ fn parse_expr<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env:
         },
         //DESIGN should blocks return last expression only if there is no semicolon like rust ?
         TokenDef::DelimOpen(Delimiter::Br) => {
-            open_scope(env);
+            env.open_scope();
 
             let mut statements:Vec<&Expr> = Vec::new();
             while {
@@ -96,7 +96,7 @@ fn parse_expr<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env:
             }
             next(tokens);
 
-            close_scope(env);
+            env.close_scope();
             
             sort_functions_first(&mut statements);
             arena.alloc(Expr { def: ExprDef::Block(statements.into_boxed_slice()), pos: tk.pos })
@@ -469,16 +469,6 @@ fn next<'t> (tokens: &mut TkIter<'t>) -> &'t Token
 
 // ----- SCOPES -----
 
-fn open_scope (env: &mut Environment)
-{
-    env.open_scope();
-}
-
-fn close_scope (env: &mut Environment)
-{
-    env.close_scope();
-}
-
 fn declare_local (env: &mut Environment, id:&Identifier, init:bool)
 {
     let n_locals = env.locals_count;
@@ -491,13 +481,17 @@ fn declare_local (env: &mut Environment, id:&Identifier, init:bool)
     }
 }
 
-fn check_id_exists (env: &mut Environment, globals: &mut Vec<Identifier>, id:&Identifier) -> bool
+fn check_id_exists (env: &Environment, globals: &[Identifier], id:&Identifier) -> bool
 {
+    
+    for (id_, _) in env.locals.iter().take(env.locals_count.into()).rev() {
+        println!("{:?} / {:?}", id, id_);
+    }
+    
     if globals.contains(id) {
         return true;
     }
     
-    let env = env;
     for (id_, _) in env.locals.iter().take(env.locals_count.into()).rev() {
         if id == id_ {
             return true;
@@ -532,9 +526,9 @@ fn sort_functions_first (statements:&mut [&Expr])
         use std::cmp::Ordering;
         match (&e1.def, &e2.def) {
             (ExprDef::FnDecl {..}, ExprDef::FnDecl {..})    => Ordering::Equal,
-            (ExprDef::FnDecl {..}, _)     => Ordering::Less,
-            (_, ExprDef::FnDecl {..})     => Ordering::Greater,
-            (_, _)                      => Ordering::Equal,
+            (ExprDef::FnDecl {..}, _)       => Ordering::Less,
+            (_, ExprDef::FnDecl {..})       => Ordering::Greater,
+            (_, _)                          => Ordering::Equal,
         }
         
     });
