@@ -1,16 +1,18 @@
-use crate::ast::Identifier;
-use crate::memory::Pointer; //TODO remove this
-use std::collections::HashMap;
-
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value //TODO should belong to interp
 {
     Int(i32),
     Float(f32),
-    // Str(String), //TODO get rid of this
     Bool(bool),
-    Obj(Pointer), //TODO objects
-    FnPtr(usize),
+    Void
+}
+
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum Type
+{
+    Int,
+    Float,
+    Bool,
     Void
 }
 
@@ -23,10 +25,7 @@ impl Value
         {
             Value::Int(_)     => Type::Int,
             Value::Float(_)   => Type::Float,
-            // LangVal::Str(_)     => LangType::Str,
             Value::Bool(_)    => Type::Bool,
-            Value::Obj(_)     => unimplemented!(),
-            Value::FnPtr(_)   => unimplemented!(),
             Value::Void       => Type::Void,
         }
     }
@@ -42,25 +41,23 @@ impl std::fmt::Display for Value
         {
             Int(i) => write!(fmt, "{}", i),
             Float(f) => write!(fmt, "{}", f),
-            // Str(s) => write!(f, "{}", s),
             Bool(b) => write!(fmt, "{}", b),
-            Obj(o) => write!(fmt, "{:?}", o),
-            FnPtr(p) => write!(fmt, "{:?}", p),
             Void => write!(fmt, "void")
         }
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum Type
-{
-    Int,
-    Float,
-    // Str,
-    Bool,
-    Obj, //TODO objects
-    FnPtr,
-    Void
+impl Type {
+
+    pub fn get_size (&self) -> usize {
+        match self {
+            Type::Int => 4,
+            Type::Float => 4,
+            Type::Bool => 1,
+            Type::Void => 0
+        }
+    }
+
 }
 
 impl Default for Type
@@ -69,10 +66,4 @@ impl Default for Type
     {
         Type::Void
     }
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LangObj
-{
-    fields: HashMap<Identifier, Value>
 }

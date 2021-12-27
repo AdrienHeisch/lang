@@ -15,5 +15,4 @@ fn assign ()
     let mem = interpreter::interpret(ast.get_top_level());
     assert_eq!(mem.get_var("f"), Const::Number(4.5));
     assert_eq!(mem.get_var("b"), Const::Bool(true));
-    assert_eq!(mem.get_var("s"), Const::Str(String::from("hi")));
 }

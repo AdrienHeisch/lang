@@ -1,9 +1,6 @@
-use crate::value::{ Value, Type };
-
 //IN BYTES
 const MEMORY_SIZE:usize = 32;
 
-//TODO shouldnt use LangVal
 //TODO retry other types of memory with fixed benchmarking
 //TODO stack, faster heap allocator ?
 //RESEARCH look at C stack heap implementations (stack growing from the end)
@@ -15,13 +12,6 @@ pub struct Memory
 
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct Pointer
-{
-    pub t: Type,
-    ptr: RawPointer
-}
-
-#[derive(Debug, Copy, Clone, Default, PartialEq)]
-struct RawPointer
 {
     pos:usize,
     len:usize
@@ -40,7 +30,6 @@ impl Memory
         }
     }
 
-    #[allow(dead_code)]
     pub fn clear (&mut self)
     {
         for byte in self.ram.iter_mut() {
@@ -51,102 +40,7 @@ impl Memory
         }
     }
 
-    pub fn make_pointer_for_type (&mut self, t:Type) -> Pointer
-    {
-        match t
-        {
-            Type::Int => Pointer {
-                t: Type::Int,
-                ptr: self.alloc(std::mem::size_of::<i32>())
-            },
-            Type::Float => Pointer {
-                t: Type::Float,
-                ptr: self.alloc(std::mem::size_of::<f32>())
-            },
-            Type::Bool => Pointer {
-                t: Type::Bool,
-                ptr: self.alloc(std::mem::size_of::<bool>())
-            },
-            //TODO implement strings
-            /* LangType::Str => Pointer {
-                t: LangType::Str,
-                ptr: self.alloc(1)
-            }, */
-            Type::Obj   => unimplemented!(),
-            Type::FnPtr => Pointer {
-                t: Type::FnPtr,
-                ptr: self.alloc(std::mem::size_of::<usize>())
-            },
-            Type::Void => panic!() //DESIGN make pointer for Void ?
-        }
-    }
-
-    pub fn get_var (&self, ptr:&Pointer) -> Value
-    {
-        match ptr.t
-        {
-            Type::Int => {
-                Value::Int(i32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
-            },
-            Type::Float => {
-                Value::Float(f32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
-            },
-            Type::Bool  => Value::Bool(self.access(&ptr.ptr)[0] == 1),
-            // LangType::Str   => LangVal::Str(String::from_utf8(self.access(&ptr.ptr).to_vec()).ok().unwrap()),
-            Type::Obj   => unimplemented!(),
-            Type::FnPtr => unimplemented!(),
-            Type::Void  => Value::Void,
-        }
-    }
-
-    pub fn set_var (&mut self, ptr:Pointer, value:&Value) -> Pointer //TODO remove return
-    {
-        use Value::*;
-        match value
-        {
-            Int(i) => {
-                self.access_mut(&ptr.ptr).copy_from_slice(&(*i).to_ne_bytes());
-            },
-            Float(f) => {
-                self.access_mut(&ptr.ptr).copy_from_slice(&(*f).to_ne_bytes());
-            },
-            Bool(b) => {
-                self.access_mut(&ptr.ptr)[0] = if *b { 1u8 } else { 0u8 };
-            },
-            /* Str(s) =>  {
-                let bytes = s.as_bytes();
-                let len = bytes.len();
-                if len != ptr.ptr.len {
-                    self.realloc(&mut ptr, len);
-                }
-                self.access_mut(&ptr.ptr).copy_from_slice(bytes);
-            }, */
-            Obj(_) => unimplemented!(),
-            FnPtr(_) => unimplemented!(),
-            Void => panic!() //DESIGN set var to Void ?
-        }
-        ptr
-    }
-
-    pub fn free_ptr (&mut self, ptr:&Pointer)
-    {
-        self.free(&ptr.ptr);
-    }
-
-    #[allow(dead_code)]
-    pub fn print_ram (&self)
-    {
-        println!("RAM: {:?}", crate::utils::slice_to_string(&self.ram));
-        println!("MAP: \"{:?}\"", self.allocation_map.iter().map::<u8, _>(|b| (*b).into()).collect::<Vec<_>>());
-    }
-
-}
-
-// PRIVATE
-impl Memory
-{
-
-    fn alloc (&mut self, len:usize) -> RawPointer
+    pub fn alloc (&mut self, len:usize) -> Pointer
     {
         if len > MEMORY_SIZE {
             panic!("Tried to allocate more bytes than the memory can contain : {} / {}", len, MEMORY_SIZE);
@@ -183,7 +77,7 @@ impl Memory
                 }
             }
             if is_valid {
-                break RawPointer { pos, len };
+                break Pointer { pos, len };
             }
             if !next_pos_found
             {
@@ -197,7 +91,7 @@ impl Memory
         ptr
     }
 
-    fn free (&mut self, ptr:&RawPointer) //RESEARCH shift everything to the right so there is always free memory on the left ?
+    pub fn free (&mut self, ptr:Pointer) //RESEARCH shift everything to the right so there is always free memory on the left ?
     {
         for byte in self.ram.iter_mut().skip(ptr.pos).take(ptr.len) {
             *byte = u8::default(); //TODO this is probably useless
@@ -207,20 +101,26 @@ impl Memory
         }
     }
 
-    fn realloc (&mut self, var:&mut Pointer, new_len:usize)
+    pub fn realloc (&mut self, ptr:Pointer, new_len:usize) -> Pointer
     {
-        self.free(&var.ptr);
-        var.ptr = self.alloc(new_len);
+        self.free(ptr);
+        self.alloc(new_len)
     }
 
-    fn access (&self, ptr:&RawPointer) -> &[u8]
+    pub fn access (&self, ptr:Pointer) -> &[u8]
     {
         &self.ram[ptr.pos..(ptr.pos + ptr.len)]
     }
 
-    fn access_mut (&mut self, ptr:&RawPointer) -> &mut [u8]
+    pub fn access_mut (&mut self, ptr:Pointer) -> &mut [u8]
     {
         &mut self.ram[ptr.pos..(ptr.pos + ptr.len)]
+    }
+
+    pub fn print_ram (&self)
+    {
+        println!("RAM: {:?}", crate::utils::slice_to_string(&self.ram));
+        println!("MAP: \"{:?}\"", self.allocation_map.iter().map::<u8, _>(|b| (*b).into()).collect::<Vec<_>>());
     }
 
 }

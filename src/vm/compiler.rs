@@ -45,8 +45,6 @@ impl Compiler
                 Value::Int(_) => unimplemented!(),
                 Value::Float(_) => unimplemented!(),
                 Value::Bool(b) => (*b) as u8,
-                Value::Obj(_) => unimplemented!(),
-                Value::FnPtr(_) => unimplemented!(),
                 Value::Void => panic!(),
             };
 

@@ -1,10 +1,13 @@
+mod memory;
+
 use crate::{
     ast::{ Identifier, Expr, ExprDef, Op, Error, Position, WithPosition },
     env::{ Environment, Context },
-    memory::{ Memory, Pointer },
     value::{ Value, Type },
     utils
 };
+
+use memory::{ Memory, Pointer };
 
 const F32_EQ_THRESHOLD:f32 = 1e-6;
 const STACK_SIZE:usize = 8;
@@ -93,7 +96,7 @@ impl<'e> Interpreter<'e>
             Const(value) => value.clone(),
             Id(id) => {
                 if let PtrOrFn::Ptr(ptr) = self.get_pointer(id).unwrap() { //TODO remove this unwrap !!
-                    self.memory.get_var(&ptr)
+                    self.memory.get_var(ptr)
                 } else {
                     return Err(self.throw("Tried to use function as value.".to_owned(), expr.pos)); //DESIGN functions as values ?
                 }
@@ -268,20 +271,6 @@ impl<'e> Interpreter<'e>
                     _ => return Err(ResultErr::Nothing)
                 }
             },
-            /* (Str(l), Str(r)) => {
-                match op
-                {
-                    Assign => {
-                        let value = self.expr(e_right)?;
-                        self.assign(e_left, e_right.downcast(value))?
-                    },
-                    Equal       => Bool(l == r),
-                    NotEqual    => Bool(l != r),
-                    Add         =>  Str(l + &r),
-                    AddAssign   => self.assign(e_left, e_right.downcast(Str(l + &r)))?,
-                    _ => return Err(ResultErr::Nothing)
-                }
-            }, */
             (Bool(l), Bool(r)) => {
                 match op
                 {
@@ -451,7 +440,7 @@ impl<'e> Interpreter<'e>
         for ptr in self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)..].iter().take(n_variables)
         {
             match ptr {
-                PtrOrFn::Ptr(ptr) => self.memory.free_ptr(ptr),
+                PtrOrFn::Ptr(ptr) => self.memory.free_ptr(*ptr),
                 PtrOrFn::Fn(_, _) => ()
             }
         }
@@ -484,7 +473,7 @@ impl<'e> Interpreter<'e>
             } else {
                 continue;
             };
-            println!("{} => {:?} => {:?}", id_str, ptr, self.memory.get_var(&ptr));
+            println!("{} => {:?} => {:?}", id_str, ptr, self.memory.get_var(ptr));
         }
 
         println!();

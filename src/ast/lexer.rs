@@ -136,7 +136,7 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
                 if c == '"' { break; }
                 len += 1;
             }
-            let tk = TokenDef::Const(LangVal::Str(String::from(read_cursor!())));
+            let tk = TokenDef::Const(Value::Str(String::from(read_cursor!())));
             len += 2;
             tk
         }, */
