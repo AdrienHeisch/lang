@@ -1,7 +1,7 @@
 mod parser;
 mod lexer;
 
-use crate::langval::{ LangVal };
+use crate::langval::{ LangVal, LangType };
 use std::collections::VecDeque;
 use typed_arena::Arena;
 
@@ -18,7 +18,7 @@ impl<'e> Ast<'e>
     {
         let (tokens, mut errors) = lexer::lex(program);
 
-        if cfg!(not(lang_benchmark)) {
+        if cfg!(lang_print_lexer_output) {
             println!("tokens: {:?}\n", tokens.iter().map(|tk| &tk.def).collect::<Vec<_>>());
         }
 
@@ -38,7 +38,7 @@ impl<'e> Ast<'e>
             errors = pair.1;
         }
         
-        if cfg!(not(lang_benchmark)) {
+        if cfg!(lang_print_parser_output) {
             println!("exprs:");
             for e in top_level.iter() {
                 println!("\t{:?}", e.def);
@@ -93,7 +93,7 @@ pub enum ExprDef<'e>
     BinOp       { op: Op, left: &'e Expr<'e>, right: &'e Expr<'e> },
     Call        { id: &'e Expr<'e>, args: Box<[&'e Expr<'e>]> },
     // --- Declarations
-    Var         (Identifier, &'e Expr<'e>),
+    VarDecl     (LangType, Identifier, &'e Expr<'e>),
     FnDecl      { id:Identifier, params:Box<[Identifier]>, body:&'e Expr<'e> },
     StructDecl  { id:Identifier, fields:Box<[Identifier]> },
     // --- Others

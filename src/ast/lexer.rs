@@ -112,7 +112,11 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
                 } else if !c.is_numeric() { break; }
                 len += 1;
             }
-            TokenDef::Const(LangVal::Float(read_cursor!().parse().unwrap()))
+            if is_float {
+                TokenDef::Const(LangVal::Float(read_cursor!().parse().unwrap()))
+            } else {
+                TokenDef::Const(LangVal::Int(read_cursor!().parse().unwrap()))
+            }
         },
         '/' if { get_char!() == '/' } => { //COMMENT
             while get_char!() != '\n' && get_char!() != EOF { len += 1; }

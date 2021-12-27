@@ -5,12 +5,60 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Launch",
             "type": "lldb",
             "request": "launch",
+            "name": "Debug unit tests in library 'lang'",
             "cargo": {
-                "args": ["build"], // Cargo command line to build the debug target
-            }
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--lib",
+                    "--package=lang"
+                ],
+                "filter": {
+                    "name": "lang",
+                    "kind": "lib"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug executable 'lang'",
+            "cargo": {
+                "args": [
+                    "build",
+                    "--bin=lang",
+                    "--package=lang"
+                ],
+                "filter": {
+                    "name": "lang",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
+        },
+        {
+            "type": "lldb",
+            "request": "launch",
+            "name": "Debug unit tests in executable 'lang'",
+            "cargo": {
+                "args": [
+                    "test",
+                    "--no-run",
+                    "--bin=lang",
+                    "--package=lang"
+                ],
+                "filter": {
+                    "name": "lang",
+                    "kind": "bin"
+                }
+            },
+            "args": [],
+            "cwd": "${workspaceFolder}"
         }
     ]
 }

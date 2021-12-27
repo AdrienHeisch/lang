@@ -77,6 +77,7 @@ impl<'e> Interpreter<'e>
     {
         let error = Error { msg, pos };
         if cfg!(lang_panic_on_error) {
+            self.print_locals();
             panic!("{}", error);
         } else {
             ResultErr::Error(error)
@@ -151,13 +152,16 @@ impl<'e> Interpreter<'e>
             Call { id, args } => self.call(id, args)?,
             Field(_, _) => unimplemented!(),
             // --- Declarations
-            Var(id, assign_expr) => {
+            VarDecl(t, id, assign_expr) => {
                 //DESIGN should re assignation be allowed ?
                 /* if self.get_pointer(id).is_some() {
                     self.throw("There is already a variable named ", pos: FullPosition);
                 } */
                 let value = self.expr(assign_expr)?;
-                let ptr = match self.declare_var(id, value.as_type())
+                if value.as_type() != *t {
+                    return Err(self.throw(format!("Invalid assignment : tried to assign {:?} to {:?}", value.as_type(), t), expr.pos))
+                }
+                let ptr = match self.declare_var(id, *t)
                 {
                     Ok(ptr) => ptr,
                     Err(message) => return Err(self.throw(message, expr.pos))

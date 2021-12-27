@@ -14,24 +14,6 @@ pub enum LangVal //TODO should belong to interp
     Void
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
-pub enum LangType
-{
-    Int,
-    Float,
-    // Str,
-    Bool,
-    Obj, //TODO objects
-    FnPtr,
-    Void
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub struct LangObj
-{
-    fields: HashMap<Identifier, LangVal>
-}
-
 impl LangVal
 {
 
@@ -39,12 +21,12 @@ impl LangVal
     {
         match self
         {
-            LangVal::Int(_)  => LangType::Int,
-            LangVal::Float(_)  => LangType::Float,
+            LangVal::Int(_)     => LangType::Int,
+            LangVal::Float(_)   => LangType::Float,
             // LangVal::Str(_)     => LangType::Str,
             LangVal::Bool(_)    => LangType::Bool,
             LangVal::Obj(_)     => unimplemented!(),
-            LangVal::FnPtr(_)     => unimplemented!(),
+            LangVal::FnPtr(_)   => unimplemented!(),
             LangVal::Void       => LangType::Void,
         }
     }
@@ -69,10 +51,28 @@ impl std::fmt::Display for LangVal
     }
 }
 
+#[derive(Debug, Copy, Clone, PartialEq)]
+pub enum LangType
+{
+    Int,
+    Float,
+    // Str,
+    Bool,
+    Obj, //TODO objects
+    FnPtr,
+    Void
+}
+
 impl Default for LangType
 {
     fn default () -> Self
     {
         LangType::Void
     }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LangObj
+{
+    fields: HashMap<Identifier, LangVal>
 }

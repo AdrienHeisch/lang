@@ -1,5 +1,6 @@
 use super::{ Expr, ExprDef, Op, Token, TokenDef, Position, Delimiter, Identifier, IdentifierTools, Error };
 use crate::env::{ Environment, Context };
+use crate::langval::LangType;
 use std::collections::{ VecDeque };
 use typed_arena::Arena;
 
@@ -146,8 +147,43 @@ fn parse_structure<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>,
     };
     let pos = tk_identifier.pos;
 
+    macro_rules! var_decl {
+        ($type_:expr) => {
+            { //TODO explicit types ?
+                let tk = next(tokens);
+                match tk.def
+                {
+                    TokenDef::Id(id) => {
+                        let pos = pos + tk.pos;
+                        let tk = peek(tokens);
+                        let value = match tk.def
+                        {
+                            TokenDef::Op(Op::Assign) => {
+                                next(tokens);
+                                parse_expr(arena, tokens, env, errors, globals)
+                            },
+                            _ => { //TODO uninitialized var
+                                push_error(errors, format!("Expected assign operator, got : {:?}", tk.def), tk.pos);
+                                make_invalid(arena, pos)
+                            }
+                        };
+                        declare_local(env, &id, true); //TODO uninitialized var
+                        arena.alloc(Expr { def: ExprDef::VarDecl($type_, id, value), pos: pos + value.pos })
+                    }
+                    _ => {
+                        push_error(errors, format!("Expected identifier, got : {:?}", tk.def), tk.pos);
+                        make_invalid(arena, pos)
+                    }
+                }
+            }
+        }
+    }
+
     match &id
     {
+        b"int\0\0\0\0\0" => var_decl!(LangType::Int),
+        b"float\0\0\0" => var_decl!(LangType::Float),
+        b"bool\0\0\0\0" => var_decl!(LangType::Bool),
         b"if\0\0\0\0\0\0" => {
             let cond = parse_expr(arena, tokens, env, errors, globals);
             let then = parse_expr(arena, tokens, env, errors, globals);
@@ -169,33 +205,6 @@ fn parse_structure<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>,
             let cond = parse_expr(arena, tokens, env, errors, globals);
             let body = parse_expr(arena, tokens, env, errors, globals);
             arena.alloc(Expr { def: ExprDef::While { cond, body }, pos: pos + cond.pos + body.pos })
-        },
-        b"var\0\0\0\0\0" => { //TODO explicit types ?
-            let tk = next(tokens);
-            match tk.def
-            {
-                TokenDef::Id(id) => {
-                    let pos = pos + tk.pos;
-                    let tk = peek(tokens);
-                    let value = match tk.def
-                    {
-                        TokenDef::Op(Op::Assign) => {
-                            next(tokens);
-                            parse_expr(arena, tokens, env, errors, globals)
-                        },
-                        _ => { //TODO uninitialized var
-                            push_error(errors, format!("Expected assign operator, got : {:?}", tk.def), tk.pos);
-                            make_invalid(arena, pos)
-                        }
-                    };
-                    declare_local(env, &id, true); //TODO uninitialized var
-                    arena.alloc(Expr { def: ExprDef::Var(id, value), pos: pos + value.pos })
-                }
-                _ => {
-                    push_error(errors, format!("Expected identifier, got : {:?}", tk.def), tk.pos);
-                    make_invalid(arena, pos)
-                }
-            }
         },
         b"return\0\0" => {
             let e = parse_expr(arena, tokens, env, errors, globals);
@@ -483,11 +492,6 @@ fn declare_local (env: &mut Environment, id:&Identifier, init:bool)
 
 fn check_id_exists (env: &Environment, globals: &[Identifier], id:&Identifier) -> bool
 {
-    
-    for (id_, _) in env.locals.iter().take(env.locals_count.into()).rev() {
-        println!("{:?} / {:?}", id, id_);
-    }
-    
     if globals.contains(id) {
         return true;
     }
