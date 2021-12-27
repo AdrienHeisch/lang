@@ -93,7 +93,7 @@ pub enum ExprDef<'e>
     BinOp       { op: Op, left: &'e Expr<'e>, right: &'e Expr<'e> },
     Call        { id: &'e Expr<'e>, args: Box<[&'e Expr<'e>]> },
     // --- Declarations
-    VarDecl     (LangType, Identifier, &'e Expr<'e>),
+    VarDecl     (Identifier, &'e Expr<'e>),
     FnDecl      { id:Identifier, params:Box<[Identifier]>, body:&'e Expr<'e> },
     StructDecl  { id:Identifier, fields:Box<[Identifier]> },
     // --- Others

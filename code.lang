@@ -1,4 +1,5 @@
-bool a = true;
+let a = true;
+a = 5;
 ///{
 //    int b = 3;
 //}

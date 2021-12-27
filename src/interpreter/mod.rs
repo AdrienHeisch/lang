@@ -78,7 +78,7 @@ impl<'e> Interpreter<'e>
         let error = Error { msg, pos };
         if cfg!(lang_panic_on_error) {
             self.print_locals();
-            panic!("{}", error);
+            panic!("{}", error); //TODO any way to get full position ?
         } else {
             ResultErr::Error(error)
         }
@@ -152,16 +152,13 @@ impl<'e> Interpreter<'e>
             Call { id, args } => self.call(id, args)?,
             Field(_, _) => unimplemented!(),
             // --- Declarations
-            VarDecl(t, id, assign_expr) => {
+            VarDecl(id, assign_expr) => {
                 //DESIGN should re assignation be allowed ?
                 /* if self.get_pointer(id).is_some() {
                     self.throw("There is already a variable named ", pos: FullPosition);
                 } */
                 let value = self.expr(assign_expr)?;
-                if value.as_type() != *t {
-                    return Err(self.throw(format!("Invalid assignment : tried to assign {:?} to {:?}", value.as_type(), t), expr.pos))
-                }
-                let ptr = match self.declare_var(id, *t)
+                let ptr = match self.declare_var(id, value.as_type())
                 {
                     Ok(ptr) => ptr,
                     Err(message) => return Err(self.throw(message, expr.pos))
@@ -214,8 +211,6 @@ impl<'e> Interpreter<'e>
 
     fn unop (&mut self, op:Op, e_right:&Expr<'e>) -> Result<LangVal, ResultErr>
     {
-        use ResultErr::Nothing;
-
         let value = self.expr(e_right)?;
 
         Ok(match value
@@ -224,24 +219,22 @@ impl<'e> Interpreter<'e>
                 match op
                 {
                     Op::Sub => LangVal::Float(-f),
-                    _ => return Err(Nothing)
+                    _ => return Err(ResultErr::Nothing)
                 }
             },
             LangVal::Bool(b) => {
                 match op
                 {
                     Op::Not => LangVal::Bool(!b),
-                    _ => return Err(Nothing)
+                    _ => return Err(ResultErr::Nothing)
                 }
             },
-            _ => return Err(Nothing)
+            _ => return Err(ResultErr::Nothing)
         })
     }
 
     fn binop (&mut self, op:Op, e_left:&Expr<'e>, e_right:&Expr<'e>) -> Result<LangVal, ResultErr>
     {
-        use ResultErr::Nothing;
-        
         let value_left = self.expr(e_left)?;
         let value_right = self.expr(e_right)?;
 
@@ -272,7 +265,7 @@ impl<'e> Interpreter<'e>
                     MultAssign  => self.assign(e_left, e_right.downcast(Float(l * r)))?,
                     DivAssign   => self.assign(e_left, e_right.downcast(Float(l / r)))?,
                     ModAssign   => self.assign(e_left, e_right.downcast(Float(l % r)))?,
-                    _ => return Err(Nothing)
+                    _ => return Err(ResultErr::Nothing)
                 }
             },
             /* (Str(l), Str(r)) => {
@@ -286,7 +279,7 @@ impl<'e> Interpreter<'e>
                     NotEqual    => Bool(l != r),
                     Add         =>  Str(l + &r),
                     AddAssign   => self.assign(e_left, e_right.downcast(Str(l + &r)))?,
-                    _ => return Err(Nothing)
+                    _ => return Err(ResultErr::Nothing)
                 }
             }, */
             (Bool(l), Bool(r)) => {
@@ -300,10 +293,11 @@ impl<'e> Interpreter<'e>
                     NotEqual    => Bool(l != r),
                     BoolAnd     => Bool(l && r),
                     BoolOr      => Bool(l || r),
-                    _ => return Err(Nothing)
+                    _ => return Err(ResultErr::Nothing)
                 }
             },
-            (_, _) => return Err(Nothing)
+            (value_left, value_right) if op == Op::Assign => return Err(self.throw(format!("Invalid assignment : tried to assign {:?} to {:?}", value_left.as_type(), value_right.as_type()), e_left.pos)),
+            (_, _) => return Err(ResultErr::Nothing)
         })
     }
 
