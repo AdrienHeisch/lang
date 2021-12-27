@@ -1,4 +1,4 @@
-use crate::langval::LangVal;
+use crate::value::Value;
 use super::{ Op, Token, TokenDef, Position, Delimiter, Error };
 use std::collections::VecDeque;
 
@@ -84,8 +84,8 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
             }
             match read_cursor!()
             {
-                "true" => TokenDef::Const(LangVal::Bool(true)),
-                "false" => TokenDef::Const(LangVal::Bool(false)),
+                "true" => TokenDef::Const(Value::Bool(true)),
+                "false" => TokenDef::Const(Value::Bool(false)),
                 id => {
                     if id.len() < 8 {
                         let id_bytes = id.as_bytes();
@@ -113,9 +113,9 @@ fn get_token (program:&str, mut pos:usize) -> (Result<TokenDef, String>, usize)
                 len += 1;
             }
             if is_float {
-                TokenDef::Const(LangVal::Float(read_cursor!().parse().unwrap()))
+                TokenDef::Const(Value::Float(read_cursor!().parse().unwrap()))
             } else {
-                TokenDef::Const(LangVal::Int(read_cursor!().parse().unwrap()))
+                TokenDef::Const(Value::Int(read_cursor!().parse().unwrap()))
             }
         },
         '/' if { get_char!() == '/' } => { //COMMENT

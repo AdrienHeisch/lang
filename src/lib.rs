@@ -2,7 +2,7 @@
 mod ast;
 mod env;
 mod interpreter;
-mod langval;
+mod value;
 mod memory;
 mod utils;
 mod vm;

@@ -1,4 +1,4 @@
-use crate::langval::{ LangVal, LangType };
+use crate::value::{ Value, Type };
 
 //IN BYTES
 const MEMORY_SIZE:usize = 32;
@@ -16,7 +16,7 @@ pub struct Memory
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
 pub struct Pointer
 {
-    pub t: LangType,
+    pub t: Type,
     ptr: RawPointer
 }
 
@@ -51,20 +51,20 @@ impl Memory
         }
     }
 
-    pub fn make_pointer_for_type (&mut self, t:LangType) -> Pointer
+    pub fn make_pointer_for_type (&mut self, t:Type) -> Pointer
     {
         match t
         {
-            LangType::Int => Pointer {
-                t: LangType::Int,
+            Type::Int => Pointer {
+                t: Type::Int,
                 ptr: self.alloc(std::mem::size_of::<i32>())
             },
-            LangType::Float => Pointer {
-                t: LangType::Float,
+            Type::Float => Pointer {
+                t: Type::Float,
                 ptr: self.alloc(std::mem::size_of::<f32>())
             },
-            LangType::Bool => Pointer {
-                t: LangType::Bool,
+            Type::Bool => Pointer {
+                t: Type::Bool,
                 ptr: self.alloc(std::mem::size_of::<bool>())
             },
             //TODO implement strings
@@ -72,36 +72,36 @@ impl Memory
                 t: LangType::Str,
                 ptr: self.alloc(1)
             }, */
-            LangType::Obj   => unimplemented!(),
-            LangType::FnPtr => Pointer {
-                t: LangType::FnPtr,
+            Type::Obj   => unimplemented!(),
+            Type::FnPtr => Pointer {
+                t: Type::FnPtr,
                 ptr: self.alloc(std::mem::size_of::<usize>())
             },
-            LangType::Void => panic!() //DESIGN make pointer for Void ?
+            Type::Void => panic!() //DESIGN make pointer for Void ?
         }
     }
 
-    pub fn get_var (&self, ptr:&Pointer) -> LangVal
+    pub fn get_var (&self, ptr:&Pointer) -> Value
     {
         match ptr.t
         {
-            LangType::Int => {
-                LangVal::Int(i32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
+            Type::Int => {
+                Value::Int(i32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
             },
-            LangType::Float => {
-                LangVal::Float(f32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
+            Type::Float => {
+                Value::Float(f32::from_ne_bytes([self.ram[ptr.ptr.pos], self.ram[ptr.ptr.pos + 1], self.ram[ptr.ptr.pos + 2], self.ram[ptr.ptr.pos + 3]]))
             },
-            LangType::Bool  => LangVal::Bool(self.access(&ptr.ptr)[0] == 1),
+            Type::Bool  => Value::Bool(self.access(&ptr.ptr)[0] == 1),
             // LangType::Str   => LangVal::Str(String::from_utf8(self.access(&ptr.ptr).to_vec()).ok().unwrap()),
-            LangType::Obj   => unimplemented!(),
-            LangType::FnPtr => unimplemented!(),
-            LangType::Void  => LangVal::Void,
+            Type::Obj   => unimplemented!(),
+            Type::FnPtr => unimplemented!(),
+            Type::Void  => Value::Void,
         }
     }
 
-    pub fn set_var (&mut self, ptr:Pointer, value:&LangVal) -> Pointer //TODO remove return
+    pub fn set_var (&mut self, ptr:Pointer, value:&Value) -> Pointer //TODO remove return
     {
-        use LangVal::*;
+        use Value::*;
         match value
         {
             Int(i) => {

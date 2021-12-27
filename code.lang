@@ -1,7 +1,6 @@
 let a = true;
-a = 5;
-///{
-//    int b = 3;
+//{
+//    let b = 3;
+//    print(b);
 //}
 print(a);
-//print(b);

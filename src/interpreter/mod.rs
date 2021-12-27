@@ -2,7 +2,7 @@ use crate::{
     ast::{ Identifier, Expr, ExprDef, Op, Error, Position, WithPosition },
     env::{ Environment, Context },
     memory::{ Memory, Pointer },
-    langval::{ LangVal, LangType },
+    value::{ Value, Type },
     utils
 };
 
@@ -27,7 +27,7 @@ enum PtrOrFn<'e> //TODO function pointers in memory, points to a value in a tabl
 enum ResultErr
 {
     Error(Error),
-    Return(LangVal),
+    Return(Value),
     Nothing
 }
 
@@ -84,7 +84,7 @@ impl<'e> Interpreter<'e>
         }
     }
 
-    fn expr (&mut self, expr:&Expr<'e>) -> Result<LangVal, ResultErr>
+    fn expr (&mut self, expr:&Expr<'e>) -> Result<Value, ResultErr>
     {
         use ExprDef::*;
         Ok(match &expr.def
@@ -102,13 +102,13 @@ impl<'e> Interpreter<'e>
             If { cond, then, elze } => {
                 match self.expr(cond)?
                 {
-                    LangVal::Bool(b) => {
+                    Value::Bool(b) => {
                         if b {
                             self.expr(then)?
                         } else if let Some(elze) = elze {
                             self.expr(elze)?
                         } else {
-                            LangVal::Void
+                            Value::Void
                         }
                     },
                     _ => return Err(self.throw(format!("Invalid condition : {:?}", cond), expr.pos))
@@ -120,7 +120,7 @@ impl<'e> Interpreter<'e>
                 {
                     match self.expr(cond)?
                     {
-                        LangVal::Bool(b) => {
+                        Value::Bool(b) => {
                             if b {
                                 self.expr(body)?;
                             } else {
@@ -130,7 +130,7 @@ impl<'e> Interpreter<'e>
                         _ => return Err(self.throw(format!("Invalid condition : {:?}", cond), expr.pos))
                     }
                 }
-                LangVal::Void
+                Value::Void
             },
             // --- Operations
             UnOp(op, right) => {
@@ -171,7 +171,7 @@ impl<'e> Interpreter<'e>
                 if let Err(message) = self.declare_fn(id, params.clone(), body) {
                     return Err(self.throw(message, expr.pos));
                 }
-                LangVal::Void
+                Value::Void
             },
             StructDecl {..} => unimplemented!(),
             // --- Others
@@ -179,7 +179,7 @@ impl<'e> Interpreter<'e>
                 if !exprs.is_empty()
                 {
                     self.env.open_scope();
-                    let mut ret = LangVal::Void;
+                    let mut ret = Value::Void;
                     for expr in exprs.iter() {
                         ret = match self.expr(expr)
                         {
@@ -193,7 +193,7 @@ impl<'e> Interpreter<'e>
                     ret
                 }
                 else {
-                    LangVal::Void
+                    Value::Void
                 }
             },
             Parent(e) => self.expr(e)?,
@@ -204,28 +204,28 @@ impl<'e> Interpreter<'e>
                     return Err(self.throw("Can't return from top-level".to_owned(), e.pos));
                 }
             },
-            End => LangVal::Void,
+            End => Value::Void,
             Invalid => return Err(self.throw(format!("Invalid expression : {:?}", expr), expr.pos))
         })
     }
 
-    fn unop (&mut self, op:Op, e_right:&Expr<'e>) -> Result<LangVal, ResultErr>
+    fn unop (&mut self, op:Op, e_right:&Expr<'e>) -> Result<Value, ResultErr>
     {
         let value = self.expr(e_right)?;
 
         Ok(match value
         {
-            LangVal::Float(f) => {
+            Value::Float(f) => {
                 match op
                 {
-                    Op::Sub => LangVal::Float(-f),
+                    Op::Sub => Value::Float(-f),
                     _ => return Err(ResultErr::Nothing)
                 }
             },
-            LangVal::Bool(b) => {
+            Value::Bool(b) => {
                 match op
                 {
-                    Op::Not => LangVal::Bool(!b),
+                    Op::Not => Value::Bool(!b),
                     _ => return Err(ResultErr::Nothing)
                 }
             },
@@ -233,12 +233,12 @@ impl<'e> Interpreter<'e>
         })
     }
 
-    fn binop (&mut self, op:Op, e_left:&Expr<'e>, e_right:&Expr<'e>) -> Result<LangVal, ResultErr>
+    fn binop (&mut self, op:Op, e_left:&Expr<'e>, e_right:&Expr<'e>) -> Result<Value, ResultErr>
     {
         let value_left = self.expr(e_left)?;
         let value_right = self.expr(e_right)?;
 
-        use { Op::*, LangVal::* };
+        use { Op::*, Value::* };
         Ok(match (value_left, value_right)
         {
             (Float(l), Float(r)) => {
@@ -301,7 +301,7 @@ impl<'e> Interpreter<'e>
         })
     }
 
-    fn assign (&mut self, e_to:&Expr, value:WithPosition<LangVal>) -> Result<LangVal, ResultErr>
+    fn assign (&mut self, e_to:&Expr, value:WithPosition<Value>) -> Result<Value, ResultErr>
     {
         if let ExprDef::Id(id) = &e_to.def {
             self.memory.set_var(if let PtrOrFn::Ptr(ptr) = self.get_pointer(id).unwrap()
@@ -316,7 +316,7 @@ impl<'e> Interpreter<'e>
         Ok(value.def)
     }
 
-    fn call (&mut self, e_id:&Expr<'e>, args:&[&Expr<'e>]) -> Result<LangVal, ResultErr> //TODO globals
+    fn call (&mut self, e_id:&Expr<'e>, args:&[&Expr<'e>]) -> Result<Value, ResultErr> //TODO globals
     {
         Ok(match &e_id.def
         {
@@ -332,7 +332,7 @@ impl<'e> Interpreter<'e>
                             }
                             println!();
                         }
-                        LangVal::Void
+                        Value::Void
                     },
                     _ if &id[..8] == b"printmem" => {
                         if cfg!(not(lang_benchmark))
@@ -340,7 +340,7 @@ impl<'e> Interpreter<'e>
                             println!("\nMemory state :");
                             self.print_locals();
                         }
-                        LangVal::Void
+                        Value::Void
                     },
                     id => {
                         // eprintln!("Unknown function identifier : {}", std::str::from_utf8(id).ok().unwrap());
@@ -421,7 +421,7 @@ impl<'e> Interpreter<'e>
         Ok(())
     }
     
-    pub fn declare_var (&mut self, id:&Identifier, t:LangType) -> Result<Pointer, String>
+    pub fn declare_var (&mut self, id:&Identifier, t:Type) -> Result<Pointer, String>
     {
         let ptr = self.memory.make_pointer_for_type(t);
         self.env.locals[self.env.locals_count as usize] = (*id, self.env.scope_depth);

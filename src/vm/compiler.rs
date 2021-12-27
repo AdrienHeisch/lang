@@ -1,5 +1,5 @@
 use crate::ast::{ Expr, ExprDef };
-use crate::langval::{ LangVal };
+use crate::value::{ Value };
 use crate::memory::Memory;
 
 pub struct Compiler
@@ -42,12 +42,12 @@ impl Compiler
 
             let cst = match value
             {
-                LangVal::Int(_) => unimplemented!(),
-                LangVal::Float(_) => unimplemented!(),
-                LangVal::Bool(b) => (*b) as u8,
-                LangVal::Obj(_) => unimplemented!(),
-                LangVal::FnPtr(_) => unimplemented!(),
-                LangVal::Void => panic!(),
+                Value::Int(_) => unimplemented!(),
+                Value::Float(_) => unimplemented!(),
+                Value::Bool(b) => (*b) as u8,
+                Value::Obj(_) => unimplemented!(),
+                Value::FnPtr(_) => unimplemented!(),
+                Value::Void => panic!(),
             };
 
             self.chunk.push(cst);

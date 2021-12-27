@@ -3,7 +3,7 @@ use crate::memory::Pointer; //TODO remove this
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, PartialEq)]
-pub enum LangVal //TODO should belong to interp
+pub enum Value //TODO should belong to interp
 {
     Int(i32),
     Float(f32),
@@ -14,30 +14,30 @@ pub enum LangVal //TODO should belong to interp
     Void
 }
 
-impl LangVal
+impl Value
 {
 
-    pub fn as_type (&self) -> LangType
+    pub fn as_type (&self) -> Type
     {
         match self
         {
-            LangVal::Int(_)     => LangType::Int,
-            LangVal::Float(_)   => LangType::Float,
+            Value::Int(_)     => Type::Int,
+            Value::Float(_)   => Type::Float,
             // LangVal::Str(_)     => LangType::Str,
-            LangVal::Bool(_)    => LangType::Bool,
-            LangVal::Obj(_)     => unimplemented!(),
-            LangVal::FnPtr(_)   => unimplemented!(),
-            LangVal::Void       => LangType::Void,
+            Value::Bool(_)    => Type::Bool,
+            Value::Obj(_)     => unimplemented!(),
+            Value::FnPtr(_)   => unimplemented!(),
+            Value::Void       => Type::Void,
         }
     }
 
 }
 
-impl std::fmt::Display for LangVal
+impl std::fmt::Display for Value
 {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result
     {
-        use LangVal::*;
+        use Value::*;
         match self
         {
             Int(i) => write!(fmt, "{}", i),
@@ -52,7 +52,7 @@ impl std::fmt::Display for LangVal
 }
 
 #[derive(Debug, Copy, Clone, PartialEq)]
-pub enum LangType
+pub enum Type
 {
     Int,
     Float,
@@ -63,16 +63,16 @@ pub enum LangType
     Void
 }
 
-impl Default for LangType
+impl Default for Type
 {
     fn default () -> Self
     {
-        LangType::Void
+        Type::Void
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LangObj
 {
-    fields: HashMap<Identifier, LangVal>
+    fields: HashMap<Identifier, Value>
 }

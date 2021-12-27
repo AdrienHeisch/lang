@@ -1,7 +1,7 @@
 mod parser;
 mod lexer;
 
-use crate::langval::{ LangVal, LangType };
+use crate::value::{ Value };
 use std::collections::VecDeque;
 use typed_arena::Arena;
 
@@ -82,7 +82,7 @@ pub type Expr<'e> = WithPosition<ExprDef<'e>>;
 pub enum ExprDef<'e>
 {
     // --- Values
-    Const       (LangVal),
+    Const       (Value),
     Id          (Identifier),
     // --- Control Flow
     If          { cond: &'e Expr<'e>, then: &'e Expr<'e>, elze: Option<&'e Expr<'e>>  },
@@ -136,7 +136,7 @@ pub type Token = WithPosition<TokenDef>;
 pub enum TokenDef
 {
     Id(Identifier),
-    Const(LangVal),
+    Const(Value),
     Op(Op),
     DelimOpen(Delimiter),
     DelimClose(Delimiter),
