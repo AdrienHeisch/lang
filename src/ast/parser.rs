@@ -7,7 +7,7 @@ type TkIter<'t> = std::iter::Peekable<std::collections::vec_deque::Iter<'t, Toke
 
 // ----- PARSING -----
 
-pub fn parse<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens:&'t VecDeque<Token>) -> (Vec<&'e Expr<'e>>, Vec<Error>)
+pub fn parse<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens:&'t VecDeque<Token>) -> Result<Vec<&'e Expr<'e>>, Vec<Error>>
 {
     let mut tokens_iter = tokens.iter().peekable();
     let mut env = Environment::new(Context::TopLevel);
@@ -24,7 +24,11 @@ pub fn parse<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens:&'t VecDeque<Token>) ->
 
     sort_functions_first(&mut statements);
 
-    (statements, errors.clone())
+    if errors.is_empty() {
+        Ok(statements)
+    } else {
+        Err(errors)
+    }
 }
 
 fn parse_statement<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env: &mut Environment, errors: &mut Vec<Error>, globals: &mut Vec<Identifier>) -> &'e Expr<'e>
@@ -198,6 +202,9 @@ fn parse_structure<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>,
             arena.alloc(Expr { def: ExprDef::While { cond, body }, pos: pos + cond.pos + body.pos })
         },
         b"return\0\0" => {
+            if let Context::TopLevel = env.get_context() {
+                push_error(errors, format!("Can't return from top level."), tk_identifier.pos);
+            }
             let e = parse_expr(arena, tokens, env, errors, globals);
             arena.alloc(Expr { def: ExprDef::Return(e), pos: pos + e.pos })
         },
@@ -529,7 +536,7 @@ fn sort_functions_first (statements:&mut [&Expr])
     });
 }
 
-#[allow(dead_code)]
+/* #[allow(dead_code)]
 pub fn benchmark ()
 {
     use crate::benchmarks::ITERATIONS;
@@ -551,4 +558,4 @@ pub fn benchmark ()
         duration += now.elapsed();
     }
     println!("Parsing: {}ms", duration.as_millis());
-}
+} */

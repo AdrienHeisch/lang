@@ -119,6 +119,7 @@ impl Memory
 
     pub fn print_ram (&self)
     {
+        if cfg!(lang_benchmark) { return; }
         println!("RAM: {:?}", crate::utils::slice_to_string(&self.ram));
         println!("MAP: \"{:?}\"", self.allocation_map.iter().map::<u8, _>(|b| (*b).into()).collect::<Vec<_>>());
     }

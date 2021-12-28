@@ -3,33 +3,54 @@ use crate::vm::ToAsm;
 use super::*;
 use std::num::Wrapping;
 
-pub fn interpret (chunk: Chunk) {
-    let mut a = 0u16;
-    let mut d = 0u16;
-    let mut memory = [0u16; MEM_SIZE];
+pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
+    if cfg!(not(lang_benchmark)) {
+        print!("BYTECODE: ");
+        for s in chunk.iter().map(|el| format!("{:04X}", el)) {
+            print!("{} ", s);
+        }
+        println!();
+    }
+
+    let mut a = 0_u16;
+    let mut d = 0_u16;
+    let mut memory = [0_u16; MEM_SIZE];
     memory[0] = SP_INIT;
+    let mut dummy_memory = 0;
 
     let mut index = 0;
     while index < chunk.len() {
+        let in_mem = if (a as usize) < memory.len() {
+            &mut memory[a as usize]
+        } else {
+            &mut dummy_memory
+        };
+
         let instruction = chunk[index];
         if check_bit(instruction, 15) {
             if check_bit(instruction, 5) {
-                a = compute(instruction, a, d, memory[a as usize]);
+                a = compute(instruction, a, d, *in_mem);
             } else if check_bit(instruction, 4) {
-                d = compute(instruction, a, d, memory[a as usize]);
+                d = compute(instruction, a, d, *in_mem);
             } else if check_bit(instruction, 3) {
-                memory[a as usize] = compute(instruction, a, d, memory[a as usize]);
+                *in_mem = compute(instruction, a, d, *in_mem);
             } else {
-                compute(instruction, a, d, memory[a as usize]);
+                compute(instruction, a, d, *in_mem);
             }
         } else {
             a = instruction;
         }
-        println!("{:>16}   -->   A: {:<3} | D: {:<3} | A*: {:<3}", instruction.to_asm(), a as i16, d as i16, memory[a as usize] as i16);
+        if cfg!(not(lang_benchmark)) {
+            println!("{:>16}   -->   A: {:<3} | D: {:<3} | A*: {:<3}", instruction.to_asm(), a as i16, d as i16, *in_mem as i16);
+        }
         index += 1;
     }
+    
+    if cfg!(not(lang_benchmark)) {
+        println!("MEMORY: {:?}", memory);
+    }
 
-    println!("MEMORY: {:?}", memory);
+    Ok(())
 }
 
 fn compute (instruction: Instruction, a: u16, d: u16, a_: u16) -> u16 {

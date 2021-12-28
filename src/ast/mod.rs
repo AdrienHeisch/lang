@@ -2,53 +2,48 @@ mod parser;
 mod lexer;
 
 use crate::value::{ Value };
-use std::collections::VecDeque;
 use typed_arena::Arena;
+
+//TODO revoir visibilité
 
 pub struct Ast<'e>
 {
-    arena: Arena<Expr<'e>>,
-    top_level: Vec<&'e Expr<'e>>
+    pub source: String,
+    pub top_level: Vec<&'e Expr<'e>>,
+    arena: Arena<Expr<'e>>
 }
 
 impl<'e> Ast<'e>
 {
 
-    pub fn from_str (program:&str) -> (Self, Vec<Error>)
+    pub fn from_str (source:&str) -> Result<Self, Vec<Error>>
     {
-        let (tokens, mut lex_errors) = lexer::lex(program);
+        match lexer::lex(source) {
+            Ok(tokens) => {
+                if cfg!(lang_print_lexer_output) && cfg!(not(lang_benchmark)) {
+                    println!("tokens: {:?}\n", tokens.iter().map(|tk| &tk.def).collect::<Vec<_>>());
+                }
 
-        if cfg!(lang_print_lexer_output) {
-            println!("tokens: {:?}\n", tokens.iter().map(|tk| &tk.def).collect::<Vec<_>>());
+                let arena = Arena::new();
+                match unsafe {
+                    let arena_ref = &*(&arena as *const Arena<Expr<'e>>);
+                    parser::parse(arena_ref, &tokens)
+                } {
+                    Ok(top_level) => {
+                        if cfg!(lang_print_parser_output) && cfg!(not(lang_benchmark)) {
+                            println!("exprs:");
+                            for e in top_level.iter() {
+                                println!("\t{:?}", e.def);
+                            }
+                            println!();
+                        };
+                        Ok(Ast { source: source.to_owned(), arena, top_level })
+                    },
+                    Err(errors) => Err(errors)
+                }
+            },
+            Err(errors) => Err(errors)
         }
-
-        let (ast, mut parse_errors) = Self::from_tokens(&tokens);
-        lex_errors.append(&mut parse_errors);
-        (ast, lex_errors)
-    }
-
-    pub fn from_tokens (tokens:&VecDeque<Token>) -> (Self, Vec<Error>)
-    {
-        let arena = Arena::new();
-        let (top_level, errors) = unsafe {
-            let arena_ref = &*(&arena as *const Arena<Expr<'e>>);
-            parser::parse(arena_ref, tokens)
-        };
-        
-        if cfg!(lang_print_parser_output) {
-            println!("exprs:");
-            for e in top_level.iter() {
-                println!("\t{:?}", e.def);
-            }
-            println!();
-        }
-
-        (Ast { arena, top_level }, errors)
-    }
-
-    pub fn get_top_level (&self) -> &Vec<&Expr>
-    {
-        &self.top_level
     }
 
 }
@@ -292,16 +287,6 @@ impl Op
         }
     }
 
-    /* pub fn returns_bool (self) -> bool
-    {
-        use Op::*;
-        match self
-        {
-            Equal | NotEqual | Gt | Gte | Lt | Lte | BoolAnd | BoolOr => true,
-            _ => false
-        }
-    } */
-
 }
 // #endregion
 
@@ -337,18 +322,8 @@ impl<T> WithPosition<T> where T : std::fmt::Debug
     
     pub fn get_full_pos (&self) -> FullPosition
     {
-        // self.pos.get_full(self.src)
         FullPosition::default()
     }
-
-    /* pub fn add_as_full_pos<U> (left:&Self, right:&WithPosition<U>) -> FullPosition where U : std::fmt::Debug
-    {
-        if left.src != right.src {
-            panic!("Tried to add positions of items with differents sources : {:?}, {:?}]", left, right);
-        } else {
-            (left.pos + right.pos).get_full(left.src)
-        }
-    } */
 
     pub fn downcast<U> (&self, def:U) -> WithPosition<U> where U : std::fmt::Debug
     {
@@ -398,19 +373,6 @@ impl std::ops::AddAssign for Position
     }
 }
 
-/* impl FullPosition
-{
-    pub fn zero () -> Self
-    {
-        FullPosition
-        {
-            line: 0,
-            column: 0,
-            len: 0
-        }
-    }
-} */
-
 impl std::fmt::Display for FullPosition
 {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result
@@ -420,7 +382,6 @@ impl std::fmt::Display for FullPosition
 }
 // #endregion
 
-// #region OP
 #[derive(Debug, Clone)]
 pub struct Error
 {
@@ -434,14 +395,4 @@ impl std::fmt::Display for Error
     {
         write!(f, "{:?} -> {}", self.pos, self.msg)
     }
-}
-// #endregion
-
-
-// #[cfg(test)]
-#[allow(dead_code)]
-pub mod benchmarks
-{
-    pub use super::lexer::benchmark as benchmark_lexer;
-    pub use super::parser::benchmark as benchmark_parser;
 }

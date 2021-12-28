@@ -3,7 +3,7 @@ use super::{ Op, Token, TokenDef, Position, Delimiter, Error };
 use std::collections::VecDeque;
 
 //DESIGN define how strict the lexer should be (unexpected characters are currently ignored)
-pub fn lex (program:&str) -> (VecDeque<Token>, Vec<Error>) //TODO retest vecdeque vs vec
+pub fn lex (program:&str) -> Result<VecDeque<Token>, Vec<Error>> //TODO retest vecdeque vs vec
 {
     let mut tokens = VecDeque::new();
     let mut errors = Vec::new();
@@ -45,7 +45,11 @@ pub fn lex (program:&str) -> (VecDeque<Token>, Vec<Error>) //TODO retest vecdequ
     
     tokens.push_back(Token { def: TokenDef::Eof, pos: Position::zero() });
 
-    (tokens, errors)
+    if errors.is_empty() {
+        Ok(tokens)
+    } else {
+        Err(errors)
+    }
 }
 
 // #[inline(never)] //used for profiling
@@ -191,7 +195,7 @@ impl Delimiter
 
 const EOF:char = '\u{0}';
 
-#[allow(dead_code)]
+/* #[allow(dead_code)]
 pub fn benchmark ()
 {
     use crate::benchmarks::ITERATIONS;
@@ -201,4 +205,4 @@ pub fn benchmark ()
     let now = Instant::now();
     for _ in 0..ITERATIONS { lex(&program); }
     println!("Lexing: {}ms", now.elapsed().as_millis());
-}
+} */

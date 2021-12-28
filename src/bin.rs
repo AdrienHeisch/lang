@@ -4,27 +4,31 @@
 //TODO use Result instead of panic! on error
 //TODO custom types ?
 //TODO rework modules cyclic dependencies
-fn main () -> Result<(), std::io::Error>
-{
+fn main () -> Result <(), std::io::Error> {
     //TODO console arguments
     // let args:Vec<String> = std::env::args().collect();
     // let path = args[1];
-    
-    if cfg!(lang_benchmark)
-    {
-        lang::benchmarks::benchmark_lexer();
-        lang::benchmarks::benchmark_parser();
-        lang::benchmarks::benchmark_interpreter();
-    } else {
-        eval_file("./code.lang")?;
+
+    let program = std::fs::read_to_string("./code.lang")?;
+
+    if let Err(error) = run_lang(&program) {
+        println!("{}", error);
     }
 
     Ok(())
 }
 
-fn eval_file (path:&str) -> Result<(), std::io::Error>
+fn run_lang (program: &str) -> Result<(), String> {
+    let ast = lang::build_ast(program)?;
+    // lang::walk_ast(&ast)?;
+    let bytecode = lang::compile_bytecode(&ast)?;
+    lang::run_bytecode(&bytecode)?;
+    Ok(())
+}
+
+/* fn eval_file (path:&str) -> Result<(), std::io::Error>
 {
     // lang::eval(&std::fs::read_to_string(path)?);
     lang::compile(&std::fs::read_to_string(path)?);
     Ok(())
-}
+} */

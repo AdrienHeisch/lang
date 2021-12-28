@@ -5,24 +5,21 @@ use super::*;
 use core::panic;
 use std::collections::HashMap;
 
-pub fn compile (statements:&[&Expr]) -> Chunk
+pub fn compile (statements:&[&Expr]) -> Result<Chunk, ()>
 {
     let mut chunk = Chunk::new();
+    let mut offset = 0_usize;
     let mut identifiers = HashMap::<Identifier, u16>::new();
     let mut sp = SP_INIT;
 
     for s in statements {
-        expr(s, &mut chunk, &mut identifiers, &mut sp);
+        expr(s, &mut chunk, &mut offset, &mut identifiers, &mut sp);
     }
 
-    chunk
+    Ok(chunk)
 }
 
-/* fn statement (s: &Expr, chunk: &mut Chunk, sp: &mut u16, identifiers: &mut HashMap<Identifier, u16>) {
-    let e = expr(s, chunk, sp, identifiers);
-} */
-
-fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>, sp: &mut u16)
+fn expr (e: &Expr, chunk: &mut Chunk, offset: &mut usize, identifiers: &mut HashMap<Identifier, u16>, sp: &mut u16)
 {
     use ExprDef::*;
     match &e.def {
@@ -44,8 +41,12 @@ fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>
                 panic!("Unknown identifier")
             }
         },
+        /* While { cond, body } => {
+            let start_offset = *offset;
+
+        }, */
         UnOp { op, e } => {
-            expr(e, chunk, identifiers, sp);    // A = e
+            expr(e, chunk, offset, identifiers, sp);    // A = e
             chunk.push(match *op {
                 Op::Sub => 0b1000110011010000,      // D = -A
                 _ => unimplemented!()
@@ -54,15 +55,15 @@ fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>
         BinOp { op, left, right } => {
             match *op {
                 Op::Add => {
-                    expr(left, chunk, identifiers, sp);      // A = left
+                    expr(left, chunk, offset, identifiers, sp);      // A = left
                     chunk.push(0b1110110000010000);             // D = A
-                    expr(right, chunk, identifiers, sp);     // A = right
+                    expr(right, chunk, offset, identifiers, sp);     // A = right
                     chunk.push(0b1000000010010000);             // D = D + A
                 },
                 Op::Sub => {
-                    expr(left, chunk, identifiers, sp);      // A = left
+                    expr(left, chunk, offset, identifiers, sp);      // A = left
                     chunk.push(0b1110110000010000);             // D = A
-                    expr(right, chunk, identifiers, sp);     // A = right
+                    expr(right, chunk, offset, identifiers, sp);     // A = right
                     chunk.push(0b1000010011010000);             // D = D - A
                 },
                 Op::Assign => {
@@ -73,7 +74,7 @@ fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>
                             panic!("Unkown identifier : {}", String::from_utf8(Vec::from(id)).unwrap());
                         };
 
-                        expr(right, chunk, identifiers, sp);
+                        expr(right, chunk, offset, identifiers, sp);
                         if let Const(_) = right.def {
                             chunk.push(0b1110110000010000);     // D = A
                         }
@@ -88,7 +89,7 @@ fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>
         },
         VarDecl(id, assign_expr) => {
             identifiers.insert(*id, *sp);
-            expr(assign_expr, chunk, identifiers, sp);
+            expr(assign_expr, chunk, offset, identifiers, sp);
             if let Const(_) = assign_expr.def {
                 chunk.push(0b1110110000010000);             // D = A
             }
@@ -99,9 +100,16 @@ fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>
             chunk.push(0b1111110111001000);                 // *A = *A + 1
             *sp += 1;
         },
+        Block(exprs) => {
+            let sp_now = *sp;
+            for e in exprs.iter() {
+                expr(e, chunk, offset, identifiers, sp);
+            }
+            *sp = sp_now;
+        },
         Parent(e) => {
-            expr(e, chunk, identifiers, sp);
-        }
+            expr(e, chunk, offset, identifiers, sp);
+        },
         End => (),
         _ => unimplemented!()
     }

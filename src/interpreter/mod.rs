@@ -481,6 +481,7 @@ impl<'e> Interpreter<'e>
     #[allow(dead_code)]
     pub fn print_locals (&self)
     {
+        if cfg!(lang_benchmark) { return; }
         // println!("Env ({}): {}", self.env.locals_count, crate::utils::slice_to_string_debug(&self.env.locals));
 
         println!("Locals:");

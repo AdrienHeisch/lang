@@ -4,8 +4,8 @@ pub mod interpreter;
 const MEM_SIZE: usize = 32;
 const SP_INIT: u16 = 16;
 
+pub type Chunk = Vec<Instruction>;
 type Instruction = u16;
-type Chunk = Vec<Instruction>;
 
 fn check_bit (instruction: Instruction, n: u8) -> bool {
     instruction & 1 << n != 0
