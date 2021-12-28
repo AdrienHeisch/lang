@@ -16,27 +16,24 @@ impl<'e> Ast<'e>
 
     pub fn from_str (program:&str) -> (Self, Vec<Error>)
     {
-        let (tokens, mut errors) = lexer::lex(program);
+        let (tokens, mut lex_errors) = lexer::lex(program);
 
         if cfg!(lang_print_lexer_output) {
             println!("tokens: {:?}\n", tokens.iter().map(|tk| &tk.def).collect::<Vec<_>>());
         }
 
-        let (ast, mut more_errors) = Self::from_tokens(&tokens);
-        errors.append(&mut more_errors);
-        (ast, errors)
+        let (ast, mut parse_errors) = Self::from_tokens(&tokens);
+        lex_errors.append(&mut parse_errors);
+        (ast, lex_errors)
     }
 
     pub fn from_tokens (tokens:&VecDeque<Token>) -> (Self, Vec<Error>)
     {
         let arena = Arena::new();
-        let top_level; let errors;
-        unsafe {
+        let (top_level, errors) = unsafe {
             let arena_ref = &*(&arena as *const Arena<Expr<'e>>);
-            let pair = parser::parse(arena_ref, tokens);
-            top_level = pair.0;
-            errors = pair.1;
-        }
+            parser::parse(arena_ref, tokens)
+        };
         
         if cfg!(lang_print_parser_output) {
             println!("exprs:");
@@ -89,7 +86,7 @@ pub enum ExprDef<'e>
     While       { cond: &'e Expr<'e>, body: &'e Expr<'e> },
     // --- Operations
     Field       (&'e Expr<'e>, &'e Expr<'e>),
-    UnOp        (Op, &'e Expr<'e>),
+    UnOp        { op: Op, e: &'e Expr<'e> },
     BinOp       { op: Op, left: &'e Expr<'e>, right: &'e Expr<'e> },
     Call        { id: &'e Expr<'e>, args: Box<[&'e Expr<'e>]> },
     // --- Declarations

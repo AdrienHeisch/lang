@@ -55,18 +55,18 @@ fn parse_expr<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env:
     {
         TokenDef::Op(op) => {
             let e = parse_expr(arena, tokens, env, errors, globals);
-            arena.alloc(Expr { def: ExprDef::UnOp(*op, e), pos: tk.pos + e.pos })
+            arena.alloc(Expr { def: ExprDef::UnOp { op: *op, e }, pos: tk.pos + e.pos })
         },
         TokenDef::Const(value) => parse_expr_next(arena, tokens, env, errors, globals, arena.alloc(Expr { def: ExprDef::Const(value.clone()), pos: tk.pos })),
         TokenDef::Id(_) => {
             parse_structure(arena, tokens, env, errors, globals, tk)
         },
         TokenDef::DelimOpen(Delimiter::Pr) => {
+            let e = parse_expr(arena, tokens, env, errors, globals);
             let tk = next(tokens);
             match tk.def
             {
                 TokenDef::DelimClose(Delimiter::Pr) => {
-                    let e = parse_expr(arena, tokens, env, errors, globals);
                     parse_expr_next(arena, tokens, env, errors, globals, arena.alloc(Expr { def: ExprDef::Parent(e), pos: tk.pos }))
                 },
                 _ => {

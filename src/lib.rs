@@ -1,4 +1,5 @@
 #![allow(dead_code)]
+
 mod ast;
 mod env;
 mod interpreter;
@@ -9,16 +10,16 @@ mod vm;
 
 pub fn eval (program:&str)
 {
-    let (ast, parse_errors) = ast::Ast::from_str(program);
-    let mut interp = interpreter::Interpreter::new();
+    let (ast, ast_errors) = ast::Ast::from_str(program);
 
-    for error in &parse_errors {
+    for error in &ast_errors {
         println!("{} -> {}", error.pos.get_full(program), error.msg);
     }
 
-    if cfg!(lang_ignore_parse_errors) || parse_errors.is_empty() {
-        if let Err(error) = interp.interpret(ast.get_top_level()) {
-            println!("{} -> {}", error.pos.get_full(program), error.msg);
+    let mut interp = interpreter::Interpreter::new();
+    if cfg!(lang_ignore_parse_errors) || ast_errors.is_empty() {
+        if let Err(interp_error) = interp.interpret(ast.get_top_level()) {
+            println!("{} -> {}", interp_error.pos.get_full(program), interp_error.msg);
         } else if cfg!(lang_interp_print_locals) {
             interp.print_locals();
         }
@@ -27,17 +28,20 @@ pub fn eval (program:&str)
 
 pub fn compile (program:&str)
 {
-    let (ast, parse_errors) = ast::Ast::from_str(program);
-    let mut compiler = vm::Compiler::new();
+    let (ast, ast_errors) = ast::Ast::from_str(program);
 
-    for error in &parse_errors {
-        println!("{}", error);
+    for error in &ast_errors {
+        println!("{} -> {}", error.pos.get_full(program), error.msg);
     }
 
-    if cfg!(lang_ignore_parse_errors) || parse_errors.is_empty() {
-        compiler.compile(ast.get_top_level());
-        compiler.print_bytecode();
-        compiler.memory.print_ram();
+    if cfg!(lang_ignore_parse_errors) || ast_errors.is_empty() {
+        let chunk = vm::compiler::compile(ast.get_top_level());
+        print!("BYTECODE: ");
+        for s in chunk.iter().map(|el| format!("{:04X}", el)) {
+            print!("{} ", s);
+        }
+        println!();
+        vm::interpreter::interpret(chunk);
     }
 }
 

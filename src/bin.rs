@@ -24,7 +24,7 @@ fn main () -> Result<(), std::io::Error>
 
 fn eval_file (path:&str) -> Result<(), std::io::Error>
 {
-    lang::eval(&std::fs::read_to_string(path)?);
-    // lang::compile(&std::fs::read_to_string(path)?);
+    // lang::eval(&std::fs::read_to_string(path)?);
+    lang::compile(&std::fs::read_to_string(path)?);
     Ok(())
 }

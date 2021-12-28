@@ -1,5 +1,3 @@
-mod memory;
-
 use crate::{
     ast::{ Identifier, Expr, ExprDef, Op, Error, Position, WithPosition },
     env::{ Environment, Context },
@@ -7,6 +5,7 @@ use crate::{
     utils
 };
 
+mod memory;
 use memory::{ Memory, Pointer };
 
 const F32_EQ_THRESHOLD:f32 = 1e-6;
@@ -50,13 +49,13 @@ impl<'e> Interpreter<'e>
 
     // ----- INTERP
 
-    pub fn interpret (&mut self, exprs:&[&Expr<'e>]) -> Result<(), Error>
+    pub fn interpret (&mut self, statements:&[&Expr<'e>]) -> Result<(), Error>
     {
         if cfg!(not(lang_benchmark)) {
             println!("Program stdout :");
         }
         
-        for e in exprs {
+        for e in statements {
             if let Err(ResultErr::Error(error)) = self.expr(e) { return Err(error); }
         }
 
@@ -136,11 +135,11 @@ impl<'e> Interpreter<'e>
                 Value::Void
             },
             // --- Operations
-            UnOp(op, right) => {
-                match self.unop(*op, right)
+            UnOp { op, e } => {
+                match self.unop(*op, e)
                 {
                     Ok(val) => val,
-                    Err(ResultErr::Nothing) => return Err(self.throw(format!("Invalid operation : {}{:?}", op.to_string(), right.def), expr.pos)),
+                    Err(ResultErr::Nothing) => return Err(self.throw(format!("Invalid operation : {}{:?}", op.to_string(), e.def), expr.pos)),
                     err @ Err(_) => return err
                 }
             },
@@ -218,6 +217,13 @@ impl<'e> Interpreter<'e>
 
         Ok(match value
         {
+            Value::Int(i) => {
+                match op
+                {
+                    Op::Sub => Value::Int(-i),
+                    _ => return Err(ResultErr::Nothing)
+                }
+            },
             Value::Float(f) => {
                 match op
                 {
@@ -244,6 +250,32 @@ impl<'e> Interpreter<'e>
         use { Op::*, Value::* };
         Ok(match (value_left, value_right)
         {
+            (Int(l), Int(r)) => {
+                match op
+                {
+                    Assign => {
+                        let value = self.expr(e_right)?;
+                        self.assign(e_left, e_right.downcast(value))?
+                    },
+                    Equal       => Bool(l == r),
+                    NotEqual    => Bool(l != r),
+                    Gt          => Bool(l > r),
+                    Gte         => Bool(l >= r),
+                    Lt          => Bool(l < r),
+                    Lte         => Bool(l <= r),
+                    Add         => Int(l + r),
+                    Sub         => Int(l - r),
+                    Mult        => Int(l * r),
+                    Div         => Int(l / r),
+                    Mod         => Int(l % r),
+                    AddAssign   => self.assign(e_left, e_right.downcast(Int(l + r)))?,
+                    SubAssign   => self.assign(e_left, e_right.downcast(Int(l - r)))?,
+                    MultAssign  => self.assign(e_left, e_right.downcast(Int(l * r)))?,
+                    DivAssign   => self.assign(e_left, e_right.downcast(Int(l / r)))?,
+                    ModAssign   => self.assign(e_left, e_right.downcast(Int(l % r)))?,
+                    _ => return Err(ResultErr::Nothing)
+                }
+            },
             (Float(l), Float(r)) => {
                 use utils::compare_f32;
                 match op
@@ -305,7 +337,7 @@ impl<'e> Interpreter<'e>
         Ok(value.def)
     }
 
-    fn call (&mut self, e_id:&Expr<'e>, args:&[&Expr<'e>]) -> Result<Value, ResultErr> //TODO globals
+    fn call (&mut self, e_id:&Expr<'e>, args:&[&Expr<'e>]) -> Result<Value, ResultErr>
     {
         Ok(match &e_id.def
         {

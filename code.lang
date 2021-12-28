@@ -1,6 +1,32 @@
-let a = true;
-//{
-//    let b = 3;
-//    print(b);
-//}
-print(a);
+let b = 0;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;
+b = b + 1;

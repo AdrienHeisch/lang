@@ -1,70 +1,112 @@
-use crate::ast::{ Expr, ExprDef };
+use crate::ast::Op;
+use crate::ast::{ Expr, ExprDef, Identifier };
 use crate::value::{ Value };
-use crate::memory::Memory;
+use super::*;
+use core::panic;
+use std::collections::HashMap;
 
-pub struct Compiler
+pub fn compile (statements:&[&Expr]) -> Chunk
 {
-    pub memory: Memory,
-    pub chunk: Vec<u8>
-}
+    let mut chunk = Chunk::new();
+    let mut identifiers = HashMap::<Identifier, u16>::new();
+    let mut sp = SP_INIT;
 
-#[derive(Copy, Clone)]
-enum OpCode
-{
-    Goto,
-    Const
-}
-
-impl Compiler
-{
-
-    pub fn new () -> Self
-    {
-        Compiler
-        {
-            memory: Memory::new(),
-            chunk: Vec::new()
-        }
+    for s in statements {
+        expr(s, &mut chunk, &mut identifiers, &mut sp);
     }
 
-    pub fn compile (&mut self, exprs:&[&Expr])
-    {
-        for e in exprs {
-            self.expr(e);
-        }
-    }
+    chunk
+}
 
-    fn expr (&mut self, expr:&Expr)
-    {
-        use ExprDef::*;
-        if let Const(value) = &expr.def {
-            self.chunk.push(OpCode::Const.as_byte());
+/* fn statement (s: &Expr, chunk: &mut Chunk, sp: &mut u16, identifiers: &mut HashMap<Identifier, u16>) {
+    let e = expr(s, chunk, sp, identifiers);
+} */
 
-            let cst = match value
+fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>, sp: &mut u16)
+{
+    use ExprDef::*;
+    match &e.def {
+        Const(value) => {
+            chunk.push(match value
             {
-                Value::Int(_) => unimplemented!(),
+                Value::Int(i) if *i <= 0x7fff => *i as u16,
+                Value::Int(_) => panic!("Int out of range"),
                 Value::Float(_) => unimplemented!(),
-                Value::Bool(b) => (*b) as u8,
+                Value::Bool(_) => unimplemented!(),
                 Value::Void => panic!(),
+            });
+        },
+        Id (id) => {
+            if let Some(address) = identifiers.get(id) {
+                chunk.push(*address);           // A = address
+                chunk.push(0b1111110000100000); // A = *A
+            } else {
+                panic!("Unknown identifier")
+            }
+        },
+        UnOp { op, e } => {
+            expr(e, chunk, identifiers, sp);    // A = e
+            chunk.push(match *op {
+                Op::Sub => 0b1000110011010000,      // D = -A
+                _ => unimplemented!()
+            });
+        },
+        BinOp { op, left, right } => {
+            match *op {
+                Op::Add => {
+                    expr(left, chunk, identifiers, sp);      // A = left
+                    chunk.push(0b1110110000010000);             // D = A
+                    expr(right, chunk, identifiers, sp);     // A = right
+                    chunk.push(0b1000000010010000);             // D = D + A
+                },
+                Op::Sub => {
+                    expr(left, chunk, identifiers, sp);      // A = left
+                    chunk.push(0b1110110000010000);             // D = A
+                    expr(right, chunk, identifiers, sp);     // A = right
+                    chunk.push(0b1000010011010000);             // D = D - A
+                },
+                Op::Assign => {
+                    if let Id(id) = left.def {
+                        let address = if let Some(address_ref) = identifiers.get(&id) {
+                            *address_ref
+                        } else {
+                            panic!("Unkown identifier : {}", String::from_utf8(Vec::from(id)).unwrap());
+                        };
+
+                        expr(right, chunk, identifiers, sp);
+                        if let Const(_) = right.def {
+                            chunk.push(0b1110110000010000);     // D = A
+                        }
+                        chunk.push(address);                    // A = address
+                        chunk.push(0b1110001100001000);         // *A = D
+                    } else {
+                        panic!("Can't assign {:?} to {:?}", right, left);
+                    }
+                },
+                _ => unimplemented!()
             };
-
-            self.chunk.push(cst);
+        },
+        VarDecl(id, assign_expr) => {
+            identifiers.insert(*id, *sp);
+            expr(assign_expr, chunk, identifiers, sp);
+            if let Const(_) = assign_expr.def {
+                chunk.push(0b1110110000010000);             // D = A
+            }
+            chunk.push(0);                                  // A = SP
+            chunk.push(0b1111110000100000);                 // A = *A
+            chunk.push(0b1110001100001000);                 // *A = D
+            chunk.push(0);                                  // A = SP
+            chunk.push(0b1111110111001000);                 // *A = *A + 1
+            *sp += 1;
+        },
+        Parent(e) => {
+            expr(e, chunk, identifiers, sp);
         }
-    }
-
-    pub fn print_bytecode (&self)
-    {
-        let mut out = String::from("bytecode:\n");
-        self.chunk.iter().for_each(|byte| out = format!("{} {:X}", out, byte));
-        println!("{}", out);
-    }
-
-}
-
-impl OpCode
-{
-    fn as_byte (&self) -> u8
-    {
-        *self as u8
+        End => (),
+        _ => unimplemented!()
     }
 }
+
+/* fn assign (e: &Expr, address: u16, chunk: &mut Chunk) {
+
+} */
