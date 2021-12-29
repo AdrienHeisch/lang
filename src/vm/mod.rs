@@ -21,23 +21,63 @@ trait ToAsm {
 
 impl ToAsm for Instruction {
 
-    fn to_asm (&self) -> String { //TODO real thing
-        match self {
-            0b1000000000000111 => format!("JMP"),
-            0b1000110000010000 => format!("D = A"),
-            0b1000110011010000 => format!("D = -A"),
-            0b1000000010010000 => format!("D = D + A"),
-            0b1000010011010000 => format!("D = D - A"),
-            0b1001110000100000 => format!("A = *A"),
-            0b1000001100010000 => format!("*A = A"),
-            0b1000001100001000 => format!("*A = D"),
-            0b1001110111001000 => format!("*A = *A + 1"),
-            0b1000001010000010 => format!("D; JEQ"),
-            0b1000001010000101 => format!("D; JNE"),
-            0b1000001010000011 => format!("D; JGE"),
-            value if !check_bit(*value, 15) => format!("A = {}", *value as i16),
-            computation => format!("Unknown computation {:b}", computation)
+    fn to_asm (&self) -> String {
+        if !check_bit(*self, 15) {
+            return format!("A = {}", *self as i16);
         }
+
+        let sm = if (self & 0b1000000000000) == 0 { "A" } else { "*A" };
+
+        let opcode = match (self & 0b111111000000) >> 6 {
+            _ if self & 0b111 == 0b111 => format!(""),
+            0b001010 |
+            0b001100 => format!("D"),
+            0b100010 |
+            0b110000 => format!("{}", sm),
+            0b000000 => format!("D&{}", sm),
+            0b010101 => format!("D|{}", sm),
+            0b011010 => format!("~D"),
+            0b100110 => format!("~{}", sm),
+            0b000010 => format!("D+{}", sm),
+            0b010011 => format!("D-{}", sm),
+            0b000111 => format!("{}-D", sm),
+            0b100000 => format!("0"),
+            0b100001 => format!("-1"),
+            0b111111 => format!("1"),
+            0b001111 => format!("-D"),
+            0b110011 => format!("-{}", sm),
+            0b011111 => format!("D+1"),
+            0b110111 => format!("{}+1", sm),
+            0b001110 => format!("D-1"),
+            0b110010 => format!("{}-1", sm),
+            unknown => panic!("{:b}", unknown)
+        };
+        
+        let target = match (self & 0b111000) >> 3 {
+            0b000 => "",
+            0b001 => "*A = ",
+            0b010 => "D = ",
+            0b011 => "D, *A = ",
+            0b100 => "A = ",
+            0b101 => "A, *A = ",
+            0b110 => "A, D = ",
+            0b111 => "A, D, *A = ",
+            _ => panic!()
+        };
+
+        let cond = match self & 0b111 {
+            0b000 => "",
+            0b001 => "; JGT",
+            0b010 => "; JEQ",
+            0b011 => "; JGE",
+            0b100 => "; JLT",
+            0b101 => "; JNE",
+            0b110 => "; JLE",
+            0b111 => "JMP",
+            _ => panic!()
+        };
+
+        format!("{}{}{}", target, opcode, cond)
     }
 
 }
