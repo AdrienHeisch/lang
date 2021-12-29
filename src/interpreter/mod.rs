@@ -41,7 +41,7 @@ impl<'e> Interpreter<'e>
         Self
         {
             memory: Memory::new(),
-            stack: [(); 8].map(|_| PtrOrFn::Ptr(Default::default())),
+            stack: [(); STACK_SIZE].map(|_| PtrOrFn::Ptr(Default::default())),
             frame_ptr: 0,
             env: Environment::new(Context::TopLevel)
         }
@@ -70,7 +70,7 @@ impl<'e> Interpreter<'e>
     pub fn reset (&mut self)
     {
         self.memory = Memory::new();
-        self.stack = [(); 8].map(|_| PtrOrFn::Ptr(Default::default()));
+        self.stack = [(); STACK_SIZE].map(|_| PtrOrFn::Ptr(Default::default()));
         self.frame_ptr = 0;
         self.env = Environment::new(Context::TopLevel);
     }

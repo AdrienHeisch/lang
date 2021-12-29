@@ -18,32 +18,39 @@ pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
     memory[0] = SP_INIT;
     let mut dummy_memory = 0;
 
-    let mut index = 0;
-    while index < chunk.len() {
+    let mut offset = 0;
+    while offset < chunk.len() {
         let in_mem = if (a as usize) < memory.len() {
             &mut memory[a as usize]
         } else {
             &mut dummy_memory
         };
 
-        let instruction = chunk[index];
+        let instruction = chunk[offset];
+        if cfg!(not(lang_benchmark)) {
+            print!("{:04} {:>16}   -->   ", offset, instruction.to_asm());
+        }
         if check_bit(instruction, 15) {
+            let result = compute(instruction, a, d, *in_mem);
+
             if check_bit(instruction, 5) {
-                a = compute(instruction, a, d, *in_mem);
+                a = result;
             } else if check_bit(instruction, 4) {
-                d = compute(instruction, a, d, *in_mem);
+                d = result;
             } else if check_bit(instruction, 3) {
-                *in_mem = compute(instruction, a, d, *in_mem);
-            } else {
-                compute(instruction, a, d, *in_mem);
+                *in_mem = result;
+            }
+            
+            if (check_bit(instruction, 0) && (result as i16) > 0) || (check_bit(instruction, 1) && result == 0) || (check_bit(instruction, 2) && (result as i16) < 0) {
+                offset = a as usize;
             }
         } else {
             a = instruction;
         }
         if cfg!(not(lang_benchmark)) {
-            println!("{:>16}   -->   A: {:<3} | D: {:<3} | A*: {:<3}", instruction.to_asm(), a as i16, d as i16, *in_mem as i16);
+            println!("A: {:<3} | D: {:<3} | A*: {:<3}", a as i16, d as i16, *in_mem as i16);
         }
-        index += 1;
+        offset += 1;
     }
     
     if cfg!(not(lang_benchmark)) {
