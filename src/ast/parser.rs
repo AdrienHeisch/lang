@@ -19,7 +19,6 @@ pub fn parse<'e, 't>(
     let mut tokens_iter = tokens.iter().peekable();
     let mut env = Environment::new(Context::TopLevel);
     let mut errors = Vec::new();
-    let mut globals = vec![Identifier::make("print"), Identifier::make("printmem")];
 
     let mut statements = Vec::new();
 
@@ -29,7 +28,6 @@ pub fn parse<'e, 't>(
             &mut tokens_iter,
             &mut env,
             &mut errors,
-            &mut globals,
         ));
         if tokens_iter.peek().is_none() {
             break;
@@ -50,9 +48,8 @@ fn parse_statement<'e, 't>(
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
     errors: &mut Vec<Error>,
-    globals: &mut Vec<Identifier>,
 ) -> &'e Expr<'e> {
-    let expr = parse_expr(arena, tokens, env, errors, globals);
+    let expr = parse_expr(arena, tokens, env, errors);
 
     if peek(tokens).def == TokenDef::Semicolon {
         next(tokens);
@@ -79,12 +76,11 @@ fn parse_expr<'e, 't>(
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
     errors: &mut Vec<Error>,
-    globals: &mut Vec<Identifier>,
 ) -> &'e Expr<'e> {
     let tk = next(tokens);
     match &tk.def {
         TokenDef::Op(op) => {
-            let e = parse_expr(arena, tokens, env, errors, globals);
+            let e = parse_expr(arena, tokens, env, errors);
             arena.alloc(Expr {
                 def: ExprDef::UnOp { op: *op, e },
                 pos: tk.pos + e.pos,
@@ -95,15 +91,14 @@ fn parse_expr<'e, 't>(
             tokens,
             env,
             errors,
-            globals,
             arena.alloc(Expr {
                 def: ExprDef::Const(value.clone()),
                 pos: tk.pos,
             }),
         ),
-        TokenDef::Id(_) => parse_structure(arena, tokens, env, errors, globals, tk),
+        TokenDef::Id(_) => parse_structure(arena, tokens, env, errors, tk),
         TokenDef::DelimOpen(Delimiter::Pr) => {
-            let e = parse_expr(arena, tokens, env, errors, globals);
+            let e = parse_expr(arena, tokens, env, errors);
             let tk = next(tokens);
             match tk.def {
                 TokenDef::DelimClose(Delimiter::Pr) => parse_expr_next(
@@ -111,7 +106,6 @@ fn parse_expr<'e, 't>(
                     tokens,
                     env,
                     errors,
-                    globals,
                     arena.alloc(Expr {
                         def: ExprDef::Parent(e),
                         pos: tk.pos,
@@ -143,7 +137,7 @@ fn parse_expr<'e, 't>(
                     _ => true,
                 }
             } {
-                statements.push(parse_statement(arena, tokens, env, errors, globals));
+                statements.push(parse_statement(arena, tokens, env, errors));
             }
             next(tokens);
 
@@ -172,20 +166,18 @@ fn parse_expr_next<'e, 't>(
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
     errors: &mut Vec<Error>,
-    globals: &mut Vec<Identifier>,
     e: &'e Expr<'e>,
 ) -> &'e Expr<'e> {
     let tk = peek(tokens);
     match tk.def {
         TokenDef::Op(op) => {
             next(tokens);
-            let expr = parse_expr(arena, tokens, env, errors, globals);
+            let expr = parse_expr(arena, tokens, env, errors);
             make_binop(arena, op, e, expr)
         }
         TokenDef::DelimOpen(Delimiter::Pr) => {
             next(tokens);
-            let (expr_list, tk_delim_close) =
-                make_expr_list(arena, tokens, env, errors, globals, tk);
+            let (expr_list, tk_delim_close) = make_expr_list(arena, tokens, env, errors, tk);
             arena.alloc(Expr {
                 def: ExprDef::Call {
                     id: e,
@@ -198,7 +190,7 @@ fn parse_expr_next<'e, 't>(
         TokenDef::Dot => {
             next(tokens);
             arena.alloc(Expr {
-                def: ExprDef::Field(e, parse_expr(arena, tokens, env, errors, globals)),
+                def: ExprDef::Field(e, parse_expr(arena, tokens, env, errors)),
                 pos: tk.pos,
             })
         }
@@ -211,7 +203,6 @@ fn parse_structure<'e, 't>(
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
     errors: &mut Vec<Error>,
-    globals: &mut Vec<Identifier>,
     tk_identifier: &Token,
 ) -> &'e Expr<'e> {
     let id = if let TokenDef::Id(id) = tk_identifier.def {
@@ -232,7 +223,7 @@ fn parse_structure<'e, 't>(
                     let value = match tk.def {
                         TokenDef::Op(Op::Assign) => {
                             next(tokens);
-                            parse_expr(arena, tokens, env, errors, globals)
+                            parse_expr(arena, tokens, env, errors)
                         }
                         _ => {
                             //TODO uninitialized var
@@ -274,7 +265,7 @@ fn parse_structure<'e, 't>(
                 }
             };
 
-            let mut local_env = *env;
+            let mut local_env = env.clone();
 
             let tk = peek(tokens);
             let (params, end_tk) = match tk.def {
@@ -294,7 +285,7 @@ fn parse_structure<'e, 't>(
                 push_error(errors, "Too many parameters !".to_owned(), end_tk.pos);
             }
 
-            let body = parse_expr(arena, tokens, &mut local_env, errors, globals);
+            let body = parse_expr(arena, tokens, &mut local_env, errors);
 
             //TODO recursion ?
             declare_local(env, &id);
@@ -304,14 +295,14 @@ fn parse_structure<'e, 't>(
             })
         }
         b"if\0\0\0\0\0\0" => {
-            let cond = parse_expr(arena, tokens, env, errors, globals);
-            let then = parse_expr(arena, tokens, env, errors, globals);
+            let cond = parse_expr(arena, tokens, env, errors);
+            let then = parse_expr(arena, tokens, env, errors);
             let mut pos = pos + cond.pos + then.pos;
 
             let elze = match peek(tokens).def {
                 TokenDef::Id(next_id) if &next_id == b"else\0\0\0\0" => {
                     next(tokens);
-                    Some(parse_expr(arena, tokens, env, errors, globals))
+                    Some(parse_expr(arena, tokens, env, errors))
                 }
                 _ => None,
             };
@@ -325,8 +316,8 @@ fn parse_structure<'e, 't>(
             })
         }
         b"while\0\0\0" => {
-            let cond = parse_expr(arena, tokens, env, errors, globals);
-            let body = parse_expr(arena, tokens, env, errors, globals);
+            let cond = parse_expr(arena, tokens, env, errors);
+            let body = parse_expr(arena, tokens, env, errors);
             arena.alloc(Expr {
                 def: ExprDef::While { cond, body },
                 pos: pos + cond.pos + body.pos,
@@ -340,7 +331,7 @@ fn parse_structure<'e, 't>(
                     tk_identifier.pos,
                 );
             }
-            let e = parse_expr(arena, tokens, env, errors, globals);
+            let e = parse_expr(arena, tokens, env, errors);
             arena.alloc(Expr {
                 def: ExprDef::Return(e),
                 pos: pos + e.pos,
@@ -386,7 +377,7 @@ fn parse_structure<'e, 't>(
             }
         }
         id => {
-            if !check_id_exists(env, globals, id) {
+            if !check_id_exists(env, id) {
                 push_error(
                     errors,
                     format!("Unknown identifier : {}", id.to_string()),
@@ -399,7 +390,6 @@ fn parse_structure<'e, 't>(
                 tokens,
                 env,
                 errors,
-                globals,
                 arena.alloc(Expr {
                     def: ExprDef::Id(*id),
                     pos,
@@ -504,7 +494,6 @@ fn make_expr_list<'e, 't>(
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
     errors: &mut Vec<Error>,
-    globals: &mut Vec<Identifier>,
     tk_delim_open: &Token,
 ) -> (Vec<&'e Expr<'e>>, &'t Token) {
     let mut list = Vec::new();
@@ -520,7 +509,7 @@ fn make_expr_list<'e, 't>(
     }
 
     loop {
-        list.push(parse_expr(arena, tokens, env, errors, globals));
+        list.push(parse_expr(arena, tokens, env, errors));
 
         let tk = peek(tokens);
         match tk.def {
@@ -553,14 +542,14 @@ fn make_expr_list<'e, 't>(
 }
 
 // #region make use macros ?
-/* fn make_ident_list<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env: &mut Environment, errors: &mut Vec<Error>, globals: &mut Vec<Identifier>, tk_delim_open:&Token) -> (Vec<Identifier>, &'t Token)
+/* fn make_ident_list<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env: &mut Environment, errors: &mut Vec<Error>: &mut Vec<Identifier>, tk_delim_open:&Token) -> (Vec<Identifier>, &'t Token)
 {
     __make_list(tokens, errors, tk_delim_open, |list:&mut Vec<Identifier>| {
         let tk = peek(tokens);
         if let TokenDef::Id(id) = tk.def {
             next(tokens);
             let id = id;
-            declare_local(arena, tokens, env, errors, globals, &id, true);
+            declare_local(arena, tokens, env, errors, &id, true);
             list.push(id);
         } else {
             push_error(errors, format!("Expected identifier, got : {:?}", tk.def), tk.pos);
@@ -569,10 +558,10 @@ fn make_expr_list<'e, 't>(
     })
 }
 
-fn make_expr_list<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env: &mut Environment, errors: &mut Vec<Error>, globals: &mut Vec<Identifier>, tk_delim_open:&Token) -> (Vec<&'e Expr<'e>>, &'t Token)
+fn make_expr_list<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env: &mut Environment, errors: &mut Vec<Error>: &mut Vec<Identifier>, tk_delim_open:&Token) -> (Vec<&'e Expr<'e>>, &'t Token)
 {
     __make_list(tokens, errors, tk_delim_open, |list:&mut Vec<&'e Expr<'e>>| {
-        list.push(parse_expr(arena, tokens, env, errors, globals));
+        list.push(parse_expr(arena, tokens, env, errors));
     })
 }
 
@@ -653,9 +642,10 @@ fn declare_local(env: &mut Environment, id: &Identifier) {
     }
 }
 
-fn check_id_exists(env: &Environment, globals: &[Identifier], id: &Identifier) -> bool {
-    if globals.contains(id) {
-        return true;
+fn check_id_exists(env: &Environment, id: &Identifier) -> bool {
+    match id {
+        b"print\0\0\0" | b"printmem" => return true,
+        _ => (),
     }
 
     for (id_, _) in env.locals.iter().take(env.locals_count.into()).rev() {
@@ -705,9 +695,9 @@ fn eval_type(expr: &Expr, env: &Environment) -> Type {
     match &expr.def {
         ExprDef::Const(value) => value.as_type(),
         ExprDef::Id(id) => {
-            // check_id_exists(env, globals, id)
+            // check_id_exists(env, id)
             todo!()
-        },
+        }
         ExprDef::If {
             cond: _,
             then,

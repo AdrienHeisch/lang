@@ -343,7 +343,7 @@ impl<'e> Interpreter<'e> {
         Ok(match &e_id.def {
             ExprDef::Id(id) => {
                 match id {
-                    _ if &id[..5] == b"print" => {
+                    b"print\0\0\0" => {
                         if cfg!(not(lang_benchmark)) {
                             print!("> ");
                             for arg in args {
@@ -353,7 +353,7 @@ impl<'e> Interpreter<'e> {
                         }
                         Value::Void
                     }
-                    _ if &id[..8] == b"printmem" => {
+                    b"printmem" => {
                         if cfg!(not(lang_benchmark)) {
                             println!("\nMemory state :");
                             self.print_locals();

@@ -1,9 +1,8 @@
 use crate::ast::Identifier;
 
-#[derive(Clone, Copy)]
+#[derive(Clone/* , Copy */)]
 pub struct Environment
 {
-    // pub globals: Vec<Identifier>, //TODO globals should belong here
     pub locals: [(Identifier, u8); 256], //TODO max locals ? (u8?)
     pub locals_count: u8,
     pub scope_depth: u8,
@@ -19,11 +18,10 @@ pub enum Context {
 impl Environment
 {
 
-    pub fn new (/* globals: Vec<Identifier>,  */context:Context) -> Self
+    pub fn new (context:Context) -> Self
     {
         Environment
         {
-            // globals,
             locals: [(Default::default(), 0); 256],
             locals_count: 0,
             scope_depth: 0,
