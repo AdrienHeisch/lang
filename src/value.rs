@@ -1,5 +1,5 @@
 #[derive(Debug, Clone, PartialEq)]
-pub enum Value //TODO should belong to interp
+pub enum Value
 {
     Int(i32),
     Float(f32),
@@ -39,10 +39,10 @@ impl std::fmt::Display for Value
         use Value::*;
         match self
         {
-            Int(i) => write!(fmt, "{}", i),
-            Float(f) => write!(fmt, "{}", f),
-            Bool(b) => write!(fmt, "{}", b),
-            Void => write!(fmt, "void")
+            Int(i)    => write!(fmt, "{}", i),
+            Float(f)  => write!(fmt, "{}", f),
+            Bool(b)  => write!(fmt, "{}", b),
+            Void            => write!(fmt, "void")
         }
     }
 }
@@ -51,10 +51,10 @@ impl Type {
 
     pub fn get_size (&self) -> usize {
         match self {
-            Type::Int => 4,
+            Type::Int   => 4,
             Type::Float => 4,
-            Type::Bool => 1,
-            Type::Void => 0
+            Type::Bool  => 1,
+            Type::Void  => 0
         }
     }
 

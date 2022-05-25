@@ -13,7 +13,7 @@ pub struct Environment
 #[derive(Clone, Copy)]
 pub enum Context {
     TopLevel,
-    Function //TODO block ?
+    Function
 }
 
 impl Environment
@@ -58,7 +58,6 @@ impl Environment
         {
             let (_, depth) = self.locals[i];
             if depth > self.scope_depth {
-                // self.locals[i] = Default::default(); //TODO probably useless
                 self.locals_count -= 1;
             } else {
                 break;

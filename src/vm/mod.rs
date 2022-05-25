@@ -2,6 +2,7 @@ pub mod compiler;
 pub mod interpreter;
 
 const MEM_SIZE: usize = 64;
+pub type Memory = [u16; MEM_SIZE];
 
 const SP_ADDRESS: u16 = 0;
 const SP_INIT: u16 = 16;
@@ -80,4 +81,8 @@ impl ToAsm for Instruction {
         format!("{}{}{}", target, opcode, cond)
     }
 
+}
+
+pub struct DebugInfo {
+    pub identifiers: std::collections::HashMap<crate::ast::Identifier, u16>
 }

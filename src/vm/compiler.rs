@@ -1,12 +1,10 @@
-use crate::ast::Op;
-use crate::ast::{ Expr, ExprDef, Identifier };
-use crate::value::{ Value };
 use super::*;
-use core::panic;
+use crate::ast::{Expr, ExprDef, Identifier};
+use crate::ast::{IdentifierTools, Op};
+use crate::value::Value;
 use std::collections::HashMap;
 
-pub fn compile (statements:&[&Expr]) -> Result<Chunk, ()>
-{
+pub fn compile(statements: &[&Expr]) -> Result<(Chunk, DebugInfo), ()> {
     let mut chunk = Chunk::new();
     let mut identifiers = HashMap::<Identifier, u16>::new();
     let mut sp = SP_INIT;
@@ -24,34 +22,33 @@ pub fn compile (statements:&[&Expr]) -> Result<Chunk, ()>
         println!();
     }
 
-    Ok(chunk)
+    Ok((chunk, DebugInfo { identifiers }))
 }
 
-fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>, sp: &mut u16)
-{
+fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>, sp: &mut u16) {
     use ExprDef::*;
     match &e.def {
         Const(value) => {
-            chunk.push(match value
-            {
+            chunk.push(match value {
                 Value::Int(i) if *i <= 0x7fff => *i as u16,
                 Value::Int(_) => panic!("Int out of range"),
-                Value::Float(_) => unimplemented!(),
-                Value::Bool(_) => unimplemented!(),
+                Value::Float(_) => unimplemented!(), //TODO two's complement
+                Value::Bool(false) => 0,
+                Value::Bool(true) => 1,
                 Value::Void => panic!(),
             });
-        },
-        Id (id) => {
+        }
+        Id(id) => {
             if let Some(address) = identifiers.get(id) {
-                chunk.push(*address);           // A = address
+                chunk.push(*address); // A = address
                 chunk.push(0b1001110000100000); // A = *A
             } else {
-                panic!("Unknown identifier")
+                panic!("Unknown identifier : {}", id.to_string())
             }
-        },
+        }
         If { cond, then, elze } => {
             let before_if = chunk.len();
-            chunk.push(0);                          // A = tbd
+            chunk.push(0); // A = tbd
             expr(cond, chunk, identifiers, sp);
             expr(then, chunk, identifiers, sp);
 
@@ -61,13 +58,13 @@ fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>
                 chunk.push(0b1000000000000111); // JMP
             }
 
-            chunk[before_if] = (chunk.len() - 1) as u16;
+            chunk[before_if] = (chunk.len() - 1) as u16; // A =
 
             if let Some(elze) = elze {
                 expr(elze, chunk, identifiers, sp);
                 chunk[skip_else] = (chunk.len() - 1) as u16;
             }
-        },
+        }
         While { cond, body } => {
             let loop_start = chunk.len();
             chunk.push(0);
@@ -77,35 +74,35 @@ fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>
             chunk.push(0b1000000000000111); // JMP
 
             chunk[loop_start] = (chunk.len() - 1) as u16;
-        },
+        }
         UnOp { op, e } => {
-            expr(e, chunk, identifiers, sp);    // A = e
+            expr(e, chunk, identifiers, sp); // A = e
             chunk.push(match *op {
-                Op::Sub => 0b1000110011010000,      // D = -A
-                _ => unimplemented!()
+                Op::Sub => 0b1000110011010000, // D = -A
+                _ => unimplemented!(),
             });
-        },
+        }
         BinOp { op, left, right } => {
             macro_rules! math_binop {
                 () => {
-                    expr(left, chunk, identifiers, sp);     // A = left
-                    chunk.push(0b1000110000010000);         // D = A
-                    expr(right, chunk, identifiers, sp);    // A = right    
-                }
+                    expr(left, chunk, identifiers, sp); // A = left
+                    chunk.push(0b1000110000010000); // D = A
+                    expr(right, chunk, identifiers, sp); // A = right
+                };
             }
 
             macro_rules! cond_binop {
                 () => {
-                    chunk.push(0b1000110000010000);         // D = A
-                    chunk.push(JMP_ADDRESS);                // A = JMP_ADDRESS
-                    chunk.push(0b1000001100001000);         // *A = D
-                    expr(left, chunk, identifiers, sp);     // A = left
-                    chunk.push(0b1000110000010000);         // D = A
-                    expr(right, chunk, identifiers, sp);    // A = right
-                    chunk.push(0b1000010011010000);         // D = D - A
-                    chunk.push(JMP_ADDRESS);                // A = JMP_ADDRESS
-                    chunk.push(0b1001110000100000);         // A = *A
-                }
+                    chunk.push(0b1000110000010000); // D = A
+                    chunk.push(JMP_ADDRESS); // A = JMP_ADDRESS
+                    chunk.push(0b1000001100001000); // *A = D
+                    expr(left, chunk, identifiers, sp); // A = left
+                    chunk.push(0b1000110000010000); // D = A
+                    expr(right, chunk, identifiers, sp); // A = right
+                    chunk.push(0b1000010011010000); // D = D - A
+                    chunk.push(JMP_ADDRESS); // A = JMP_ADDRESS
+                    chunk.push(0b1001110000100000); // A = *A
+                };
             }
 
             match *op {
@@ -114,79 +111,87 @@ fn expr (e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>
                         let address = if let Some(address_ref) = identifiers.get(&id) {
                             *address_ref
                         } else {
-                            panic!("Unkown identifier : {}", String::from_utf8(Vec::from(id)).unwrap());
+                            panic!(
+                                "Unkown identifier : {}",
+                                String::from_utf8(Vec::from(id)).unwrap()
+                            );
                         };
 
                         expr(right, chunk, identifiers, sp);
                         if let Const(_) = right.def {
-                            chunk.push(0b1000110000010000);     // D = A
+                            chunk.push(0b1000110000010000); // D = A
                         }
-                        chunk.push(address);                    // A = address
-                        chunk.push(0b1000001100001000);         // *A = D
+                        chunk.push(address); // A = address
+                        chunk.push(0b1000001100001000); // *A = D
                     } else {
                         panic!("Can't assign {:?} to {:?}", right, left);
                     }
-                },
+                }
                 Op::Add => {
                     math_binop!();
-                    chunk.push(0b1000000010010000);             // D = D + A
-                },
+                    chunk.push(0b1000000010010000); // D = D + A
+                }
                 Op::Sub => {
                     math_binop!();
-                    chunk.push(0b1000010011010000);             // D = D - A
-                },
+                    chunk.push(0b1000010011010000); // D = D - A
+                }
                 Op::Equal => {
                     cond_binop!();
-                    chunk.push(0b1000001010000101);             // D; JNE
-                },
+                    chunk.push(0b1000001010000101); // D; JNE
+                }
                 Op::NotEqual => {
                     cond_binop!();
-                    chunk.push(0b1000001010000010);             // D; JEQ
-                },
+                    chunk.push(0b1000001010000010); // D; JEQ
+                }
                 Op::Gt => {
                     cond_binop!();
-                    chunk.push(0b1000001010000110);             // D; JLE
-                },
+                    chunk.push(0b1000001010000110); // D; JLE
+                }
                 Op::Gte => {
                     cond_binop!();
-                    chunk.push(0b1000001010000100);             // D; JLT
-                },
+                    chunk.push(0b1000001010000100); // D; JLT
+                }
                 Op::Lt => {
                     cond_binop!();
-                    chunk.push(0b1000001010000011);             // D; JGE
-                },
+                    chunk.push(0b1000001010000011); // D; JGE
+                }
                 Op::Lte => {
                     cond_binop!();
-                    chunk.push(0b1000001010000001);             // D; JGT
-                },
-                _ => unimplemented!()
+                    chunk.push(0b1000001010000001); // D; JGT
+                }
+                _ => unimplemented!(),
             };
-        },
+        }
+        Call { id, args } => unimplemented!(),
+        Field(_, _) => unimplemented!(),
         VarDecl(id, assign_expr) => {
             identifiers.insert(*id, *sp);
             expr(assign_expr, chunk, identifiers, sp);
             if let Const(_) = assign_expr.def {
-                chunk.push(0b1000110000010000);             // D = A
+                chunk.push(0b1000110000010000); // D = A
             }
-            chunk.push(SP_ADDRESS);                         // A = SP
-            chunk.push(0b1001110000100000);                 // A = *A
-            chunk.push(0b1000001100001000);                 // *A = D
-            chunk.push(SP_ADDRESS);                         // A = SP
-            chunk.push(0b1001110111001000);                 // *A = *A + 1
+            chunk.push(SP_ADDRESS); // A = SP
+            chunk.push(0b1001110000100000); // A = *A
+            chunk.push(0b1000001100001000); // *A = D
+            chunk.push(SP_ADDRESS); // A = SP
+            chunk.push(0b1001110111001000); // *A = *A + 1
             *sp += 1;
-        },
+        }
+        FnDecl { id, params, body } => unimplemented!(),
+        StructDecl { id, fields } => unimplemented!(),
         Block(exprs) => {
             // let sp_now = *sp;
             for e in exprs.iter() {
                 expr(e, chunk, identifiers, sp);
             }
             // *sp = sp_now;
-        },
+        }
         Parent(e) => {
             expr(e, chunk, identifiers, sp);
-        },
+        }
+        Return(e) => unimplemented!(),
         End => (),
-        _ => unimplemented!()
+        Invalid => unimplemented!(),
     }
 }
 

@@ -1,4 +1,7 @@
-let i = 0;
-while i < 2 {
-    i = i + 1;
+let a = 5;
+let b = 7;
+let c = false;
+if ((a + b) == 12) {
+    c = true;
 }
+print(c);

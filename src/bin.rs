@@ -20,15 +20,8 @@ fn main () -> Result <(), std::io::Error> {
 
 fn run_lang (program: &str) -> Result<(), String> {
     let ast = lang::build_ast(program)?;
-    // lang::walk_ast(&ast)?;
-    let bytecode = lang::compile_bytecode(&ast)?;
-    lang::run_bytecode(&bytecode)?;
+    lang::walk_ast(&ast)?;
+    // let bytecode = lang::compile_ast(&ast)?;
+    // lang::run_bytecode(&bytecode)?;
     Ok(())
 }
-
-/* fn eval_file (path:&str) -> Result<(), std::io::Error>
-{
-    // lang::eval(&std::fs::read_to_string(path)?);
-    lang::compile(&std::fs::read_to_string(path)?);
-    Ok(())
-} */
