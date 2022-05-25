@@ -34,6 +34,7 @@ impl Memory for RawMemory {
                 Value::Float(f32::from_ne_bytes(self.access(ptr.raw).try_into().unwrap()))
             }
             Type::Bool => Value::Bool(self.access(ptr.raw)[0] == 1),
+            Type::Fn => panic!(),
             Type::Void => Value::Void,
         }
     }

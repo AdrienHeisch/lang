@@ -1,6 +1,6 @@
 use crate::{
     ast::{Error, Expr, ExprDef, Identifier, IdentifierTools, Op, Position, WithPosition},
-    env::{Context, Environment},
+    env::{Context, Environment, Local},
     memory::RawMemory,
     utils,
     value::{Type, Value},
@@ -444,7 +444,7 @@ impl<'e> Interpreter<'e> {
         params: Box<[Identifier]>,
         body: &Expr<'e>,
     ) -> Result<(), String> {
-        self.env.locals[self.env.locals_count as usize] = (*id, self.env.scope_depth);
+        self.env.locals[self.env.locals_count as usize] = Local { id: *id, t: Type::Fn, depth: self.env.scope_depth };
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
             Reference::Fn(params, body.clone());
         if let Some(n) = self.env.locals_count.checked_add(1) {
@@ -457,7 +457,7 @@ impl<'e> Interpreter<'e> {
 
     fn declare_var(&mut self, id: &Identifier, t: Type) -> Result<Pointer, String> {
         let ptr = self.memory.make_pointer_for_type(t);
-        self.env.locals[self.env.locals_count as usize] = (*id, self.env.scope_depth);
+        self.env.locals[self.env.locals_count as usize] = Local { id: *id, t, depth: self.env.scope_depth };
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] = Reference::Ptr(ptr);
         if let Some(n) = self.env.locals_count.checked_add(1) {
             self.env.locals_count = n;
@@ -469,7 +469,7 @@ impl<'e> Interpreter<'e> {
 
     fn get_pointer(&self, id: &Identifier) -> Option<Reference<'e>> {
         for i in (0..self.env.locals_count as usize).rev() {
-            let (id_, _) = self.env.locals[i];
+            let Local { id: id_, .. } = self.env.locals[i];
             if *id == id_ {
                 return Some(self.stack[self.frame_ptr as usize + i].clone());
             }
@@ -504,7 +504,7 @@ impl<'e> Interpreter<'e> {
         };
 
         for i in (0..self.env.locals_count as usize).rev() {
-            let (id, depth) = self.env.locals[i];
+            let Local { id, depth, .. } = self.env.locals[i];
 
             if current_depth > depth {
                 current_depth = depth;

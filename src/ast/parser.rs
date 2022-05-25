@@ -2,7 +2,7 @@ use super::{
     Delimiter, Error, Expr, ExprDef, Identifier, IdentifierTools, Op, Position, Token, TokenDef,
 };
 use crate::{
-    env::{Context, Environment},
+    env::{Context, Environment, Local},
     value::Type,
 };
 use std::collections::VecDeque;
@@ -235,7 +235,7 @@ fn parse_structure<'e, 't>(
                             make_invalid(arena, pos)
                         }
                     };
-                    declare_local(env, &id);
+                    declare_local(env, &id, eval_type(value, env));
                     arena.alloc(Expr {
                         def: ExprDef::VarDecl(id, value),
                         pos: pos + value.pos,
@@ -288,7 +288,7 @@ fn parse_structure<'e, 't>(
             let body = parse_expr(arena, tokens, &mut local_env, errors);
 
             //TODO recursion ?
-            declare_local(env, &id);
+            declare_local(env, &id, Type::Fn);
             arena.alloc(Expr {
                 def: ExprDef::FnDecl { id, params, body },
                 pos: pos + body.pos,
@@ -448,8 +448,9 @@ fn make_ident_list<'t>(
         if let TokenDef::Id(id) = tk_.def {
             next(tokens);
             let id = id;
-            declare_local(env, &id);
-            list.push(id);
+            todo!("PARAMETERS TYPE");
+            // declare_local(env, &id);
+            // list.push(id);
         } else {
             push_error(
                 errors,
@@ -631,9 +632,13 @@ fn next<'t>(tokens: &mut TkIter<'t>) -> &'t Token {
 
 // ----- SCOPES -----
 
-fn declare_local(env: &mut Environment, id: &Identifier) {
+fn declare_local(env: &mut Environment, id: &Identifier, t: Type) {
     let n_locals = env.locals_count;
-    env.locals[n_locals as usize] = (*id, env.scope_depth);
+    env.locals[n_locals as usize] = Local {
+        id: *id,
+        t,
+        depth: env.scope_depth,
+    };
     if let Some(n_locals) = n_locals.checked_add(1) {
         env.locals_count = n_locals;
     } else {
@@ -648,7 +653,7 @@ fn check_id_exists(env: &Environment, id: &Identifier) -> bool {
         _ => (),
     }
 
-    for (id_, _) in env.locals.iter().take(env.locals_count.into()).rev() {
+    for Local { id: id_, .. } in env.locals.iter().take(env.locals_count.into()).rev() {
         if id == id_ {
             return true;
         }
@@ -695,14 +700,10 @@ fn eval_type(expr: &Expr, env: &Environment) -> Type {
     match &expr.def {
         ExprDef::Const(value) => value.as_type(),
         ExprDef::Id(id) => {
-            // check_id_exists(env, id)
+            check_id_exists(env, id);
             todo!()
         }
-        ExprDef::If {
-            cond: _,
-            then,
-            elze,
-        } => {
+        ExprDef::If { then, elze, .. } => {
             let then_type = eval_type(then, env);
             if elze.is_some() && then_type == eval_type(elze.unwrap(), env) {
                 then_type
@@ -710,7 +711,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Type {
                 panic!()
             }
         }
-        ExprDef::While { cond: _, body: _ } => Type::Void,
+        ExprDef::While { .. } => Type::Void,
         ExprDef::Field(_, _) => todo!(),
         ExprDef::UnOp { op, e } => match eval_type(e, env) {
             Type::Int => match op {
@@ -752,8 +753,8 @@ fn eval_type(expr: &Expr, env: &Environment) -> Type {
         }
         ExprDef::Call { id, args } => todo!(),
         ExprDef::VarDecl(_, _) => Type::Void,
-        ExprDef::FnDecl { id, params, body } => Type::Void,
-        ExprDef::StructDecl { id, fields } => Type::Void,
+        ExprDef::FnDecl { .. } => Type::Void,
+        ExprDef::StructDecl { .. } => Type::Void,
         ExprDef::Block(exprs) => {
             if !exprs.is_empty() {
                 eval_type(exprs.last().unwrap(), env)
