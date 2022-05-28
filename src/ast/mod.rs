@@ -293,6 +293,14 @@ impl Op {
             ModAssign => 7,
         }
     }
+
+    pub fn is_assign (&self) -> bool {
+        use Op::*;
+        match self {
+            Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => true,
+            _ => false
+        }
+    }
 }
 // #endregion
 

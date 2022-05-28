@@ -5,7 +5,7 @@ pub struct Environment {
     pub locals: [Local; 256], //TODO max locals ? (u8?)
     pub locals_count: u8,
     pub scope_depth: u8,
-    context: Context,
+    pub context: Context,
 }
 
 #[derive(Clone, Copy)]
@@ -15,7 +15,7 @@ pub struct Local {
     pub depth: u8,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum Context {
     TopLevel,
     Function,
@@ -35,9 +35,28 @@ impl Environment {
         }
     }
 
-    pub fn get_context(&self) -> &Context {
-        &self.context
+    pub fn get_from_id(&self, id: &Identifier) -> Option<Local> {
+        match id {
+            b"print\0\0\0" | b"printmem" => Some(Local {
+                id: *id,
+                t: Type::Fn_,
+                depth: 0,
+            }),
+            id => {
+                for local in self.locals.iter().take(self.locals_count.into()).rev() {
+                    if *id == local.id {
+                        return Some(*local);
+                    }
+                }
+
+                None
+            }
+        }
     }
+
+    /* pub fn get_context(&self) -> &Context {
+        &self.context
+    } */
 
     pub fn open_scope(&mut self) {
         if let Some(n) = self.scope_depth.checked_add(1) {

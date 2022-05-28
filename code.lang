@@ -1,7 +1,1 @@
-let a = 5;
-let b = 7;
-let c = false;
-if ((a + b) == 12) {
-    c = true;
-}
-print(c);
+fn add(a, b) { a + b; }  let i = add(2, 4); print(i);

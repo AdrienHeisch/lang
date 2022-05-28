@@ -99,6 +99,12 @@ test_assert_eq!(mod_float, "let f = 40.5 % 9.0;", "f", Value::Float(4.5));
 
 test_assert_eq!(parenthesis, "let b = (true);", "b", Value::Bool(true));
 
+test_assert_eq!(reassign, "let b = false; b = true;", "b", Value::Bool(true));
+
+test_assert_eq!(assign_defined, "let b = true; let c = b;", "c", Value::Bool(true));
+
+test_should_panic!(assign_undefined, "let b = c;");
+
 test_assert_eq!(
     condition,
     "let b = false; if true { b = true; }",
@@ -260,8 +266,9 @@ test_assert_eq!(
     Value::Bool(true)
 );
 
-// TODO check for expired variable
 test_should_panic!(scope_1, "{ let a = 0; } let b = a;");
+
+test_assert_eq!(block_value, "let a = { let b = 1; };", "a", Value::Int(1));
 
 test_assert_eq!(
     loop_,

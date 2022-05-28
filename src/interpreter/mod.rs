@@ -212,7 +212,7 @@ impl<'e> Interpreter<'e> {
             }
             Parent(e) => self.expr(e)?,
             Return(e) => {
-                if let Context::Function = self.env.get_context() {
+                if let Context::Function = self.env.context {
                     return Err(ResultErr::Return(self.expr(e)?));
                 } else {
                     return Err(self.throw("Can't return from top-level".to_owned(), e.pos));
@@ -444,7 +444,7 @@ impl<'e> Interpreter<'e> {
         params: Box<[Identifier]>,
         body: &Expr<'e>,
     ) -> Result<(), String> {
-        self.env.locals[self.env.locals_count as usize] = Local { id: *id, t: Type::Fn, depth: self.env.scope_depth };
+        self.env.locals[self.env.locals_count as usize] = Local { id: *id, t: Type::Fn_, depth: self.env.scope_depth };
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
             Reference::Fn(params, body.clone());
         if let Some(n) = self.env.locals_count.checked_add(1) {

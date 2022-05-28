@@ -11,7 +11,8 @@ pub enum Type {
     Int,
     Float,
     Bool,
-    Fn, //TODO pointer type ?
+    Fn_, //TODO typed functions
+    // Fn(Box<[Type]>, Type),
     Void,
 }
 
@@ -44,7 +45,7 @@ impl Type {
             Type::Int => 4,
             Type::Float => 4,
             Type::Bool => 1,
-            Type::Fn => panic!(),
+            Type::Fn_ => panic!(),
             Type::Void => 0,
         }
     }

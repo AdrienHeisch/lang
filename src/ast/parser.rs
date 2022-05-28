@@ -57,6 +57,7 @@ fn parse_statement<'e, 't>(
         match expr.def {
             ExprDef::End => (),
             _ if expr.is_block() => (),
+            // _ if matches!(peek(tokens).def, TokenDef::DelimClose(Delimiter::Br)) => (),
             _ => {
                 let tk = peek(tokens);
                 push_error(
@@ -172,8 +173,12 @@ fn parse_expr_next<'e, 't>(
     match tk.def {
         TokenDef::Op(op) => {
             next(tokens);
-            let expr = parse_expr(arena, tokens, env, errors);
-            make_binop(arena, op, e, expr)
+            let e_ = parse_expr(arena, tokens, env, errors);
+            let binop = make_binop(arena, op, e, e_);
+            if let Err(err) = eval_type(binop, env) {
+                push_error(errors, err.msg, err.pos);
+            }
+            binop
         }
         TokenDef::DelimOpen(Delimiter::Pr) => {
             next(tokens);
@@ -235,7 +240,15 @@ fn parse_structure<'e, 't>(
                             make_invalid(arena, pos)
                         }
                     };
-                    declare_local(env, &id, eval_type(value, env));
+                    match eval_type(value, env) {
+                        Ok(t) => {
+                            declare_local(env, &id, t);
+                        }
+                        Err(err) => {
+                            push_error(errors, err.msg, err.pos);
+                            declare_local(env, &id, Type::Void);
+                        }
+                    }
                     arena.alloc(Expr {
                         def: ExprDef::VarDecl(id, value),
                         pos: pos + value.pos,
@@ -266,6 +279,7 @@ fn parse_structure<'e, 't>(
             };
 
             let mut local_env = env.clone();
+            local_env.context = Context::Function;
 
             let tk = peek(tokens);
             let (params, end_tk) = match tk.def {
@@ -287,8 +301,16 @@ fn parse_structure<'e, 't>(
 
             let body = parse_expr(arena, tokens, &mut local_env, errors);
 
+            if !matches!(body.def, ExprDef::Block(_)) {
+                push_error(
+                    errors,
+                    "Function body should be a block.".to_owned(),
+                    body.pos,
+                );
+            }
+
             //TODO recursion ?
-            declare_local(env, &id, Type::Fn);
+            declare_local(env, &id, Type::Fn_);
             arena.alloc(Expr {
                 def: ExprDef::FnDecl { id, params, body },
                 pos: pos + body.pos,
@@ -324,7 +346,7 @@ fn parse_structure<'e, 't>(
             })
         }
         b"return\0\0" => {
-            if let Context::TopLevel = env.get_context() {
+            if let Context::TopLevel = env.context {
                 push_error(
                     errors,
                     format!("Can't return from top level."),
@@ -366,7 +388,7 @@ fn parse_structure<'e, 't>(
                 }
             };
 
-            if let Context::TopLevel = env.get_context() {
+            if let Context::TopLevel = env.context {
                 push_error(errors, "Can't declare a struct here.".to_owned(), pos);
                 make_invalid(arena, pos)
             } else {
@@ -377,7 +399,7 @@ fn parse_structure<'e, 't>(
             }
         }
         id => {
-            if !check_id_exists(env, id) {
+            if let None = env.get_from_id(id) {
                 push_error(
                     errors,
                     format!("Unknown identifier : {}", id.to_string()),
@@ -448,9 +470,8 @@ fn make_ident_list<'t>(
         if let TokenDef::Id(id) = tk_.def {
             next(tokens);
             let id = id;
-            todo!("PARAMETERS TYPE");
-            // declare_local(env, &id);
-            // list.push(id);
+            declare_local(env, &id, Type::Int); //TODO parameters type
+            list.push(id);
         } else {
             push_error(
                 errors,
@@ -647,21 +668,6 @@ fn declare_local(env: &mut Environment, id: &Identifier, t: Type) {
     }
 }
 
-fn check_id_exists(env: &Environment, id: &Identifier) -> bool {
-    match id {
-        b"print\0\0\0" | b"printmem" => return true,
-        _ => (),
-    }
-
-    for Local { id: id_, .. } in env.locals.iter().take(env.locals_count.into()).rev() {
-        if id == id_ {
-            return true;
-        }
-    }
-
-    false
-}
-
 // ----- ERROR HANDLING -----
 
 fn push_error(errors: &mut Vec<Error>, msg: String, pos: Position) {
@@ -696,77 +702,176 @@ fn sort_functions_first(statements: &mut [&Expr]) {
 
 // ----- TYPING -----
 
-fn eval_type(expr: &Expr, env: &Environment) -> Type {
-    match &expr.def {
+fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
+    macro_rules! unwrap_or_return {
+        ($e:expr) => {
+            match $e {
+                Ok(t) => t,
+                err @ Err(_) => return err,
+            }
+        };
+    }
+
+    Ok(match &expr.def {
         ExprDef::Const(value) => value.as_type(),
         ExprDef::Id(id) => {
-            check_id_exists(env, id);
-            todo!()
+            if let Some(local) = env.get_from_id(id) {
+                local.t
+            } else {
+                return Err(Error {
+                    msg: format!("Undefined variable: {}", id.to_string()),
+                    pos: expr.pos,
+                });
+            }
         }
         ExprDef::If { then, elze, .. } => {
-            let then_type = eval_type(then, env);
-            if elze.is_some() && then_type == eval_type(elze.unwrap(), env) {
-                then_type
-            } else {
-                panic!()
+            let then_type = unwrap_or_return!(eval_type(then, env));
+            match elze {
+                Some(elze) => {
+                    let elze_type = unwrap_or_return!(eval_type(elze, env));
+                    if then_type == elze_type {
+                        then_type
+                    } else {
+                        return Err(Error {
+                            msg: format!(
+                                "If statement has mismatched types : {:?} / {:?}",
+                                then_type, elze_type
+                            ),
+                            pos: expr.pos,
+                        });
+                    }
+                }
+                _ => then_type,
             }
         }
         ExprDef::While { .. } => Type::Void,
         ExprDef::Field(_, _) => todo!(),
-        ExprDef::UnOp { op, e } => match eval_type(e, env) {
-            Type::Int => match op {
-                Op::Sub => Type::Int,
-                _ => panic!(),
-            },
-            Type::Float => match op {
-                Op::Sub => Type::Float,
-                _ => panic!(),
-            },
-            Type::Bool => match op {
-                Op::Not => Type::Bool,
-                _ => panic!(),
-            },
-            _ => panic!(),
-        },
+        ExprDef::UnOp { op, e } => {
+            use {Op::*, Type::*};
+            match unwrap_or_return!(eval_type(e, env)) {
+                Int => match op {
+                    Sub => Int,
+                    _ => {
+                        return Err(Error {
+                            msg: format!("Invalid operation: {} {:?}", op.to_string(), Int),
+                            pos: expr.pos,
+                        })
+                    }
+                },
+                Float => match op {
+                    Sub => Float,
+                    _ => {
+                        return Err(Error {
+                            msg: format!("Invalid operation: {} {:?}", op.to_string(), Float),
+                            pos: expr.pos,
+                        })
+                    }
+                },
+                Bool => match op {
+                    Not => Bool,
+                    _ => {
+                        return Err(Error {
+                            msg: format!("Invalid operation: {} {:?}", op.to_string(), Bool),
+                            pos: expr.pos,
+                        })
+                    }
+                },
+                t => {
+                    return Err(Error {
+                        msg: format!("Invalid operation: {} {:?}", op.to_string(), t),
+                        pos: expr.pos,
+                    })
+                }
+            }
+        }
         ExprDef::BinOp { op, left, right } => {
             use {Op::*, Type::*};
-            match (eval_type(left, env), eval_type(right, env)) {
+            match (
+                unwrap_or_return!(eval_type(left, env)),
+                unwrap_or_return!(eval_type(right, env)),
+            ) {
                 (Int, Int) => match op {
                     Equal | NotEqual | Gt | Gte | Lt | Lte => Bool,
                     Add | Sub | Mult | Div | Mod => Int,
                     Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => Void, //TODO should not be void ?
-                    _ => panic!(),
+                    _ => {
+                        return Err(Error {
+                            msg: format!(
+                                "Invalid operation : {:?} {} {:?}",
+                                Int,
+                                op.to_string(),
+                                Int
+                            ),
+                            pos: expr.pos,
+                        })
+                    }
                 },
                 (Float, Float) => match op {
                     Equal | NotEqual | Gt | Gte | Lt | Lte => Bool,
                     Add | Sub | Mult | Div | Mod => Float,
                     Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => Void, //TODO should not be void ?
-                    _ => panic!(),
+                    _ => {
+                        return Err(Error {
+                            msg: format!(
+                                "Invalid operation : {:?} {} {:?}",
+                                Float,
+                                op.to_string(),
+                                Float
+                            ),
+                            pos: expr.pos,
+                        })
+                    }
                 },
                 (Bool, Bool) => match op {
                     Equal | NotEqual | BoolAnd | BoolOr => Bool,
                     Assign => Void, //TODO should not be void ?
-                    _ => panic!(),
+                    _ => {
+                        return Err(Error {
+                            msg: format!(
+                                "Invalid operation : {:?} {} {:?}",
+                                Bool,
+                                op.to_string(),
+                                Bool
+                            ),
+                            pos: expr.pos,
+                        })
+                    }
                 },
-                (_, _) => panic!(),
+                (t_left, t_right) if op.is_assign() => {
+                    return Err(Error {
+                        msg: format!("Invalid assignment : {:?} to {:?}", t_right, t_left),
+                        pos: expr.pos,
+                    })
+                }
+                (t_left, t_right) => {
+                    return Err(Error {
+                        msg: format!(
+                            "Invalid operation : {:?} {} {:?}",
+                            t_left,
+                            op.to_string(),
+                            t_right
+                        ),
+                        pos: expr.pos,
+                    })
+                }
             }
         }
-        ExprDef::Call { id, args } => todo!(),
+        ExprDef::Call { id, args } => Type::Void, //TODO change this
         ExprDef::VarDecl(_, _) => Type::Void,
         ExprDef::FnDecl { .. } => Type::Void,
         ExprDef::StructDecl { .. } => Type::Void,
         ExprDef::Block(exprs) => {
             if !exprs.is_empty() {
-                eval_type(exprs.last().unwrap(), env)
+                unwrap_or_return!(eval_type(exprs.last().unwrap(), env))
             } else {
                 Type::Void
             }
         }
-        ExprDef::Parent(e) => eval_type(e, env),
+        ExprDef::Parent(e) => unwrap_or_return!(eval_type(e, env)),
         ExprDef::Return(_) => Type::Void,
         ExprDef::Invalid => Type::Void,
         ExprDef::End => Type::Void,
-    }
+    })
 }
 
 /* #[allow(dead_code)]
