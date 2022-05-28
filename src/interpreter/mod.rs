@@ -169,20 +169,25 @@ impl<'e> Interpreter<'e> {
             Call { id, args } => self.call(id, args)?,
             Field(_, _) => unimplemented!(),
             // --- Declarations
-            VarDecl(id, assign_expr) => {
-                //DESIGN should re assignation be allowed ?
-                /* if self.get_pointer(id).is_some() {
-                    self.throw("There is already a variable named ", pos: FullPosition);
-                } */
+            VarDecl(id, t, assign_expr) => {
+                //DESIGN should redeclaration be allowed ?
+                if self.get_pointer(id).is_some() {
+                    self.throw("There is already a variable named ".to_owned(), expr.pos);
+                }
                 let value = self.expr(assign_expr)?;
-                let ptr = match self.declare_var(id, value.as_type()) {
+                let t_ = value.as_type();
+                if t != &t_ {
+                    return Err(self.throw(format!("Can't assign {:?} to {:?}", t, t_), expr.pos));
+                }
+                let ptr = match self.declare_var(id, *t) {
                     Ok(ptr) => ptr,
                     Err(message) => return Err(self.throw(message, expr.pos)),
                 };
                 //TODO remove this hack
                 self.stack[self.frame_ptr as usize + self.env.locals_count as usize - 1] =
-                    Reference::Ptr(self.memory.set_var(ptr, &value));
-                value
+                    Reference::Ptr(ptr);
+                self.memory.set_var(ptr, &value);
+                Value::Void
             }
             FnDecl { id, params, body } => {
                 if let Err(message) = self.declare_fn(id, params.clone(), body) {
@@ -202,7 +207,6 @@ impl<'e> Interpreter<'e> {
                             err @ Err(_) => return err,
                         };
                     }
-                    // let ret = self.expr(exprs.iter().last().unwrap())?;
                     let n_vars = self.env.close_scope();
                     self.free_unused_stack(n_vars as usize);
                     ret
@@ -252,7 +256,7 @@ impl<'e> Interpreter<'e> {
             (Int(l), Int(r)) => match op {
                 Assign => {
                     let value = self.expr(e_right)?;
-                    self.assign(e_left, e_right.downcast(value))?
+                    self.assign(e_left, e_right.downcast_position(value))?
                 }
                 Equal => Bool(l == r),
                 NotEqual => Bool(l != r),
@@ -265,11 +269,11 @@ impl<'e> Interpreter<'e> {
                 Mult => Int(l * r),
                 Div => Int(l / r),
                 Mod => Int(l % r),
-                AddAssign => self.assign(e_left, e_right.downcast(Int(l + r)))?,
-                SubAssign => self.assign(e_left, e_right.downcast(Int(l - r)))?,
-                MultAssign => self.assign(e_left, e_right.downcast(Int(l * r)))?,
-                DivAssign => self.assign(e_left, e_right.downcast(Int(l / r)))?,
-                ModAssign => self.assign(e_left, e_right.downcast(Int(l % r)))?,
+                AddAssign => self.assign(e_left, e_right.downcast_position(Int(l + r)))?,
+                SubAssign => self.assign(e_left, e_right.downcast_position(Int(l - r)))?,
+                MultAssign => self.assign(e_left, e_right.downcast_position(Int(l * r)))?,
+                DivAssign => self.assign(e_left, e_right.downcast_position(Int(l / r)))?,
+                ModAssign => self.assign(e_left, e_right.downcast_position(Int(l % r)))?,
                 _ => return Err(ResultErr::Nothing),
             },
             (Float(l), Float(r)) => {
@@ -277,7 +281,7 @@ impl<'e> Interpreter<'e> {
                 match op {
                     Assign => {
                         let value = self.expr(e_right)?;
-                        self.assign(e_left, e_right.downcast(value))?
+                        self.assign(e_left, e_right.downcast_position(value))?
                     }
                     Equal => Bool(compare_f32(l, r, F32_EQ_THRESHOLD)),
                     NotEqual => Bool(!compare_f32(l, r, F32_EQ_THRESHOLD)),
@@ -290,18 +294,18 @@ impl<'e> Interpreter<'e> {
                     Mult => Float(l * r),
                     Div => Float(l / r),
                     Mod => Float(l % r),
-                    AddAssign => self.assign(e_left, e_right.downcast(Float(l + r)))?,
-                    SubAssign => self.assign(e_left, e_right.downcast(Float(l - r)))?,
-                    MultAssign => self.assign(e_left, e_right.downcast(Float(l * r)))?,
-                    DivAssign => self.assign(e_left, e_right.downcast(Float(l / r)))?,
-                    ModAssign => self.assign(e_left, e_right.downcast(Float(l % r)))?,
+                    AddAssign => self.assign(e_left, e_right.downcast_position(Float(l + r)))?,
+                    SubAssign => self.assign(e_left, e_right.downcast_position(Float(l - r)))?,
+                    MultAssign => self.assign(e_left, e_right.downcast_position(Float(l * r)))?,
+                    DivAssign => self.assign(e_left, e_right.downcast_position(Float(l / r)))?,
+                    ModAssign => self.assign(e_left, e_right.downcast_position(Float(l % r)))?,
                     _ => return Err(ResultErr::Nothing),
                 }
             }
             (Bool(l), Bool(r)) => match op {
                 Assign => {
                     let value = self.expr(e_right)?;
-                    self.assign(e_left, e_right.downcast(value))?
+                    self.assign(e_left, e_right.downcast_position(value))?
                 }
                 Equal => Bool(l == r),
                 NotEqual => Bool(l != r),
@@ -312,9 +316,9 @@ impl<'e> Interpreter<'e> {
             (value_left, value_right) if op == Op::Assign => {
                 return Err(self.throw(
                     format!(
-                        "Invalid assignment : tried to assign {:?} to {:?}",
-                        value_left.as_type(),
-                        value_right.as_type()
+                        "Invalid assignment : can't assign {:?} to {:?}",
+                        value_right.as_type(),
+                        value_left.as_type()
                     ),
                     e_left.pos,
                 ))
@@ -324,19 +328,23 @@ impl<'e> Interpreter<'e> {
     }
 
     fn assign(&mut self, e_to: &Expr, value: WithPosition<Value>) -> Result<Value, ResultErr> {
-        if let ExprDef::Id(id) = &e_to.def {
-            self.memory.set_var(
-                if let Reference::Ptr(ptr) = self.get_pointer(id).unwrap() {
-                    ptr
-                } else {
-                    panic!("Tried to use function as value.") //DESIGN functions as values ?
-                },
-                &value.def,
-            );
-        } else {
-            return Err(self.throw(format!("Can't assign {:?} to {:?}", value, e_to), value.pos));
+        match &e_to.def {
+            ExprDef::Id(id) if !matches!(value.def, Value::Void) => {
+                self.memory.set_var(
+                    if let Reference::Ptr(ptr) = self.get_pointer(id).unwrap() {
+                        ptr
+                    } else {
+                        panic!("Tried to use function as value.") //DESIGN functions as values ?
+                    },
+                    &value.def,
+                );
+            }
+            _ => {
+                return Err(self.throw(format!("Can't assign {:?} to {:?}", value, e_to), value.pos))
+            }
         }
-        Ok(value.def) //TODO should be void ?
+        Ok(Value::Void)
+        // Ok(value.def) //TODO should be void ?
     }
 
     fn call(&mut self, e_id: &Expr<'e>, args: &[&Expr<'e>]) -> Result<Value, ResultErr> {
@@ -444,7 +452,11 @@ impl<'e> Interpreter<'e> {
         params: Box<[Identifier]>,
         body: &Expr<'e>,
     ) -> Result<(), String> {
-        self.env.locals[self.env.locals_count as usize] = Local { id: *id, t: Type::Fn_, depth: self.env.scope_depth };
+        self.env.locals[self.env.locals_count as usize] = Local {
+            id: *id,
+            t: Type::Fn_,
+            depth: self.env.scope_depth,
+        };
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
             Reference::Fn(params, body.clone());
         if let Some(n) = self.env.locals_count.checked_add(1) {
@@ -457,7 +469,11 @@ impl<'e> Interpreter<'e> {
 
     fn declare_var(&mut self, id: &Identifier, t: Type) -> Result<Pointer, String> {
         let ptr = self.memory.make_pointer_for_type(t);
-        self.env.locals[self.env.locals_count as usize] = Local { id: *id, t, depth: self.env.scope_depth };
+        self.env.locals[self.env.locals_count as usize] = Local {
+            id: *id,
+            t,
+            depth: self.env.scope_depth,
+        };
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] = Reference::Ptr(ptr);
         if let Some(n) = self.env.locals_count.checked_add(1) {
             self.env.locals_count = n;

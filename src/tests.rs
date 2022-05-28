@@ -7,14 +7,18 @@ macro_rules! test_assert_eq {
 
             let ast = match crate::build_ast($program) {
                 Ok(ast) => ast,
-                Err(error) => panic!("PARSER ERROR : {}", error)
+                Err(error) => panic!("PARSER ERROR : {}", error),
             };
             let mut interpreter = Interpreter::new();
             match interpreter.run(&ast.top_level) {
                 Ok(()) => {
                     assert_eq!(interpreter.get_var_by_name($id).unwrap(), $value)
                 }
-                Err(error) => panic!("INTERPRETER ERROR : {} -> {}", error.pos.get_full(&ast.source), error.msg)
+                Err(error) => panic!(
+                    "INTERPRETER ERROR : {} -> {}",
+                    error.pos.get_full(&ast.source),
+                    error.msg
+                ),
             }
             /* let bytecode = match crate::compile_ast(&ast) {
                 Ok(bytecode) => bytecode,
@@ -65,221 +69,244 @@ macro_rules! test_should_panic {
     };
 }
 
-test_assert_eq!(assign_int, "let i = 6;", "i", Value::Int(6));
+test_should_panic!(assign_void, "int i = void;");
 
-test_assert_eq!(assign_int_neg, "let i = -6;", "i", Value::Int(-6));
+test_should_panic!(assign_wrong_type, "int i = true;");
 
-test_assert_eq!(assign_float, "let f = 4.5;", "f", Value::Float(4.5));
+test_assert_eq!(assign_true, "bool b = true;", "b", Value::Bool(true));
 
-test_assert_eq!(assign_float_neg, "let f = -4.5;", "f", Value::Float(-4.5));
+test_assert_eq!(assign_false, "bool b = false;", "b", Value::Bool(false));
 
-test_assert_eq!(assign_true, "let b = true;", "b", Value::Bool(true));
+test_assert_eq!(
+    reassign,
+    "bool b = false; b = true;",
+    "b",
+    Value::Bool(true)
+);
 
-test_assert_eq!(assign_false, "let b = false;", "b", Value::Bool(false));
+test_should_panic!(reassign_wrong_type, "bool b = false; b = 1;");
 
-test_assert_eq!(add_int, "let i = 2 + 4;", "i", Value::Int(6));
+test_assert_eq!(
+    assign_defined,
+    "bool b = true; bool c = b;",
+    "c",
+    Value::Bool(true)
+);
 
-test_assert_eq!(add_float, "let f = 2.7 + 1.8;", "f", Value::Float(4.5));
+test_should_panic!(assign_undefined, "bool b = c;");
 
-test_assert_eq!(sub_int, "let i = 11 - 5;", "i", Value::Int(6));
+test_assert_eq!(assign_int, "int i = 6;", "i", Value::Int(6));
 
-test_assert_eq!(sub_float, "let f = 8.2 - 3.7;", "f", Value::Float(4.5));
+test_assert_eq!(assign_int_neg, "int i = -6;", "i", Value::Int(-6));
 
-test_assert_eq!(mul_int, "let i = 3 * 2;", "i", Value::Int(6));
+test_assert_eq!(assign_float, "float f = 4.5;", "f", Value::Float(4.5));
 
-test_assert_eq!(mul_float, "let f = 9.0 * 0.5;", "f", Value::Float(4.5));
+test_assert_eq!(assign_float_neg, "float f = -4.5;", "f", Value::Float(-4.5));
 
-test_assert_eq!(div_int, "let i = 12 / 2;", "i", Value::Int(6));
+test_assert_eq!(add_int, "int i = 2 + 4;", "i", Value::Int(6));
 
-test_assert_eq!(div_float, "let f = 11.25 / 2.5;", "f", Value::Float(4.5));
+test_assert_eq!(add_float, "float f = 2.7 + 1.8;", "f", Value::Float(4.5));
 
-test_assert_eq!(mod_int, "let i = 42 % 9;", "i", Value::Int(6));
+test_assert_eq!(sub_int, "int i = 11 - 5;", "i", Value::Int(6));
 
-test_assert_eq!(mod_float, "let f = 40.5 % 9.0;", "f", Value::Float(4.5));
+test_assert_eq!(sub_float, "float f = 8.2 - 3.7;", "f", Value::Float(4.5));
 
-test_assert_eq!(parenthesis, "let b = (true);", "b", Value::Bool(true));
+test_assert_eq!(mul_int, "int i = 3 * 2;", "i", Value::Int(6));
 
-test_assert_eq!(reassign, "let b = false; b = true;", "b", Value::Bool(true));
+test_assert_eq!(mul_float, "float f = 9.0 * 0.5;", "f", Value::Float(4.5));
 
-test_assert_eq!(assign_defined, "let b = true; let c = b;", "c", Value::Bool(true));
+test_assert_eq!(div_int, "int i = 12 / 2;", "i", Value::Int(6));
 
-test_should_panic!(assign_undefined, "let b = c;");
+test_assert_eq!(div_float, "float f = 11.25 / 2.5;", "f", Value::Float(4.5));
+
+test_assert_eq!(mod_int, "int i = 42 % 9;", "i", Value::Int(6));
+
+test_assert_eq!(mod_float, "float f = 40.5 % 9.0;", "f", Value::Float(4.5));
+
+test_assert_eq!(parenthesis, "bool b = (true);", "b", Value::Bool(true));
 
 test_assert_eq!(
     condition,
-    "let b = false; if true { b = true; }",
+    "bool b = false; if true { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     not,
-    "let b = false; if !false { b = true; }",
+    "bool b = false; if !false { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     and_0,
-    "let b = true; if false && false { b = false; }",
+    "bool b = true; if false && false { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     and_1,
-    "let b = true; if false && true { b = false; }",
+    "bool b = true; if false && true { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     and_2,
-    "let b = false; if true && true { b = true; }",
+    "bool b = false; if true && true { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     or_0,
-    "let b = true; if false || false { b = false; }",
+    "bool b = true; if false || false { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     or_1,
-    "let b = true; if false || true { b = true; }",
+    "bool b = true; if false || true { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     or_2,
-    "let b = true; if true || true { b = true; }",
+    "bool b = true; if true || true { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     eq_0,
-    "let b = false; if 0 == 0 { b = true; }",
+    "bool b = false; if 0 == 0 { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     eq_1,
-    "let b = true; if 0 == 1 { b = false; }",
+    "bool b = true; if 0 == 1 { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     gt_0,
-    "let b = false; let c = 1; if c > 0 { b = true; }",
+    "bool b = false; int c = 1; if c > 0 { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     gt_1,
-    "let b = true; let c = 0; if c > 0 { b = false; }",
+    "bool b = true; int c = 0; if c > 0 { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     gt_2,
-    "let b = true; let c = 0; if c > 1 { b = false; }",
+    "bool b = true; int c = 0; if c > 1 { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     gte_0,
-    "let b = false; let c = 1; if c >= 0 { b = true; }",
+    "bool b = false; int c = 1; if c >= 0 { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     gte_1,
-    "let b = false; let c = 0; if c >= 0 { b = true; }",
+    "bool b = false; int c = 0; if c >= 0 { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     gte_2,
-    "let b = true; let c = 0; if c >= 1 { b = false; }",
+    "bool b = true; int c = 0; if c >= 1 { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     lt_0,
-    "let b = true; let c = 1; if c < 0 { b = false; }",
+    "bool b = true; int c = 1; if c < 0 { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     lt_1,
-    "let b = true; let c = 0; if c < 0 { b = false; }",
+    "bool b = true; int c = 0; if c < 0 { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     lt_2,
-    "let b = false; let c = 0; if c < 1 { b = true; }",
+    "bool b = false; int c = 0; if c < 1 { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     lte_0,
-    "let b = true; let c = 1; if c <= 0 { b = false; }",
+    "bool b = true; int c = 1; if c <= 0 { b = false; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     lte_1,
-    "let b = false; let c = 0; if c <= 0 { b = true; }",
+    "bool b = false; int c = 0; if c <= 0 { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     lte_2,
-    "let b = false; let c = 0; if c <= 1 { b = true; }",
+    "bool b = false; int c = 0; if c <= 1 { b = true; }",
     "b",
     Value::Bool(true)
 );
 
 test_assert_eq!(
     scope_0,
-    "let b = true; { let c = 0; }",
+    "bool b = true; { int c = 0; }",
     "b",
     Value::Bool(true)
 );
 
-test_should_panic!(scope_1, "{ let a = 0; } let b = a;");
+test_should_panic!(scope_1, "{ int a = 0; } int b = a;");
 
-test_assert_eq!(block_value, "let a = { let b = 1; };", "a", Value::Int(1));
+test_assert_eq!(
+    block_value,
+    "int a = { int b = 1; b; };",
+    "a",
+    Value::Int(1)
+);
+
+test_should_panic!(assign_expr_value, "int a = { int b = 1; };");
 
 test_assert_eq!(
     loop_,
-    "let i = 1; let c = 0; while c < 5 { i = i * 2; c = c + 1; }",
+    "int i = 1; int c = 0; while c < 5 { i = i * 2; c = c + 1; }",
     "i",
     Value::Int(32)
 );
 
 test_assert_eq!(
     function,
-    "fn add(a, b) { a + b; } let i = add(2, 4);",
+    "int add(a, b) { a + b; } int i = add(2, 4);",
     "i",
     Value::Int(6)
 );

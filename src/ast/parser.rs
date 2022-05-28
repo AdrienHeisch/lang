@@ -5,7 +5,7 @@ use crate::{
     env::{Context, Environment, Local},
     value::Type,
 };
-use std::collections::VecDeque;
+use std::{collections::VecDeque};
 use typed_arena::Arena;
 
 type TkIter<'t> = std::iter::Peekable<std::collections::vec_deque::Iter<'t, Token>>;
@@ -36,7 +36,7 @@ pub fn parse<'e, 't>(
 
     sort_functions_first(&mut statements);
 
-    if errors.is_empty() {
+    if errors.is_empty() || cfg!(lang_ignore_parse_errors) {
         Ok(statements)
     } else {
         Err(errors)
@@ -210,111 +210,100 @@ fn parse_structure<'e, 't>(
     errors: &mut Vec<Error>,
     tk_identifier: &Token,
 ) -> &'e Expr<'e> {
-    let id = if let TokenDef::Id(id) = tk_identifier.def {
+    let keyword = if let TokenDef::Id(id) = tk_identifier.def {
         id
     } else {
         return make_invalid(arena, tk_identifier.pos);
     };
     let pos = tk_identifier.pos;
 
-    match &id {
-        b"let\0\0\0\0\0" => {
-            //TODO type checking (type_ @ (b"int\0\0\0\0\0" | b"float\0\0\0" | b"bool\0\0\0\0") => {)
+    match &keyword {
+        b"int\0\0\0\0\0" | b"float\0\0\0" | b"bool\0\0\0\0" => {
+            let t = Type::from_identifier(&keyword);
             let tk = next(tokens);
-            match tk.def {
-                TokenDef::Id(id) => {
-                    let pos = pos + tk.pos;
-                    let tk = peek(tokens);
-                    let value = match tk.def {
-                        TokenDef::Op(Op::Assign) => {
-                            next(tokens);
-                            parse_expr(arena, tokens, env, errors)
+            if let TokenDef::Id(id) = tk.def {
+                let pos = pos + tk.pos;
+                let tk = peek(tokens);
+                match tk.def {
+                    // VARIABLE
+                    TokenDef::Op(Op::Assign) => {
+                        next(tokens);
+                        let value = parse_expr(arena, tokens, env, errors);
+                        let t = match eval_type(value, env) {
+                            Ok(t_) => {
+                                if t != t_ {
+                                    push_error(
+                                        errors,
+                                        format!("Mismatched types, expected {:?}, got {:?}", t, t_),
+                                        pos + value.pos,
+                                    );
+                                }
+                                declare_local(env, &id, t);
+                                t
+                            }
+                            Err(err) => {
+                                push_error(errors, err.msg, err.pos);
+                                declare_local(env, &id, Type::Void);
+                                Type::Void
+                            }
+                        };
+                        arena.alloc(Expr {
+                            def: ExprDef::VarDecl(id, t, value),
+                            pos: pos + value.pos,
+                        })
+                    }
+                    // FUNCTION
+                    TokenDef::DelimOpen(Delimiter::Pr) => {
+                        next(tokens);
+
+                        let mut local_env = env.clone(); //TODO is this needed ?
+                        local_env.context = Context::Function;
+
+                        let (params, end_tk) = make_ident_list(tokens, &mut local_env, errors, tk);
+                        let arity = params.len() as u8;
+                        if arity > u8::max_value() {
+                            push_error(errors, "Too many parameters !".to_owned(), end_tk.pos);
                         }
-                        _ => {
-                            //TODO uninitialized var
+
+                        let body = parse_expr(arena, tokens, &mut local_env, errors);
+
+                        if !matches!(body.def, ExprDef::Block(_)) {
                             push_error(
                                 errors,
-                                format!("Expected assign operator, got : {:?}", tk.def),
-                                tk.pos,
+                                "Function body should be a block.".to_owned(),
+                                body.pos,
                             );
-                            make_invalid(arena, pos)
                         }
-                    };
-                    match eval_type(value, env) {
-                        Ok(t) => {
-                            declare_local(env, &id, t);
-                        }
-                        Err(err) => {
-                            push_error(errors, err.msg, err.pos);
-                            declare_local(env, &id, Type::Void);
-                        }
+
+                        //TODO recursion ?
+                        declare_local(env, &id, Type::Fn_);
+                        arena.alloc(Expr {
+                            def: ExprDef::FnDecl {
+                                id,
+                                params: params.into_boxed_slice(),
+                                body,
+                            },
+                            pos: pos + body.pos,
+                        })
                     }
-                    arena.alloc(Expr {
-                        def: ExprDef::VarDecl(id, value),
-                        pos: pos + value.pos,
-                    })
+                    _ => {
+                        //TODO uninitialized var
+                        push_error(
+                            errors,
+                            format!("Expected assign operator, got : {:?}", tk.def),
+                            tk.pos,
+                        );
+                        make_invalid(arena, pos)
+                    }
                 }
-                _ => {
-                    push_error(
-                        errors,
-                        format!("Expected identifier, got : {:?}", tk.def),
-                        tk.pos,
-                    );
-                    make_invalid(arena, pos)
-                }
-            }
-        }
-        b"fn\0\0\0\0\0\0" => {
-            let tk = next(tokens);
-            let id = match tk.def {
-                TokenDef::Id(id) => id,
-                _ => {
-                    push_error(
-                        errors,
-                        format!("Expected identifier, got : {:?}", tk.def),
-                        tk.pos,
-                    );
-                    Default::default()
-                }
-            };
-
-            let mut local_env = env.clone();
-            local_env.context = Context::Function;
-
-            let tk = peek(tokens);
-            let (params, end_tk) = match tk.def {
-                TokenDef::DelimOpen(Delimiter::Pr) => {
-                    next(tokens);
-                    let (params, end_tk) = make_ident_list(tokens, &mut local_env, errors, tk);
-                    (params.into_boxed_slice(), end_tk)
-                }
-                _ => {
-                    push_error(errors, format!("Expected (, got : {:?}", tk.def), tk.pos);
-                    (Default::default(), tk)
-                }
-            };
-
-            let arity = params.len() as u8;
-            if arity > u8::max_value() {
-                push_error(errors, "Too many parameters !".to_owned(), end_tk.pos);
-            }
-
-            let body = parse_expr(arena, tokens, &mut local_env, errors);
-
-            if !matches!(body.def, ExprDef::Block(_)) {
+            } else {
                 push_error(
                     errors,
-                    "Function body should be a block.".to_owned(),
-                    body.pos,
+                    format!("Expected identifier, got : {:?}", tk.def),
+                    tk.pos,
                 );
+                make_invalid(arena, pos)
             }
-
-            //TODO recursion ?
-            declare_local(env, &id, Type::Fn_);
-            arena.alloc(Expr {
-                def: ExprDef::FnDecl { id, params, body },
-                pos: pos + body.pos,
-            })
         }
         b"if\0\0\0\0\0\0" => {
             let cond = parse_expr(arena, tokens, env, errors);
@@ -672,7 +661,7 @@ fn declare_local(env: &mut Environment, id: &Identifier, t: Type) {
 
 fn push_error(errors: &mut Vec<Error>, msg: String, pos: Position) {
     let error = Error { msg, pos };
-    if cfg!(lang_panic_on_error) {
+    if cfg!(lang_panic_on_error) && !cfg!(lang_ignore_parse_errors) {
         panic!("{}", error);
     } else {
         errors.push(error);
@@ -793,7 +782,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                 (Int, Int) => match op {
                     Equal | NotEqual | Gt | Gte | Lt | Lte => Bool,
                     Add | Sub | Mult | Div | Mod => Int,
-                    Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => Void, //TODO should not be void ?
+                    Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => Void,
                     _ => {
                         return Err(Error {
                             msg: format!(
@@ -809,7 +798,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                 (Float, Float) => match op {
                     Equal | NotEqual | Gt | Gte | Lt | Lte => Bool,
                     Add | Sub | Mult | Div | Mod => Float,
-                    Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => Void, //TODO should not be void ?
+                    Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => Void,
                     _ => {
                         return Err(Error {
                             msg: format!(
@@ -824,7 +813,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                 },
                 (Bool, Bool) => match op {
                     Equal | NotEqual | BoolAnd | BoolOr => Bool,
-                    Assign => Void, //TODO should not be void ?
+                    Assign => Void,
                     _ => {
                         return Err(Error {
                             msg: format!(
@@ -857,15 +846,23 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
             }
         }
         ExprDef::Call { id, args } => Type::Void, //TODO change this
-        ExprDef::VarDecl(_, _) => Type::Void,
+        ExprDef::VarDecl(_, _, _) => Type::Void,
         ExprDef::FnDecl { .. } => Type::Void,
         ExprDef::StructDecl { .. } => Type::Void,
         ExprDef::Block(exprs) => {
-            if !exprs.is_empty() {
-                unwrap_or_return!(eval_type(exprs.last().unwrap(), env))
-            } else {
-                Type::Void
+            let mut local_env = env.clone(); //TODO is this needed ?
+            local_env.open_scope();
+            let mut return_type = Type::Void;
+            for e in exprs.iter() {
+                match e.def {
+                    ExprDef::VarDecl(id, t, _) => declare_local(&mut local_env, &id, t),
+                    ExprDef::FnDecl { id, .. } => declare_local(&mut local_env, &id, Type::Fn_),
+                    _ => (),
+                }
+                return_type = unwrap_or_return!(eval_type(e, &local_env));
             }
+            local_env.close_scope();
+            return_type
         }
         ExprDef::Parent(e) => unwrap_or_return!(eval_type(e, env)),
         ExprDef::Return(_) => Type::Void,

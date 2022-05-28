@@ -1,7 +1,7 @@
 mod lexer;
 mod parser;
 
-use crate::value::Value;
+use crate::value::{Value, Type};
 use typed_arena::Arena;
 
 //TODO revoir visibilité
@@ -106,7 +106,7 @@ pub enum ExprDef<'e> {
         args: Box<[&'e Expr<'e>]>,
     },
     // --- Declarations
-    VarDecl(Identifier, &'e Expr<'e>),
+    VarDecl(Identifier, Type, &'e Expr<'e>),
     FnDecl {
         id: Identifier,
         params: Box<[Identifier]>,
@@ -294,11 +294,11 @@ impl Op {
         }
     }
 
-    pub fn is_assign (&self) -> bool {
+    pub fn is_assign(&self) -> bool {
         use Op::*;
         match self {
             Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => true,
-            _ => false
+            _ => false,
         }
     }
 }
@@ -341,7 +341,7 @@ where
         FullPosition::default()
     }
 
-    pub fn downcast<U>(&self, def: U) -> WithPosition<U>
+    pub fn downcast_position<U>(&self, def: U) -> WithPosition<U>
     where
         U: std::fmt::Debug,
     {

@@ -16,7 +16,7 @@ pub struct Pointer {
 pub trait Memory {
     fn new() -> Self;
     fn get_var(&self, ptr: Pointer) -> Value;
-    fn set_var(&mut self, ptr: Pointer, value: &Value) -> Pointer;
+    fn set_var(&mut self, ptr: Pointer, value: &Value);
     fn free_ptr(&mut self, ptr: Pointer);
     fn make_pointer_for_type(&mut self, t: Type) -> Pointer;
     fn print_ram(&self);
@@ -39,7 +39,7 @@ impl Memory for RawMemory {
         }
     }
 
-    fn set_var(&mut self, ptr: Pointer, value: &Value) -> Pointer //TODO remove return
+    fn set_var(&mut self, ptr: Pointer, value: &Value)
     {
         use Value::*;
         match value {
@@ -56,7 +56,6 @@ impl Memory for RawMemory {
             }
             Void => panic!(), //DESIGN set var to Void ?
         }
-        ptr
     }
 
     fn free_ptr(&mut self, ptr: Pointer) {

@@ -1,1 +1,1 @@
-fn add(a, b) { a + b; }  let i = add(2, 4); print(i);
+int add(a, b) { a + b; } int i = add(2, 4); print(i);

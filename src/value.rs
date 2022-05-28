@@ -1,3 +1,5 @@
+use crate::ast::{Identifier, IdentifierTools};
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
     Int(i32),
@@ -40,13 +42,25 @@ impl std::fmt::Display for Value {
 }
 
 impl Type {
+    pub fn from_identifier(id: &Identifier) -> Self {
+        use Type::*;
+        match id {
+            b"int\0\0\0\0\0" => Int,
+            b"float\0\0\0" => Float,
+            b"bool\0\0\0\0" => Bool,
+            b"void\0\0\0\0" => Void,
+            _ => panic!("Invalid type identifier : {}", id.to_string()),
+        }
+    }
+
     pub fn get_size(&self) -> usize {
+        use Type::*;
         match self {
-            Type::Int => 4,
-            Type::Float => 4,
-            Type::Bool => 1,
-            Type::Fn_ => panic!(),
-            Type::Void => 0,
+            Int => 4,
+            Float => 4,
+            Bool => 1,
+            Fn_ => panic!(),
+            Void => 0,
         }
     }
 }
