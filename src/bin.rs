@@ -4,7 +4,7 @@
 //TODO use Result instead of panic! on error
 //TODO custom types ?
 //TODO rework modules cyclic dependencies
-fn main () -> Result <(), std::io::Error> {
+fn main() -> Result<(), std::io::Error> {
     //TODO console arguments
     // let args:Vec<String> = std::env::args().collect();
     // let path = args[1];
@@ -18,10 +18,13 @@ fn main () -> Result <(), std::io::Error> {
     Ok(())
 }
 
-fn run_lang (program: &str) -> Result<(), String> {
+fn run_lang(program: &str) -> Result<(), String> {
     let ast = lang::build_ast(program)?;
-    lang::walk_ast(&ast)?;
-    // let bytecode = lang::compile_ast(&ast)?;
-    // lang::run_bytecode(&bytecode)?;
+    if cfg!(lang_use_vm) {
+        let bytecode = lang::compile_ast(&ast)?;
+        lang::run_bytecode(&bytecode)?;
+    } else {
+        lang::walk_ast(&ast)?;
+    }
     Ok(())
 }

@@ -210,15 +210,3 @@ impl Delimiter {
 }
 
 const EOF: char = '\u{0}';
-
-/* #[allow(dead_code)]
-pub fn benchmark ()
-{
-    use crate::benchmarks::ITERATIONS;
-    use std::time::{ Instant };
-
-    let program = std::fs::read_to_string("./code.lang").unwrap();
-    let now = Instant::now();
-    for _ in 0..ITERATIONS { lex(&program); }
-    println!("Lexing: {}ms", now.elapsed().as_millis());
-} */

@@ -12,29 +12,30 @@ const JMP_ADDRESS: u16 = 1;
 pub type Chunk = Vec<Instruction>;
 type Instruction = u16; //TODO use i16 ?
 
-fn check_bit (instruction: Instruction, n: u8) -> bool {
+fn check_bit(instruction: Instruction, n: u8) -> bool {
     instruction & 1 << n != 0
 }
 
-trait ToAsm {
-    fn to_asm (&self) -> String;
+trait InstructionTools {
+    fn to_asm(&self) -> String;
 }
 
-impl ToAsm for Instruction {
-
-    fn to_asm (&self) -> String {
+impl InstructionTools for Instruction {
+    fn to_asm(&self) -> String {
         if !check_bit(*self, 15) {
             return format!("A = {}", *self as i16);
         }
 
-        let sm = if (self & 0b1000000000000) == 0 { "A" } else { "*A" };
+        let sm = if (self & 0b1000000000000) == 0 {
+            "A"
+        } else {
+            "*A"
+        };
 
         let opcode = match (self & 0b111111000000) >> 6 {
             _ if self & 0b111 == 0b111 => format!(""),
-            0b001010 |
-            0b001100 => format!("D"),
-            0b100010 |
-            0b110000 => format!("{}", sm),
+            0b001010 | 0b001100 => format!("D"),
+            0b100010 | 0b110000 => format!("{}", sm),
             0b000000 => format!("D&{}", sm),
             0b010101 => format!("D|{}", sm),
             0b011010 => format!("~D"),
@@ -51,9 +52,9 @@ impl ToAsm for Instruction {
             0b110111 => format!("{}+1", sm),
             0b001110 => format!("D-1"),
             0b110010 => format!("{}-1", sm),
-            unknown => panic!("{:b}", unknown)
+            unknown => panic!("{:b}", unknown),
         };
-        
+
         let target = match (self & 0b111000) >> 3 {
             0b000 => "",
             0b001 => "*A = ",
@@ -63,7 +64,7 @@ impl ToAsm for Instruction {
             0b101 => "A, *A = ",
             0b110 => "A, D = ",
             0b111 => "A, D, *A = ",
-            _ => panic!()
+            _ => panic!(),
         };
 
         let cond = match self & 0b111 {
@@ -75,14 +76,13 @@ impl ToAsm for Instruction {
             0b101 => "; JNE",
             0b110 => "; JLE",
             0b111 => "JMP",
-            _ => panic!()
+            _ => panic!(),
         };
 
         format!("{}{}{}", target, opcode, cond)
     }
-
 }
 
 pub struct DebugInfo {
-    pub identifiers: std::collections::HashMap<crate::ast::Identifier, u16>
+    pub identifiers: std::collections::HashMap<crate::ast::Identifier, u16>,
 }
