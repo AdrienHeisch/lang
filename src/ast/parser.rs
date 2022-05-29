@@ -2,10 +2,11 @@ use super::{
     Delimiter, Error, Expr, ExprDef, Identifier, IdentifierTools, Op, Position, Token, TokenDef,
 };
 use crate::{
+    ast::WithPosition,
     env::{Context, Environment, Local},
-    value::Type,
+    value::{type_id_pattern, Type},
 };
-use std::{collections::VecDeque};
+use std::collections::VecDeque;
 use typed_arena::Arena;
 
 type TkIter<'t> = std::iter::Peekable<std::collections::vec_deque::Iter<'t, Token>>;
@@ -57,7 +58,6 @@ fn parse_statement<'e, 't>(
         match expr.def {
             ExprDef::End => (),
             _ if expr.is_block() => (),
-            // _ if matches!(peek(tokens).def, TokenDef::DelimClose(Delimiter::Br)) => (),
             _ => {
                 let tk = peek(tokens);
                 push_error(
@@ -185,7 +185,7 @@ fn parse_expr_next<'e, 't>(
             let (expr_list, tk_delim_close) = make_expr_list(arena, tokens, env, errors, tk);
             arena.alloc(Expr {
                 def: ExprDef::Call {
-                    id: e,
+                    function: e,
                     args: expr_list.into_boxed_slice(),
                 },
 
@@ -218,7 +218,7 @@ fn parse_structure<'e, 't>(
     let pos = tk_identifier.pos;
 
     match &keyword {
-        b"int\0\0\0\0\0" | b"float\0\0\0" | b"bool\0\0\0\0" => {
+        type_id_pattern!() => {
             let t = Type::from_identifier(&keyword);
             let tk = next(tokens);
             if let TokenDef::Id(id) = tk.def {
@@ -238,12 +238,12 @@ fn parse_structure<'e, 't>(
                                         pos + value.pos,
                                     );
                                 }
-                                declare_local(env, &id, t);
-                                t
+                                declare_local(env, &id, &t);
+                                t.clone()
                             }
                             Err(err) => {
                                 push_error(errors, err.msg, err.pos);
-                                declare_local(env, &id, Type::Void);
+                                declare_local(env, &id, &Type::Void);
                                 Type::Void
                             }
                         };
@@ -259,28 +259,84 @@ fn parse_structure<'e, 't>(
                         let mut local_env = env.clone(); //TODO is this needed ?
                         local_env.context = Context::Function;
 
-                        let (params, end_tk) = make_ident_list(tokens, &mut local_env, errors, tk);
+                        let (params, end_tk) = make_ident_list(tokens, errors, tk);
+                        for param in params.iter() {
+                            declare_local(&mut local_env, &param.0, &param.1);
+                        }
+
                         let arity = params.len() as u8;
                         if arity > u8::max_value() {
                             push_error(errors, "Too many parameters !".to_owned(), end_tk.pos);
                         }
 
-                        let body = parse_expr(arena, tokens, &mut local_env, errors);
+                        let body = {
+                            let tk = next(tokens);
+                            match &tk.def {
+                                TokenDef::DelimOpen(Delimiter::Br) => {
+                                    local_env.open_scope();
 
-                        if !matches!(body.def, ExprDef::Block(_)) {
-                            push_error(
-                                errors,
-                                "Function body should be a block.".to_owned(),
-                                body.pos,
-                            );
-                        }
+                                    let mut statements: Vec<&Expr> = Vec::new();
+                                    while {
+                                        let peek = peek(tokens);
+                                        match peek.def {
+                                            TokenDef::DelimClose(Delimiter::Br) => false,
+                                            TokenDef::Eof => {
+                                                push_error(
+                                                    errors,
+                                                    "Unclosed delimiter {.".to_owned(),
+                                                    tk.pos,
+                                                );
+                                                false
+                                            }
+                                            _ => true,
+                                        }
+                                    } {
+                                        let statement =
+                                            parse_statement(arena, tokens, &mut local_env, errors);
+
+                                        if let Err(error) =
+                                            look_for_return_in(statement, &mut local_env, &t)
+                                        {
+                                            push_error(errors, error.msg, error.pos);
+                                        }
+
+                                        statements.push(statement);
+                                    }
+                                    next(tokens);
+
+                                    local_env.close_scope();
+
+                                    sort_functions_first(&mut statements);
+                                    arena.alloc(Expr {
+                                        def: ExprDef::Block(statements.into_boxed_slice()),
+                                        pos: tk.pos,
+                                    })
+                                }
+                                _ => {
+                                    push_error(
+                                        errors,
+                                        format!("Unexpected token : {:?}", tk.def),
+                                        tk.pos,
+                                    );
+                                    make_invalid(arena, tk.pos)
+                                }
+                            }
+                        };
 
                         //TODO recursion ?
-                        declare_local(env, &id, Type::Fn_);
+                        declare_local(
+                            env,
+                            &id,
+                            &Type::Fn(
+                                params.iter().map(|param| param.1.clone()).collect(),
+                                Box::new(t.clone()),
+                            ),
+                        );
                         arena.alloc(Expr {
                             def: ExprDef::FnDecl {
                                 id,
                                 params: params.into_boxed_slice(),
+                                return_t: t,
                                 body,
                             },
                             pos: pos + body.pos,
@@ -348,45 +404,45 @@ fn parse_structure<'e, 't>(
                 pos: pos + e.pos,
             })
         }
-        b"struct\0\0" => {
-            let mut pos = pos;
-            let tk = next(tokens);
-            let id = match tk.def {
-                TokenDef::Id(id) => id,
-                _ => {
-                    push_error(
-                        errors,
-                        format!("Expected identifier, got : {:?}", tk.def),
-                        tk.pos,
-                    );
-                    Default::default()
-                }
-            };
-
-            let tk = peek(tokens);
-            let fields = match tk.def {
-                TokenDef::DelimOpen(Delimiter::Br) => {
-                    next(tokens);
-                    let (fields, tk_delim_close) = make_ident_list(tokens, env, errors, tk);
-                    pos += tk_delim_close.pos;
-                    fields.into_boxed_slice()
-                }
-                _ => {
-                    push_error(errors, format!("Expected {{, got : {:?}", tk.def), tk.pos);
-                    Default::default()
-                }
-            };
-
-            if let Context::TopLevel = env.context {
-                push_error(errors, "Can't declare a struct here.".to_owned(), pos);
-                make_invalid(arena, pos)
-            } else {
-                arena.alloc(Expr {
-                    def: ExprDef::StructDecl { id, fields },
-                    pos,
-                })
-            }
+        b"struct\0\0" => unimplemented!(), /* {
+        let mut pos = pos;
+        let tk = next(tokens);
+        let id = match tk.def {
+        TokenDef::Id(id) => id,
+        _ => {
+        push_error(
+        errors,
+        format!("Expected identifier, got : {:?}", tk.def),
+        tk.pos,
+        );
+        Default::default()
         }
+        };
+
+        let tk = peek(tokens);
+        let fields = match tk.def {
+        TokenDef::DelimOpen(Delimiter::Br) => {
+        next(tokens);
+        let (fields, tk_delim_close) = make_ident_list(tokens, env, errors, tk);
+        pos += tk_delim_close.pos;
+        fields.into_boxed_slice()
+        }
+        _ => {
+        push_error(errors, format!("Expected {{, got : {:?}", tk.def), tk.pos);
+        Default::default()
+        }
+        };
+
+        if let Context::TopLevel = env.context {
+        push_error(errors, "Can't declare a struct here.".to_owned(), pos);
+        make_invalid(arena, pos)
+        } else {
+        arena.alloc(Expr {
+        def: ExprDef::StructDecl { id, fields },
+        pos,
+        })
+        }
+        } */
         id => {
             if let None = env.get_from_id(id) {
                 push_error(
@@ -438,10 +494,9 @@ fn make_binop<'e>(
 
 fn make_ident_list<'t>(
     tokens: &mut TkIter<'t>,
-    env: &mut Environment,
     errors: &mut Vec<Error>,
     tk_delim_open: &Token,
-) -> (Vec<Identifier>, &'t Token) {
+) -> (Vec<(Identifier, Type)>, &'t Token) {
     let mut list = Vec::new();
 
     let delimiter = if let TokenDef::DelimOpen(delimiter) = tk_delim_open.def {
@@ -455,23 +510,46 @@ fn make_ident_list<'t>(
     }
 
     loop {
-        let tk_ = peek(tokens);
-        if let TokenDef::Id(id) = tk_.def {
-            next(tokens);
+        let tk_0 = next(tokens);
+        let t = match tk_0.def {
+            TokenDef::Id(id) if matches!(&id, type_id_pattern!()) => {
+                let id = id;
+                Type::from_identifier(&id)
+            }
+            _ => {
+                push_error(
+                    errors,
+                    if let TokenDef::Id(id) = tk_0.def {
+                        format!(
+                            "Expected type identifier, got identifier : {}",
+                            id.to_string()
+                        )
+                    } else {
+                        format!("Expected type identifier, got : {:?}", tk_0.def)
+                    },
+                    tk_0.pos,
+                );
+                Default::default()
+            }
+        };
+
+        let tk_1 = next(tokens);
+        let id = if let TokenDef::Id(id) = tk_1.def {
             let id = id;
-            declare_local(env, &id, Type::Int); //TODO parameters type
-            list.push(id);
+            id
         } else {
             push_error(
                 errors,
-                format!("Expected identifier, got : {:?}", tk_.def),
-                tk_.pos,
+                format!("Expected identifier, got : {:?}", tk_1.def),
+                tk_1.pos,
             );
-            list.push(Default::default());
+            Default::default()
         };
 
-        let tk = peek(tokens);
-        match tk.def {
+        list.push((id, t));
+
+        let tk_2 = peek(tokens);
+        match tk_2.def {
             TokenDef::Comma => {
                 next(tokens);
             }
@@ -489,8 +567,12 @@ fn make_ident_list<'t>(
             _ => {
                 push_error(
                     errors,
-                    format!("Expected , or {}, got {:?}", delimiter.to_str(true), tk.def),
-                    tk.pos,
+                    format!(
+                        "Expected , or {}, got {:?}",
+                        delimiter.to_str(true),
+                        tk_2.def
+                    ),
+                    tk_2.pos,
                 );
                 break;
             }
@@ -552,73 +634,6 @@ fn make_expr_list<'e, 't>(
     (list, next(tokens))
 }
 
-// #region make use macros ?
-/* fn make_ident_list<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env: &mut Environment, errors: &mut Vec<Error>: &mut Vec<Identifier>, tk_delim_open:&Token) -> (Vec<Identifier>, &'t Token)
-{
-    __make_list(tokens, errors, tk_delim_open, |list:&mut Vec<Identifier>| {
-        let tk = peek(tokens);
-        if let TokenDef::Id(id) = tk.def {
-            next(tokens);
-            let id = id;
-            declare_local(arena, tokens, env, errors, &id, true);
-            list.push(id);
-        } else {
-            push_error(errors, format!("Expected identifier, got : {:?}", tk.def), tk.pos);
-            list.push(Default::default());
-        };
-    })
-}
-
-fn make_expr_list<'e, 't> (arena: &'e Arena<Expr<'e>>, tokens: &mut TkIter<'t>, env: &mut Environment, errors: &mut Vec<Error>: &mut Vec<Identifier>, tk_delim_open:&Token) -> (Vec<&'e Expr<'e>>, &'t Token)
-{
-    __make_list(tokens, errors, tk_delim_open, |list:&mut Vec<&'e Expr<'e>>| {
-        list.push(parse_expr(arena, tokens, env, errors));
-    })
-}
-
-#[doc(hidden)]
-fn __make_list<'e, 't, T> (tokens: &mut TkIter<'t>, errors: &mut Vec<Error>, tk_delim_open:&Token, add_item:impl Fn(&mut Vec<T>)) -> (Vec<T>, &'t Token)
-{
-    let mut list = Vec::new();
-
-    let delimiter = if let TokenDef::DelimOpen(delimiter) = tk_delim_open.def {
-        delimiter
-    } else {
-        panic!("Only a TokenDef::DelimOpen should be passed here.");
-    };
-
-    if peek(tokens).def == TokenDef::DelimClose(delimiter) {
-        return (list, next(tokens));
-    }
-
-    loop
-    {
-        add_item(&mut list);
-
-        let tk = peek(tokens);
-        match tk.def
-        {
-            TokenDef::Comma => {
-                next(tokens);
-            },
-            TokenDef::DelimClose(delimiter_) if delimiter_ == delimiter => {
-                break;
-            },
-            TokenDef::Eof => {
-                push_error(errors, format!("Unclosed delimiter : {}", delimiter.to_str(false)), tk_delim_open.pos);
-                break;
-            },
-            _ => {
-                push_error(errors, format!("Expected , or {}, got {:?}", delimiter.to_str(true), tk.def), tk.pos);
-                break;
-            }
-        }
-    }
-
-    (list, next(tokens))
-} */
-// #endregion
-
 // ----- TOKEN ITERATOR -----
 
 fn peek<'t>(tokens: &mut TkIter<'t>) -> &'t Token {
@@ -642,11 +657,11 @@ fn next<'t>(tokens: &mut TkIter<'t>) -> &'t Token {
 
 // ----- SCOPES -----
 
-fn declare_local(env: &mut Environment, id: &Identifier, t: Type) {
+fn declare_local(env: &mut Environment, id: &Identifier, t: &Type) {
     let n_locals = env.locals_count;
     env.locals[n_locals as usize] = Local {
         id: *id,
-        t,
+        t: t.clone(),
         depth: env.scope_depth,
     };
     if let Some(n_locals) = n_locals.checked_add(1) {
@@ -845,7 +860,55 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                 }
             }
         }
-        ExprDef::Call { id, args } => Type::Void, //TODO change this
+        ExprDef::Call { function, args } => match &function.def {
+            ExprDef::Id(id) => {
+                if let Some(local) = env.get_from_id(&id) {
+                    if let Type::Fn(params_t, return_t) = local.t {
+                        if params_t.len() != args.len() {
+                            return Err(Error {
+                                msg: format!(
+                                    "Expected {} arguments, found {}",
+                                    params_t.len(),
+                                    args.len()
+                                ),
+                                pos: expr.pos,
+                            });
+                        }
+
+                        for (param_t, arg) in params_t.iter().zip(args.iter()) {
+                            let arg_t = unwrap_or_return!(eval_type(arg, env));
+                            if param_t != &arg_t {
+                                return Err(Error {
+                                    msg: format!(
+                                        "Invalid argument, expected {:?}, found {:?}",
+                                        param_t, arg_t
+                                    ),
+                                    pos: arg.pos,
+                                });
+                            }
+                        }
+
+                        *return_t.clone()
+                    } else {
+                        return Err(Error {
+                            msg: format!("Expected function, found {:?}", local.t),
+                            pos: expr.pos,
+                        });
+                    }
+                } else {
+                    return Err(Error {
+                        msg: format!("Undefined variable : {}", id.to_string()),
+                        pos: expr.pos,
+                    });
+                }
+            }
+            e => {
+                return Err(Error {
+                    msg: format!("Expected function, found {:?}", e),
+                    pos: expr.pos,
+                });
+            }
+        },
         ExprDef::VarDecl(_, _, _) => Type::Void,
         ExprDef::FnDecl { .. } => Type::Void,
         ExprDef::StructDecl { .. } => Type::Void,
@@ -854,9 +917,21 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
             local_env.open_scope();
             let mut return_type = Type::Void;
             for e in exprs.iter() {
-                match e.def {
-                    ExprDef::VarDecl(id, t, _) => declare_local(&mut local_env, &id, t),
-                    ExprDef::FnDecl { id, .. } => declare_local(&mut local_env, &id, Type::Fn_),
+                match &e.def {
+                    ExprDef::VarDecl(id, t, _) => declare_local(&mut local_env, &id, &t),
+                    ExprDef::FnDecl {
+                        id,
+                        params,
+                        return_t,
+                        ..
+                    } => declare_local(
+                        &mut local_env,
+                        &id,
+                        &Type::Fn(
+                            params.iter().map(|param| param.1.clone()).collect(),
+                            Box::new(return_t.clone()),
+                        ),
+                    ),
                     _ => (),
                 }
                 return_type = unwrap_or_return!(eval_type(e, &local_env));
@@ -864,33 +939,94 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
             local_env.close_scope();
             return_type
         }
-        ExprDef::Parent(e) => unwrap_or_return!(eval_type(e, env)),
+        ExprDef::Parent(e) => {
+            unwrap_or_return!(eval_type(e, env))
+        }
         ExprDef::Return(_) => Type::Void,
         ExprDef::Invalid => Type::Void,
         ExprDef::End => Type::Void,
     })
 }
 
-/* #[allow(dead_code)]
-pub fn benchmark ()
-{
-    use crate::benchmarks::ITERATIONS;
-    use super::lexer;
-    use std::time::{ Instant, Duration };
+fn look_for_return_in(
+    e: &WithPosition<ExprDef>,
+    env: &mut Environment,
+    return_type: &Type,
+) -> Result<(), Error> {
+    macro_rules! unwrap_or_return_ {
+        ($e:expr) => {
+            match $e {
+                Ok(t) => t,
+                err @ Err(_) => return err,
+            }
+        };
+    }
 
-    let program = std::fs::read_to_string("./code.lang").unwrap();
-    let (tokens, errors) = lexer::lex(&program);
-    if !errors.is_empty() {
-        println!("Parsing: couldn't proceed to benchmark due to lexing errors.");
-        return;
-    }
-    let mut duration = Duration::new(0, 0);
-    for _ in 0..ITERATIONS
-    {
-        let arena = typed_arena::Arena::new();
-        let now = Instant::now();
-        parse(&arena, &tokens);
-        duration += now.elapsed();
-    }
-    println!("Parsing: {}ms", duration.as_millis());
-} */
+    use ExprDef::*;
+    Ok(match &e.def {
+        If { cond, then, elze } => {
+            unwrap_or_return_!(look_for_return_in(cond, env, return_type));
+            unwrap_or_return_!(look_for_return_in(then, env, return_type));
+            if let Some(elze) = elze {
+                unwrap_or_return_!(look_for_return_in(elze, env, return_type));
+            }
+        }
+        While { cond, body } => {
+            unwrap_or_return_!(look_for_return_in(cond, env, return_type));
+            unwrap_or_return_!(look_for_return_in(body, env, return_type));
+        }
+        Field(_, _) => unimplemented!(),
+        UnOp { e, .. } => {
+            unwrap_or_return_!(look_for_return_in(e, env, return_type));
+        }
+        BinOp { left, right, .. } => {
+            unwrap_or_return_!(look_for_return_in(left, env, return_type));
+            unwrap_or_return_!(look_for_return_in(right, env, return_type));
+        }
+        Call { function, args } => {
+            unwrap_or_return_!(look_for_return_in(function, env, return_type));
+            for arg in args.iter() {
+                unwrap_or_return_!(look_for_return_in(arg, env, return_type));
+            }
+        }
+        VarDecl(id, t, _) => declare_local(env, &id, &t),
+        FnDecl {
+            id,
+            params,
+            return_t,
+            ..
+        } => declare_local(
+            env,
+            &id,
+            &Type::Fn(
+                params.iter().map(|param| param.1.clone()).collect(),
+                Box::new(return_t.clone()),
+            ),
+        ),
+        StructDecl { .. } => unimplemented!(),
+        Block(exprs) => {
+            for e in exprs.iter() {
+                unwrap_or_return_!(look_for_return_in(e, env, return_type));
+            }
+        }
+        Return(return_expr) => {
+            let t = match eval_type(return_expr, env) {
+                Ok(t) => t,
+                Err(error) => return Err(error),
+            };
+            if &t != return_type {
+                return Err(Error {
+                    msg: format!(
+                        "Return type mismatch : expected {:?}, found {:?}",
+                        return_type, t
+                    ),
+                    pos: e.pos,
+                });
+            }
+        }
+        Parent(e) => {
+            unwrap_or_return_!(look_for_return_in(e, env, return_type));
+        }
+        _ => (),
+    })
+}

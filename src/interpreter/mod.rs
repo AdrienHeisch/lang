@@ -24,7 +24,7 @@ enum Reference<'e>
 //TODO function pointers in memory, points to a value in a table in the interpreter
 {
     Ptr(Pointer),
-    Fn(Box<[Identifier]>, Expr<'e>),
+    Fn(Box<[(Identifier, Type)]>, Expr<'e>),
 }
 
 enum ResultErr {
@@ -73,7 +73,7 @@ impl<'e> Interpreter<'e> {
 
     pub fn get_var_by_name(&self, name: &str) -> Option<Value> {
         if let Some(Reference::Ptr(ptr)) = self.get_pointer(&Identifier::make(name)) {
-            Some(self.memory.get_var(ptr))
+            Some(self.memory.get_var(&ptr))
         } else {
             None
         }
@@ -96,7 +96,7 @@ impl<'e> Interpreter<'e> {
             Const(value) => value.clone(),
             Id(id) => {
                 match self.get_pointer(id) {
-                    Some(Reference::Ptr(ptr)) => self.memory.get_var(ptr),
+                    Some(Reference::Ptr(ptr)) => self.memory.get_var(&ptr),
                     Some(Reference::Fn(_, _)) => {
                         return Err(
                             self.throw("Tried to use function as value.".to_owned(), expr.pos)
@@ -166,7 +166,7 @@ impl<'e> Interpreter<'e> {
                 }
                 err @ Err(_) => return err,
             },
-            Call { id, args } => self.call(id, args)?,
+            Call { function: id, args } => self.call(id, args)?,
             Field(_, _) => unimplemented!(),
             // --- Declarations
             VarDecl(id, t, assign_expr) => {
@@ -179,18 +179,23 @@ impl<'e> Interpreter<'e> {
                 if t != &t_ {
                     return Err(self.throw(format!("Can't assign {:?} to {:?}", t, t_), expr.pos));
                 }
-                let ptr = match self.declare_var(id, *t) {
+                let ptr = match self.declare_var(id, t) {
                     Ok(ptr) => ptr,
                     Err(message) => return Err(self.throw(message, expr.pos)),
                 };
                 //TODO remove this hack
                 self.stack[self.frame_ptr as usize + self.env.locals_count as usize - 1] =
-                    Reference::Ptr(ptr);
-                self.memory.set_var(ptr, &value);
+                    Reference::Ptr(ptr.clone());
+                self.memory.set_var(&ptr, &value);
                 Value::Void
             }
-            FnDecl { id, params, body } => {
-                if let Err(message) = self.declare_fn(id, params.clone(), body) {
+            FnDecl {
+                id,
+                params,
+                return_t,
+                body,
+            } => {
+                if let Err(message) = self.declare_fn(id, params.clone(), return_t, body) {
                     return Err(self.throw(message, expr.pos));
                 }
                 Value::Void
@@ -331,11 +336,12 @@ impl<'e> Interpreter<'e> {
         match &e_to.def {
             ExprDef::Id(id) if !matches!(value.def, Value::Void) => {
                 self.memory.set_var(
-                    if let Reference::Ptr(ptr) = self.get_pointer(id).unwrap() {
+                    &if let Reference::Ptr(ptr) = self.get_pointer(id).unwrap() {
                         ptr
                     } else {
                         panic!("Tried to use function as value.") //DESIGN functions as values ?
-                    },
+                    }
+                    .clone(),
                     &value.def,
                 );
             }
@@ -395,7 +401,7 @@ impl<'e> Interpreter<'e> {
                         self.frame_ptr += self.env.locals_count;
 
                         let prev_env =
-                            std::mem::replace(&mut self.env, Environment::new(Context::Function));
+                            std::mem::replace(&mut self.env, Environment::new(Context::Function)); //TODO id this needed ?
 
                         // self.declare_fn(id, params: Box<[Identifier]>, body: &Expr<'e>)
 
@@ -408,11 +414,11 @@ impl<'e> Interpreter<'e> {
 
                         for (value, param) in values_and_params {
                             let value = value?;
-                            let ptr = match self.declare_var(param, value.as_type()) {
+                            let ptr = match self.declare_var(&param.0, &param.1) {
                                 Ok(ptr) => ptr,
                                 Err(message) => return Err(self.throw(message, e_id.pos)),
                             };
-                            self.memory.set_var(ptr, &value);
+                            self.memory.set_var(&ptr, &value);
                         }
 
                         let out = match self.expr(&body) {
@@ -435,7 +441,7 @@ impl<'e> Interpreter<'e> {
                     }
                 }
             }
-            _ => {
+            _ => { //TODO call variable (functions as value)
                 return Err(self.throw(
                     format!("Expected an identifier, got : {:?}", e_id),
                     e_id.pos,
@@ -449,12 +455,16 @@ impl<'e> Interpreter<'e> {
     fn declare_fn(
         &mut self,
         id: &Identifier,
-        params: Box<[Identifier]>,
+        params: Box<[(Identifier, Type)]>,
+        return_t: &Type,
         body: &Expr<'e>,
     ) -> Result<(), String> {
         self.env.locals[self.env.locals_count as usize] = Local {
             id: *id,
-            t: Type::Fn_,
+            t: Type::Fn(
+                params.iter().map(|param| param.1.clone()).collect(),
+                Box::new(return_t.clone()),
+            ),
             depth: self.env.scope_depth,
         };
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
@@ -467,14 +477,15 @@ impl<'e> Interpreter<'e> {
         Ok(())
     }
 
-    fn declare_var(&mut self, id: &Identifier, t: Type) -> Result<Pointer, String> {
+    fn declare_var(&mut self, id: &Identifier, t: &Type) -> Result<Pointer, String> {
         let ptr = self.memory.make_pointer_for_type(t);
         self.env.locals[self.env.locals_count as usize] = Local {
             id: *id,
-            t,
+            t: t.clone(),
             depth: self.env.scope_depth,
         };
-        self.stack[self.frame_ptr as usize + self.env.locals_count as usize] = Reference::Ptr(ptr);
+        self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
+            Reference::Ptr(ptr.clone());
         if let Some(n) = self.env.locals_count.checked_add(1) {
             self.env.locals_count = n;
         } else {
@@ -494,12 +505,12 @@ impl<'e> Interpreter<'e> {
     }
 
     fn free_unused_stack(&mut self, n_variables: usize) {
-        for ptr in self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)..]
+        for reference in self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)..]
             .iter()
             .take(n_variables)
         {
-            match ptr {
-                Reference::Ptr(ptr) => self.memory.free_ptr(*ptr),
+            match reference {
+                Reference::Ptr(ptr) => self.memory.free_ptr(ptr),
                 Reference::Fn(_, _) => (),
             }
         }
@@ -535,7 +546,7 @@ impl<'e> Interpreter<'e> {
             } else {
                 continue;
             };
-            println!("{} => {:?} => {:?}", id_str, ptr, self.memory.get_var(ptr));
+            println!("{} => {:?} => {:?}", id_str, ptr, self.memory.get_var(&ptr));
         }
 
         println!();

@@ -1,7 +1,7 @@
 mod lexer;
 mod parser;
 
-use crate::value::{Value, Type};
+use crate::value::{Type, Value};
 use typed_arena::Arena;
 
 //TODO revoir visibilité
@@ -33,7 +33,7 @@ impl<'ast> Ast<'ast> {
                         if cfg!(lang_print_parser_output) && cfg!(not(lang_benchmark)) {
                             println!("exprs:");
                             for e in top_level.iter() {
-                                println!("\t{:?}", e.def);
+                                println!("\t{:#?}", e.def);
                             }
                             println!();
                         };
@@ -102,14 +102,15 @@ pub enum ExprDef<'e> {
         right: &'e Expr<'e>,
     },
     Call {
-        id: &'e Expr<'e>,
+        function: &'e Expr<'e>,
         args: Box<[&'e Expr<'e>]>,
     },
     // --- Declarations
     VarDecl(Identifier, Type, &'e Expr<'e>),
     FnDecl {
         id: Identifier,
-        params: Box<[Identifier]>,
+        params: Box<[(Identifier, Type)]>,
+        return_t: Type,
         body: &'e Expr<'e>,
     },
     StructDecl {

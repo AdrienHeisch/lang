@@ -7,7 +7,7 @@ use std::convert::TryInto;
 
 // pub struct Memory(RawMemory);
 
-#[derive(Debug, Copy, Clone, Default, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct Pointer {
     pub t: Type,
     raw: RawPointer,
@@ -15,10 +15,10 @@ pub struct Pointer {
 
 pub trait Memory {
     fn new() -> Self;
-    fn get_var(&self, ptr: Pointer) -> Value;
-    fn set_var(&mut self, ptr: Pointer, value: &Value);
-    fn free_ptr(&mut self, ptr: Pointer);
-    fn make_pointer_for_type(&mut self, t: Type) -> Pointer;
+    fn get_var(&self, ptr: &Pointer) -> Value;
+    fn set_var(&mut self, ptr: &Pointer, value: &Value);
+    fn free_ptr(&mut self, ptr: &Pointer);
+    fn make_pointer_for_type(&mut self, t: &Type) -> Pointer;
     fn print_ram(&self);
 }
 
@@ -27,20 +27,19 @@ impl Memory for RawMemory {
         Self::new()
     }
 
-    fn get_var(&self, ptr: Pointer) -> Value {
+    fn get_var(&self, ptr: &Pointer) -> Value {
         match ptr.t {
             Type::Int => Value::Int(i32::from_ne_bytes(self.access(ptr.raw).try_into().unwrap())),
             Type::Float => {
                 Value::Float(f32::from_ne_bytes(self.access(ptr.raw).try_into().unwrap()))
             }
             Type::Bool => Value::Bool(self.access(ptr.raw)[0] == 1),
-            Type::Fn_ => panic!(),
+            Type::Fn(_, _) => panic!(),
             Type::Void => Value::Void,
         }
     }
 
-    fn set_var(&mut self, ptr: Pointer, value: &Value)
-    {
+    fn set_var(&mut self, ptr: &Pointer, value: &Value) {
         use Value::*;
         match value {
             Int(i) => {
@@ -58,16 +57,16 @@ impl Memory for RawMemory {
         }
     }
 
-    fn free_ptr(&mut self, ptr: Pointer) {
+    fn free_ptr(&mut self, ptr: &Pointer) {
         self.free(ptr.raw);
     }
 
-    fn make_pointer_for_type(&mut self, t: Type) -> Pointer {
+    fn make_pointer_for_type(&mut self, t: &Type) -> Pointer {
         if let Type::Void = t {
             panic!("Tried to create pointer for void"); //DESIGN make pointer for Void ?
         } else {
             Pointer {
-                t,
+                t: t.clone(),
                 raw: self.alloc(t.get_size()),
             }
         }

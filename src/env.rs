@@ -8,7 +8,7 @@ pub struct Environment {
     pub context: Context,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Default)]
 pub struct Local {
     pub id: Identifier,
     pub t: Type,
@@ -24,11 +24,7 @@ pub enum Context {
 impl Environment {
     pub fn new(context: Context) -> Self {
         Environment {
-            locals: [Local {
-                id: Default::default(),
-                t: Type::Void,
-                depth: 0,
-            }; 256],
+            locals: [(); 256].map(|_| Local::default()),
             locals_count: 0,
             scope_depth: 0,
             context,
@@ -39,13 +35,13 @@ impl Environment {
         match id {
             b"print\0\0\0" | b"printmem" => Some(Local {
                 id: *id,
-                t: Type::Fn_,
+                t: Type::Fn(Box::new([Type::Int]), Box::new(Type::Void)),
                 depth: 0,
             }),
             id => {
                 for local in self.locals.iter().take(self.locals_count.into()).rev() {
                     if *id == local.id {
-                        return Some(*local);
+                        return Some(local.clone());
                     }
                 }
 

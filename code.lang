@@ -1,1 +1,10 @@
-int add(a, b) { a + b; } int i = add(2, 4); print(i);
+int mult(int a, int n) {
+    int acc = 0;
+    while (n > 0) {
+        acc += a;
+        n -= 1;
+    }
+    return acc;
+}
+
+print(mult(7, 6));

@@ -60,7 +60,7 @@ macro_rules! test_should_panic {
                 interpreter.run(&ast.top_level)
             })) {
                 Ok(result) => match result {
-                    Ok(()) => panic!("This code should panic"),
+                    Ok(()) => panic!("Test code didn't panic."),
                     Err(_) => println!("ERROR IS GOOD"),
                 },
                 Err(_) => println!("PANIC IS GOOD"),
@@ -306,7 +306,17 @@ test_assert_eq!(
 
 test_assert_eq!(
     function,
-    "int add(a, b) { a + b; } int i = add(2, 4);",
+    "int add(int a, int b) { return a + b; } int i = add(2, 4);",
     "i",
     Value::Int(6)
+);
+
+test_should_panic!(
+    function_invalid_arg,
+    "int add(int a, int b) { a + b; } int i = add(true, 4);"
+);
+
+test_should_panic!(
+    function_invalid_type,
+    "int add(int a, int b) { a + b; } bool i = add(2, 4);"
 );

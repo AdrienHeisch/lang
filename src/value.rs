@@ -8,13 +8,12 @@ pub enum Value {
     Void,
 }
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Type {
     Int,
     Float,
     Bool,
-    Fn_, //TODO typed functions
-    // Fn(Box<[Type]>, Type),
+    Fn(Box<[Type]>, Box<Type>),
     Void,
 }
 
@@ -41,6 +40,13 @@ impl std::fmt::Display for Value {
     }
 }
 
+macro_rules! type_id_pattern {
+    () => {
+        b"int\0\0\0\0\0" | b"float\0\0\0" | b"bool\0\0\0\0"
+    };
+}
+pub(crate) use type_id_pattern;
+
 impl Type {
     pub fn from_identifier(id: &Identifier) -> Self {
         use Type::*;
@@ -59,7 +65,7 @@ impl Type {
             Int => 4,
             Float => 4,
             Bool => 1,
-            Fn_ => panic!(),
+            Fn(_, _) => panic!(),
             Void => 0,
         }
     }
