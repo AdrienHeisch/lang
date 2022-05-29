@@ -29,12 +29,7 @@ pub fn build_ast<'a>(program: &str) -> Result<Ast<'a>, String> {
 pub fn walk_ast(ast: &Ast) -> Result<(), String> {
     let mut interpreter = Interpreter::new();
     match interpreter.run(&ast.top_level) {
-        Ok(()) => {
-            if cfg!(lang_print_interp_locals) {
-                interpreter.print_locals();
-            }
-            Ok(())
-        }
+        Ok(()) => Ok(()),
         Err(error) => Err(format!(
             "{} -> {}",
             error.pos.get_full(&ast.source),

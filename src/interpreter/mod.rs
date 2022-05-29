@@ -59,6 +59,10 @@ impl<'e> Interpreter<'e> {
         if cfg!(not(lang_benchmark)) {
             println!();
         }
+        
+        if cfg!(lang_print_interpreter) {
+            self.print_locals();
+        }
 
         Ok(())
     }

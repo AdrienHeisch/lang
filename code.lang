@@ -1,10 +1,1 @@
-int mult(int a, int n) {
-    int acc = 0;
-    while (n > 0) {
-        acc += a;
-        n -= 1;
-    }
-    return acc;
-}
-
-print(mult(7, 6));
+int i = 2 + 4;

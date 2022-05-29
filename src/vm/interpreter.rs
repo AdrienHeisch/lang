@@ -1,10 +1,8 @@
-use crate::vm::ToAsm;
-
 use super::*;
 use std::num::Wrapping;
 
 pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
-    if cfg!(not(lang_benchmark)) {
+    if cfg!(lang_print_vm_runtime) {
         print!("BYTECODE: ");
         for s in chunk.iter().map(|el| format!("{:04X}", el)) {
             print!("{} ", s);

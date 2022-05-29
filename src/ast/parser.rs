@@ -953,7 +953,7 @@ fn look_for_return_in(
     env: &mut Environment,
     return_type: &Type,
 ) -> Result<(), Error> {
-    macro_rules! unwrap_or_return_ {
+    macro_rules! unwrap_or_return {
         ($e:expr) => {
             match $e {
                 Ok(t) => t,
@@ -965,28 +965,28 @@ fn look_for_return_in(
     use ExprDef::*;
     Ok(match &e.def {
         If { cond, then, elze } => {
-            unwrap_or_return_!(look_for_return_in(cond, env, return_type));
-            unwrap_or_return_!(look_for_return_in(then, env, return_type));
+            unwrap_or_return!(look_for_return_in(cond, env, return_type));
+            unwrap_or_return!(look_for_return_in(then, env, return_type));
             if let Some(elze) = elze {
-                unwrap_or_return_!(look_for_return_in(elze, env, return_type));
+                unwrap_or_return!(look_for_return_in(elze, env, return_type));
             }
         }
         While { cond, body } => {
-            unwrap_or_return_!(look_for_return_in(cond, env, return_type));
-            unwrap_or_return_!(look_for_return_in(body, env, return_type));
+            unwrap_or_return!(look_for_return_in(cond, env, return_type));
+            unwrap_or_return!(look_for_return_in(body, env, return_type));
         }
         Field(_, _) => unimplemented!(),
         UnOp { e, .. } => {
-            unwrap_or_return_!(look_for_return_in(e, env, return_type));
+            unwrap_or_return!(look_for_return_in(e, env, return_type));
         }
         BinOp { left, right, .. } => {
-            unwrap_or_return_!(look_for_return_in(left, env, return_type));
-            unwrap_or_return_!(look_for_return_in(right, env, return_type));
+            unwrap_or_return!(look_for_return_in(left, env, return_type));
+            unwrap_or_return!(look_for_return_in(right, env, return_type));
         }
         Call { function, args } => {
-            unwrap_or_return_!(look_for_return_in(function, env, return_type));
+            unwrap_or_return!(look_for_return_in(function, env, return_type));
             for arg in args.iter() {
-                unwrap_or_return_!(look_for_return_in(arg, env, return_type));
+                unwrap_or_return!(look_for_return_in(arg, env, return_type));
             }
         }
         VarDecl(id, t, _) => declare_local(env, &id, &t),
@@ -1006,7 +1006,7 @@ fn look_for_return_in(
         StructDecl { .. } => unimplemented!(),
         Block(exprs) => {
             for e in exprs.iter() {
-                unwrap_or_return_!(look_for_return_in(e, env, return_type));
+                unwrap_or_return!(look_for_return_in(e, env, return_type));
             }
         }
         Return(return_expr) => {
@@ -1025,7 +1025,7 @@ fn look_for_return_in(
             }
         }
         Parent(e) => {
-            unwrap_or_return_!(look_for_return_in(e, env, return_type));
+            unwrap_or_return!(look_for_return_in(e, env, return_type));
         }
         _ => (),
     })
