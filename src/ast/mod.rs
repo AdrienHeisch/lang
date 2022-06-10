@@ -9,6 +9,7 @@ use typed_arena::Arena;
 pub struct Ast<'a> {
     pub source: String,
     pub top_level: Vec<&'a Expr<'a>>,
+    #[allow(dead_code)] //TODO why is this marked as dead code ?
     arena: Arena<Expr<'a>>,
 }
 

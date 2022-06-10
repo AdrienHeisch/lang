@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 mod tests;
 mod ast;
 mod env;
@@ -28,6 +26,7 @@ pub fn build_ast<'a>(program: &str) -> Result<Ast<'a>, String> {
 
 pub fn walk_ast(ast: &Ast) -> Result<(), String> {
     let mut interpreter = Interpreter::new();
+
     match interpreter.run(&ast.top_level) {
         Ok(()) => Ok(()),
         Err(error) => Err(format!(

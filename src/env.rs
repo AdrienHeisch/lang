@@ -50,10 +50,6 @@ impl Environment {
         }
     }
 
-    /* pub fn get_context(&self) -> &Context {
-        &self.context
-    } */
-
     pub fn open_scope(&mut self) {
         if let Some(n) = self.scope_depth.checked_add(1) {
             self.scope_depth = n;

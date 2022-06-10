@@ -12,7 +12,7 @@ pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
 
     let mut a = 0_u16;
     let mut d = 0_u16;
-    let mut memory = [0_u16; MEM_SIZE];
+    let mut memory: Memory = [0_u16; MEM_SIZE];
     memory[0] = SP_INIT;
     let mut dummy_memory = 0;
 

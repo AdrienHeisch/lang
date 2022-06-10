@@ -75,6 +75,7 @@ impl<'e> Interpreter<'e> {
         self.env = Environment::new(Context::TopLevel);
     }
 
+    #[allow(dead_code)] //USED BY TESTS
     pub fn get_var_by_name(&self, name: &str) -> Option<Value> {
         if let Some(Reference::Ptr(ptr)) = self.get_pointer(&Identifier::make(name)) {
             Some(self.memory.get_var(&ptr))

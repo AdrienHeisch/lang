@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 extern crate lang;
 
 use criterion::{criterion_group, criterion_main, Criterion};

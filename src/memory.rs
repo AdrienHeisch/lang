@@ -15,7 +15,7 @@ pub struct RawPointer {
     len: usize,
 }
 
-// PUBLIC
+#[allow(dead_code)]
 impl RawMemory {
     pub fn new() -> Self {
         Self {

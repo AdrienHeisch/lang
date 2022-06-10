@@ -162,7 +162,7 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
                 _ => unimplemented!(),
             };
         }
-        Call { function, args } => unimplemented!(),
+        Call { .. } => unimplemented!(),
         Field(_, _) => unimplemented!(),
         VarDecl(id, _, assign_expr) => {
             identifiers.insert(*id, *sp);
@@ -177,13 +177,8 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
             chunk.push(0b1001110111001000); // *A = *A + 1
             *sp += 1;
         }
-        FnDecl {
-            id,
-            params,
-            return_t,
-            body,
-        } => unimplemented!(),
-        StructDecl { id, fields } => unimplemented!(),
+        FnDecl { .. } => unimplemented!(),
+        StructDecl { .. } => unimplemented!(),
         Block(exprs) => {
             // let sp_now = *sp;
             for e in exprs.iter() {
@@ -194,12 +189,8 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
         Parent(e) => {
             expr(e, chunk, identifiers, sp);
         }
-        Return(e) => unimplemented!(),
+        Return(..) => unimplemented!(),
         End => (),
         Invalid => unimplemented!(),
     }
 }
-
-/* fn assign (e: &Expr, address: u16, chunk: &mut Chunk) {
-
-} */
