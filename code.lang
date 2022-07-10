@@ -1,2 +1,9 @@
-int i = 2 + 4;
-print(i);
+int mult(int a, int b) {
+    while (b > 0) {
+        a += a;
+        b -= 1;
+    }
+    return a;
+}
+
+print(mult(5, 6));

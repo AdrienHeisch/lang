@@ -42,7 +42,7 @@ pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> //TODO retest v
 
     tokens.push_back(Token {
         def: TokenDef::Eof,
-        pos: Position::zero(), //TODO should be end of program string
+        pos: Position(pos, pos),
     });
 
     if errors.is_empty() {
