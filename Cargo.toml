@@ -23,4 +23,4 @@ harness = false
 typed-arena = "2.0.1"
 
 [dev-dependencies]
-criterion = "0.3.1"
+criterion = "0.3.6"
