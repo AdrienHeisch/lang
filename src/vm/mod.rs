@@ -81,6 +81,8 @@ impl InstructionTools for Instruction {
 
         format!("{}{}{}", target, opcode, cond)
     }
+
+    //TODO from_asm ?
 }
 
 pub struct DebugInfo {

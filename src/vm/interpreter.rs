@@ -2,12 +2,13 @@ use super::*;
 use std::num::Wrapping;
 
 pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
-    if cfg!(lang_print_vm_runtime) {
-        print!("BYTECODE: ");
+    if cfg!(lang_print_vm_interpreter) {
+        /* print!("BYTECODE: ");
         for s in chunk.iter().map(|el| format!("{:04X}", el)) {
             print!("{} ", s);
         }
-        println!();
+        println!(); */
+        println!("===================================================");
     }
 
     let mut a = 0_u16;
@@ -25,8 +26,8 @@ pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
         };
 
         let instruction = chunk[offset];
-        if cfg!(lang_print_vm_runtime) {
-            print!("{:04} {:>16}   -->   ", offset, instruction.to_asm());
+        if cfg!(lang_print_vm_interpreter) {
+            print!("{:04} {:>12}   -->   ", offset, instruction.to_asm());
         }
         if check_bit(instruction, 15) {
             let result = compute(instruction, a, d, *in_mem);
@@ -45,14 +46,15 @@ pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
         } else {
             a = instruction;
         }
-        if cfg!(lang_print_vm_runtime) {
-            println!("A: {:<3} | D: {:<3} | A*: {:<3}", a as i16, d as i16, *in_mem as i16);
+        if cfg!(lang_print_vm_interpreter) {
+            println!("A: {:>3} | D: {:>3} | A*: {:>3}", a as i16, d as i16, *in_mem as i16);
         }
         offset += 1;
     }
     
-    if cfg!(lang_print_vm_runtime) {
-        println!("MEMORY: {:?}", memory);
+    if cfg!(lang_print_vm_interpreter) {
+        println!("===================================================");
+        println!("\nMEMORY: {:?}\n", memory);
     }
 
     Ok(())

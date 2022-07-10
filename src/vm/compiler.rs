@@ -14,11 +14,11 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, DebugInfo), ()> {
     }
 
     if cfg!(lang_print_vm_compiler) {
-        println!("======== ASM ========");
+        println!("========= ASM =========");
         for (offset, instruction) in chunk.iter().enumerate() {
-            println!("{:04} {:>16}", offset, instruction.to_asm());
+            println!("{:04} {:>11}   {:04X} ", offset, instruction.to_asm(), instruction);
         }
-        println!("=====================");
+        println!("=======================");
         println!();
     }
 

@@ -89,7 +89,7 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, String>, usize)
                 "true" => TokenDef::Const(Value::Bool(true)),
                 "false" => TokenDef::Const(Value::Bool(false)),
                 id => {
-                    if id.len() < 8 {
+                    if id.len() <= 8 {
                         TokenDef::Id(Identifier::make(id))
                     } else {
                         return (
@@ -169,7 +169,7 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, String>, usize)
                 }
                 len += 1;
             }
-            TokenDef::Nil
+            TokenDef::Nil //TODO remove this for optimization ? (maybe recursive get_token call)
         }
         c => {
             return (

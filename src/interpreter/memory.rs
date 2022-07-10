@@ -3,10 +3,6 @@ use crate::{
     value::{Type, Value},
 };
 
-use std::convert::TryInto;
-
-// pub struct Memory(RawMemory);
-
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Pointer {
     pub t: Type,
