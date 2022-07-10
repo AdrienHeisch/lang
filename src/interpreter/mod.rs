@@ -364,17 +364,19 @@ impl<'e> Interpreter<'e> {
                 match id {
                     b"print\0\0\0" => {
                         if cfg!(not(lang_benchmark)) {
-                            print!("> ");
-                            for arg in args {
-                                print!("{} ", self.expr(arg)?);
-                            }
-                            println!();
+                            println!("> {}", self.expr(args[0])?);
+                            // Implementation for any number of arguments
+                            /* args.iter()
+                                .map(|arg| self.expr(arg))
+                                .collect::<Result<Vec<Value>, _>>()?
+                                .iter()
+                                .for_each(|val| println!("> {}", val)); */
                         }
                         Value::Void
                     }
                     b"printmem" => {
                         if cfg!(not(lang_benchmark)) {
-                            println!("\nMemory state :");
+                            println!("> Memory :");
                             self.print_locals();
                         }
                         Value::Void
@@ -446,11 +448,12 @@ impl<'e> Interpreter<'e> {
                     }
                 }
             }
-            _ => { //TODO call variable (functions as value)
+            _ => {
+                //TODO call variable (functions as value)
                 return Err(self.throw(
                     format!("Expected an identifier, got : {:?}", e_id),
                     e_id.pos,
-                ))
+                ));
             }
         })
     }
@@ -528,7 +531,6 @@ impl<'e> Interpreter<'e> {
         }
         // println!("Env ({}): {}", self.env.locals_count, crate::utils::slice_to_string_debug(&self.env.locals));
 
-        println!("Locals:");
         let mut current_depth = if self.env.scope_depth > 0 {
             self.env.scope_depth + 1
         } else {

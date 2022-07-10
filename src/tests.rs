@@ -365,6 +365,11 @@ test_should_panic!(
 );
 
 test_should_panic!(
+    function_invalid_arg_number,
+    "int add(int a, int b) { a + b; } int i = add(2, 4, 6);"
+);
+
+test_should_panic!(
     function_invalid_type,
     "int add(int a, int b) { a + b; } bool i = add(2, 4);"
 );

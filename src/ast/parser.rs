@@ -174,30 +174,38 @@ fn parse_expr_next<'e, 't>(
         TokenDef::Op(op) => {
             next(tokens);
             let e_ = parse_expr(arena, tokens, env, errors);
-            let binop = make_binop(arena, op, e, e_);
-            if let Err(err) = eval_type(binop, env) {
+            let expr = make_binop(arena, op, e, e_);
+            if let Err(err) = eval_type(expr, env) {
                 push_error(errors, err.msg, err.pos);
             }
-            binop
+            expr
         }
         TokenDef::DelimOpen(Delimiter::Pr) => {
             next(tokens);
             let (expr_list, tk_delim_close) = make_expr_list(arena, tokens, env, errors, tk);
-            arena.alloc(Expr {
+            let expr = arena.alloc(Expr {
                 def: ExprDef::Call {
                     function: e,
                     args: expr_list.into_boxed_slice(),
                 },
 
                 pos: e.pos + tk_delim_close.pos,
-            })
+            });
+            if let Err(err) = eval_type(expr, env) {
+                push_error(errors, err.msg, err.pos);
+            }
+            expr
         }
         TokenDef::Dot => {
             next(tokens);
-            arena.alloc(Expr {
+            let expr = arena.alloc(Expr {
                 def: ExprDef::Field(e, parse_expr(arena, tokens, env, errors)),
                 pos: tk.pos,
-            })
+            });
+            if let Err(err) = eval_type(expr, env) {
+                push_error(errors, err.msg, err.pos);
+            }
+            expr
         }
         _ => e,
     }

@@ -1,9 +1,14 @@
 int mult(int a, int b) {
+    int acc = 0;
     while (b > 0) {
-        a += a;
+        acc += a;
         b -= 1;
     }
-    return a;
+    return acc;
 }
 
 print(mult(5, 6));
+
+//int a = 5;
+//int b = 6;
+//int c = a + b;

@@ -33,9 +33,14 @@ impl Environment {
 
     pub fn get_from_id(&self, id: &Identifier) -> Option<Local> {
         match id {
-            b"print\0\0\0" | b"printmem" => Some(Local {
+            b"print\0\0\0" => Some(Local {
                 id: *id,
                 t: Type::Fn(Box::new([Type::Int]), Box::new(Type::Void)),
+                depth: 0,
+            }),
+            b"printmem" => Some(Local {
+                id: *id,
+                t: Type::Fn(Box::new([]), Box::new(Type::Void)),
                 depth: 0,
             }),
             id => {
