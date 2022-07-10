@@ -8,6 +8,7 @@ int mult(int a, int b) {
 }
 
 print(mult(5, 6));
+printmem();
 
 //int a = 5;
 //int b = 6;

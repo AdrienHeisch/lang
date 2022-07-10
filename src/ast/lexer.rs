@@ -5,6 +5,8 @@ use crate::{
 };
 use std::collections::VecDeque;
 
+type LexErr = (String, LexErrCode);
+
 pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> //TODO retest vecdeque vs vec
 {
     let mut tokens = VecDeque::new();
@@ -24,9 +26,9 @@ pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> //TODO retest v
                 }
                 pos += len;
             }
-            (Err(chars), len) => {
+            (Err((chars, err_code)), len) => {
                 let error = Error {
-                    msg: format!("Unexpected characters : {:?}", chars), //TODO error code (unexpected vs id too long)
+                    msg: format!("{} : {:?}", err_code.to_string(), chars),
                     pos: Position(pos, pos + len),
                 };
 
@@ -54,7 +56,7 @@ pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> //TODO retest v
 
 // #[inline(never)] //used for profiling
 #[allow(clippy::cognitive_complexity)]
-fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, String>, usize) {
+fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize) {
     let mut len: usize = 1;
     let bytes = program.as_bytes();
 
@@ -93,12 +95,7 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, String>, usize)
                         TokenDef::Id(Identifier::make(id))
                     } else {
                         return (
-                            Err(collect_unexpected_chars(
-                                program,
-                                get_char!(),
-                                &mut pos,
-                                &mut len,
-                            )),
+                            Err((id.to_owned(), LexErrCode::IdTooLong)),
                             len,
                         );
                     }
@@ -114,7 +111,7 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, String>, usize)
                         is_float = true;
                     } else {
                         return (
-                            Err(collect_unexpected_chars(program, c, &mut pos, &mut len)),
+                            Err(collect_unexpected_chars(program, c, &mut pos, &mut len, LexErrCode::UnexpectedChar)),
                             len,
                         );
                     }
@@ -173,7 +170,7 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, String>, usize)
         }
         c => {
             return (
-                Err(collect_unexpected_chars(program, c, &mut pos, &mut len)),
+                Err(collect_unexpected_chars(program, c, &mut pos, &mut len, LexErrCode::UnexpectedChar)),
                 len,
             )
         }
@@ -187,15 +184,34 @@ fn collect_unexpected_chars(
     first_char: char,
     pos: &mut usize,
     len: &mut usize,
-) -> String {
+    err_code: LexErrCode
+) -> LexErr {
     let mut chars = first_char.to_string();
     *pos += 1;
-    while let (Err(chars_), len_) = get_token(program, *pos) {
+    while let (Err((chars_, _)), len_) = get_token(program, *pos) {
         chars += &chars_;
         *pos += 1;
         *len += len_;
     }
-    chars
+    (chars, err_code)
+}
+
+
+enum LexErrCode {
+    UnexpectedChar,
+    IdTooLong
+}
+
+impl LexErrCode {
+
+    fn to_string(&self) -> &str {
+        use LexErrCode::*;
+        match self {
+            UnexpectedChar => "Unexpected character",
+            IdTooLong => "Id too long",
+        }
+    }
+
 }
 
 impl Delimiter {
