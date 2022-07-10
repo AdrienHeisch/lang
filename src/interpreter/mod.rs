@@ -59,7 +59,7 @@ impl<'e> Interpreter<'e> {
         if cfg!(not(lang_benchmark)) {
             println!();
         }
-        
+
         if cfg!(lang_print_interpreter) {
             self.print_locals();
         }
@@ -287,18 +287,18 @@ impl<'e> Interpreter<'e> {
                 _ => return Err(ResultErr::Nothing),
             },
             (Float(l), Float(r)) => {
-                use utils::compare_f32;
+                use utils::eq_f32;
                 match op {
                     Assign => {
                         let value = self.expr(e_right)?;
                         self.assign(e_left, e_right.downcast_position(value))?
                     }
-                    Equal => Bool(compare_f32(l, r, F32_EQ_THRESHOLD)),
-                    NotEqual => Bool(!compare_f32(l, r, F32_EQ_THRESHOLD)),
+                    Equal => Bool(eq_f32(l, r, F32_EQ_THRESHOLD)),
+                    NotEqual => Bool(!eq_f32(l, r, F32_EQ_THRESHOLD)),
                     Gt => Bool(l > r),
-                    Gte => Bool(l > r || compare_f32(l, r, F32_EQ_THRESHOLD)),
+                    Gte => Bool(l > r || eq_f32(l, r, F32_EQ_THRESHOLD)),
                     Lt => Bool(l < r),
-                    Lte => Bool(l < r || compare_f32(l, r, F32_EQ_THRESHOLD)),
+                    Lte => Bool(l < r || eq_f32(l, r, F32_EQ_THRESHOLD)),
                     Add => Float(l + r),
                     Sub => Float(l - r),
                     Mult => Float(l * r),
@@ -367,10 +367,10 @@ impl<'e> Interpreter<'e> {
                             println!("> {}", self.expr(args[0])?);
                             // Implementation for any number of arguments
                             /* args.iter()
-                                .map(|arg| self.expr(arg))
-                                .collect::<Result<Vec<Value>, _>>()?
-                                .iter()
-                                .for_each(|val| println!("> {}", val)); */
+                            .map(|arg| self.expr(arg))
+                            .collect::<Result<Vec<Value>, _>>()?
+                            .iter()
+                            .for_each(|val| println!("> {}", val)); */
                         }
                         Value::Void
                     }
