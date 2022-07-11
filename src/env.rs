@@ -1,4 +1,7 @@
-use crate::{ast::Identifier, value::Type};
+use crate::{
+    ast::Identifier,
+    value::{Type},
+};
 
 #[derive(Clone)]
 pub struct Environment {
@@ -35,7 +38,10 @@ impl Environment {
         match id {
             b"print\0\0\0" => Some(Local {
                 id: *id,
-                t: Type::Fn(Box::new([Type::Int]), Box::new(Type::Void)),
+                t: Type::Fn(
+                    Box::new([Type::Int]),
+                    Box::new(Type::Void),
+                ),
                 depth: 0,
             }),
             b"printmem" => Some(Local {

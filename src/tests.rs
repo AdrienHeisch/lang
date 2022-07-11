@@ -3,7 +3,8 @@ macro_rules! test_assert_eq {
         #[test]
         fn $name() {
             use crate::interpreter::Interpreter;
-            use crate::value::Value;
+            #[allow(unused_imports)]
+            use crate::value::{Type, Value};
 
             let ast = match crate::build_ast($program) {
                 Ok(ast) => ast,
@@ -350,6 +351,29 @@ test_assert_eq!(
     "int i = 1; int c = 0; while c < 5 { i = i * 2; c = c + 1; }",
     "i",
     Value::Int(32)
+);
+
+test_should_panic!(type_as_identifier, "int int = 1;");
+
+test_assert_eq!(
+    pointer_create,
+    "int i = 6; int j = 7; int *p = &j;",
+    "p",
+    Value::Pointer(4, Box::new(Type::Int))
+);
+
+test_assert_eq!(
+    pointer_deref,
+    "int i = 6; int j = 7; int *p = &j; int k = *p;",
+    "k",
+    Value::Int(7)
+);
+
+test_assert_eq!(
+    pointer_assign,
+    "int i = 6; int j = 7; int *p = &j; *p = 8; int k = *p;",
+    "k",
+    Value::Int(8)
 );
 
 test_assert_eq!(

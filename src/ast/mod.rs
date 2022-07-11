@@ -214,6 +214,7 @@ pub enum Op {
     BoolAnd,
     BoolOr,
     Assign,
+    AddressOf
 }
 
 impl Op {
@@ -229,6 +230,7 @@ impl Op {
             "<=" => Lte,
             "&&" => BoolAnd,
             "||" => BoolOr,
+            "&" => AddressOf,
             "=" => Assign,
             "%" => Mod,
             "%=" => ModAssign,
@@ -254,6 +256,7 @@ impl Op {
             Gte => ">=",
             Lt => "<",
             Lte => "<=",
+            AddressOf => "&",
             BoolAnd => "&&",
             BoolOr => "||",
             Assign => "=",
@@ -273,6 +276,7 @@ impl Op {
     pub fn priority(self) -> u8 {
         use Op::*;
         match self {
+            AddressOf => 0,
             Not => 0,
             Mod => 1,
             Mult => 2,

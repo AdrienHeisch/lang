@@ -10,9 +10,9 @@ pub struct RawMemory {
 }
 
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
-pub struct RawPointer {
-    pos: usize,
-    len: usize,
+pub struct Address { //TODO refactor to integer
+    pub pos: usize,
+    pub len: usize,
 }
 
 #[allow(dead_code)]
@@ -33,7 +33,7 @@ impl RawMemory {
         }
     }
 
-    pub fn alloc(&mut self, len: usize) -> RawPointer {
+    pub fn alloc(&mut self, len: usize) -> Address {
         if len > MEMORY_SIZE {
             panic!(
                 "Tried to allocate more bytes than the memory can contain : {} / {}",
@@ -70,7 +70,7 @@ impl RawMemory {
                 }
             }
             if is_valid {
-                break RawPointer { pos, len };
+                break Address { pos, len };
             }
             if !next_pos_found {
                 pos += len;
@@ -84,7 +84,7 @@ impl RawMemory {
         ptr
     }
 
-    pub fn free(&mut self, ptr: RawPointer)
+    pub fn free(&mut self, ptr: Address)
     //RESEARCH shift everything to the right so there is always free memory on the left ?
     {
         for state in self.allocation_map.iter_mut().skip(ptr.pos).take(ptr.len) {
@@ -92,16 +92,16 @@ impl RawMemory {
         }
     }
 
-    pub fn realloc(&mut self, ptr: RawPointer, new_len: usize) -> RawPointer {
+    pub fn realloc(&mut self, ptr: Address, new_len: usize) -> Address {
         self.free(ptr);
         self.alloc(new_len)
     }
 
-    pub fn access(&self, ptr: RawPointer) -> &[u8] {
+    pub fn access(&self, ptr: Address) -> &[u8] {
         &self.ram[ptr.pos..(ptr.pos + ptr.len)]
     }
 
-    pub fn access_mut(&mut self, ptr: RawPointer) -> &mut [u8] {
+    pub fn access_mut(&mut self, ptr: Address) -> &mut [u8] {
         &mut self.ram[ptr.pos..(ptr.pos + ptr.len)]
     }
 

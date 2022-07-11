@@ -1,7 +1,7 @@
 pub mod compiler;
 pub mod interpreter;
 
-const MEM_SIZE: usize = 64;
+pub const MEM_SIZE: usize = 64;
 pub type Memory = [u16; MEM_SIZE];
 
 const SP_ADDRESS: u16 = 0;

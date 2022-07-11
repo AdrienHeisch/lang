@@ -1,13 +1,13 @@
 use crate::{
     ast::{Error, Expr, ExprDef, Identifier, IdentifierTools, Op, Position, WithPosition},
     env::{Context, Environment, Local},
-    memory::RawMemory,
+    memory::{RawMemory, Address},
     utils,
     value::{Type, Value},
 };
 
 mod memory;
-use memory::{Memory, Pointer};
+use memory::{Memory, Variable};
 
 const F32_EQ_THRESHOLD: f32 = 1e-6;
 const STACK_SIZE: usize = 8;
@@ -23,7 +23,7 @@ pub struct Interpreter<'e> {
 enum Reference<'e>
 //TODO function pointers in memory, points to a value in a table in the interpreter
 {
-    Ptr(Pointer),
+    Var(Variable),
     Fn(Box<[(Identifier, Type)]>, Expr<'e>),
 }
 
@@ -37,7 +37,7 @@ impl<'e> Interpreter<'e> {
     pub fn new() -> Self {
         Self {
             memory: Memory::new(),
-            stack: [(); STACK_SIZE].map(|_| Reference::Ptr(Default::default())),
+            stack: [(); STACK_SIZE].map(|_| Reference::Var(Default::default())),
             frame_ptr: 0,
             env: Environment::new(Context::TopLevel),
         }
@@ -70,14 +70,14 @@ impl<'e> Interpreter<'e> {
     #[allow(dead_code)]
     pub fn reset(&mut self) {
         self.memory = Memory::new();
-        self.stack = [(); STACK_SIZE].map(|_| Reference::Ptr(Default::default()));
+        self.stack = [(); STACK_SIZE].map(|_| Reference::Var(Default::default()));
         self.frame_ptr = 0;
         self.env = Environment::new(Context::TopLevel);
     }
 
     #[allow(dead_code)] //USED BY TESTS
     pub fn get_var_by_name(&self, name: &str) -> Option<Value> {
-        if let Some(Reference::Ptr(ptr)) = self.get_pointer(&Identifier::make(name)) {
+        if let Some(Reference::Var(ptr)) = self.get_ref(&Identifier::make(name)) {
             Some(self.memory.get_var(&ptr))
         } else {
             None
@@ -100,8 +100,8 @@ impl<'e> Interpreter<'e> {
             // --- Values
             Const(value) => value.clone(),
             Id(id) => {
-                match self.get_pointer(id) {
-                    Some(Reference::Ptr(ptr)) => self.memory.get_var(&ptr),
+                match self.get_ref(id) {
+                    Some(Reference::Var(var)) => self.memory.get_var(&var),
                     Some(Reference::Fn(_, _)) => {
                         return Err(
                             self.throw("Tried to use function as value.".to_owned(), expr.pos)
@@ -176,7 +176,7 @@ impl<'e> Interpreter<'e> {
             // --- Declarations
             VarDecl(id, t, assign_expr) => {
                 //DESIGN should redeclaration be allowed ?
-                if self.get_pointer(id).is_some() {
+                if self.get_ref(id).is_some() {
                     self.throw("There is already a variable named ".to_owned(), expr.pos);
                 }
                 let value = self.expr(assign_expr)?;
@@ -190,7 +190,7 @@ impl<'e> Interpreter<'e> {
                 };
                 //TODO remove this hack
                 self.stack[self.frame_ptr as usize + self.env.locals_count as usize - 1] =
-                    Reference::Ptr(ptr.clone());
+                    Reference::Var(ptr.clone());
                 self.memory.set_var(&ptr, &value);
                 Value::Void
             }
@@ -238,22 +238,46 @@ impl<'e> Interpreter<'e> {
     }
 
     fn unop(&mut self, op: Op, e_right: &Expr<'e>) -> Result<Value, ResultErr> {
-        let value = self.expr(e_right)?;
+        if let Op::AddressOf = op {
+            if let ExprDef::Id(id) = e_right.def {
+                match self.get_ref(&id) {
+                    Some(Reference::Var(var)) => return Ok(Value::Pointer(var.raw.pos.try_into().unwrap(), Box::new(var.t))),
+                    Some(Reference::Fn(_, _)) => todo!(),
+                    None => {
+                        return Err(self.throw(
+                            format!("Unknown identifier : {}", id.to_string()),
+                            e_right.pos,
+                        ));
+                    }
+                }
+            }
+        }
 
-        Ok(match value {
-            Value::Int(i) => match op {
-                Op::Sub => Value::Int(-i),
+        let value = self.expr(e_right)?;
+        // let t = value.as_type();
+
+        Ok(/* if let Type::Pointer(_) = t {
+            if let Op::Mult = op {
+                todo!()
+            } else {
+                todo!()
+            }
+        } else  */{
+            match value {
+                Value::Int(i) => match op {
+                    Op::Sub => Value::Int(-i),
+                    _ => return Err(ResultErr::Nothing),
+                },
+                Value::Float(f) => match op {
+                    Op::Sub => Value::Float(-f),
+                    _ => return Err(ResultErr::Nothing),
+                },
+                Value::Bool(b) => match op {
+                    Op::Not => Value::Bool(!b),
+                    _ => return Err(ResultErr::Nothing),
+                },
                 _ => return Err(ResultErr::Nothing),
-            },
-            Value::Float(f) => match op {
-                Op::Sub => Value::Float(-f),
-                _ => return Err(ResultErr::Nothing),
-            },
-            Value::Bool(b) => match op {
-                Op::Not => Value::Bool(!b),
-                _ => return Err(ResultErr::Nothing),
-            },
-            _ => return Err(ResultErr::Nothing),
+            }
         })
     }
 
@@ -263,6 +287,24 @@ impl<'e> Interpreter<'e> {
 
         use {Op::*, Value::*};
         Ok(match (value_left, value_right) {
+            (Pointer(_, ptr_t_l), Pointer(_, ptr_t_r)) if *ptr_t_l == *ptr_t_r => match op {
+                Assign => {
+                    let value = self.expr(e_right)?;
+                    self.assign(e_left, e_right.downcast_position(value))?
+                }
+                _ => return Err(ResultErr::Nothing),
+            },
+            (Pointer(address, ptr_t), Int(_)) if matches!(*ptr_t, Type::Int)  => match op {
+                Assign => {
+                    let value = self.expr(e_right)?;
+                    self.memory.set_var(
+                        &Variable { t: *ptr_t.clone(), raw: Address { pos: address.try_into().unwrap(), len: ptr_t.get_size() } },
+                        &value,
+                    );
+                    Value::Void
+                }
+                _ => return Err(ResultErr::Nothing),
+            },
             (Int(l), Int(r)) => match op {
                 Assign => {
                     let value = self.expr(e_right)?;
@@ -341,7 +383,7 @@ impl<'e> Interpreter<'e> {
         match &e_to.def {
             ExprDef::Id(id) if !matches!(value.def, Value::Void) => {
                 self.memory.set_var(
-                    &if let Reference::Ptr(ptr) = self.get_pointer(id).unwrap() {
+                    &if let Reference::Var(ptr) = self.get_ref(id).unwrap() {
                         ptr
                     } else {
                         panic!("Tried to use function as value.") //DESIGN functions as values ?
@@ -384,7 +426,7 @@ impl<'e> Interpreter<'e> {
                     id => {
                         // eprintln!("Unknown function identifier : {}", std::str::from_utf8(id).ok().unwrap());
                         let (params, body) =
-                            if let Reference::Fn(params, body) = self.get_pointer(id).unwrap() {
+                            if let Reference::Fn(params, body) = self.get_ref(id).unwrap() {
                                 (params, body) //TODO env / args
                             } else {
                                 panic!("Tried to call on a value.") //DESIGN functions as values ?
@@ -485,7 +527,7 @@ impl<'e> Interpreter<'e> {
         Ok(())
     }
 
-    fn declare_var(&mut self, id: &Identifier, t: &Type) -> Result<Pointer, String> {
+    fn declare_var(&mut self, id: &Identifier, t: &Type) -> Result<Variable, String> {
         let ptr = self.memory.make_pointer_for_type(t);
         self.env.locals[self.env.locals_count as usize] = Local {
             id: *id,
@@ -493,7 +535,7 @@ impl<'e> Interpreter<'e> {
             depth: self.env.scope_depth,
         };
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
-            Reference::Ptr(ptr.clone());
+            Reference::Var(ptr.clone());
         if let Some(n) = self.env.locals_count.checked_add(1) {
             self.env.locals_count = n;
         } else {
@@ -502,7 +544,7 @@ impl<'e> Interpreter<'e> {
         Ok(ptr)
     }
 
-    fn get_pointer(&self, id: &Identifier) -> Option<Reference<'e>> {
+    fn get_ref(&self, id: &Identifier) -> Option<Reference<'e>> {
         for i in (0..self.env.locals_count as usize).rev() {
             let Local { id: id_, .. } = self.env.locals[i];
             if *id == id_ {
@@ -518,7 +560,7 @@ impl<'e> Interpreter<'e> {
             .take(n_variables)
         {
             match reference {
-                Reference::Ptr(ptr) => self.memory.free_ptr(ptr),
+                Reference::Var(ptr) => self.memory.free_ptr(ptr),
                 Reference::Fn(_, _) => (),
             }
         }
@@ -548,7 +590,7 @@ impl<'e> Interpreter<'e> {
             let id_str = String::from_utf8(id.iter().take_while(|i| **i != 0).cloned().collect())
                 .ok()
                 .unwrap();
-            let ptr = if let Reference::Ptr(ptr) = self.get_pointer(&id).unwrap() {
+            let ptr = if let Reference::Var(ptr) = self.get_ref(&id).unwrap() {
                 ptr
             } else {
                 continue;

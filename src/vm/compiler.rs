@@ -30,6 +30,8 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
     match &e.def {
         Const(value) => {
             chunk.push(match value {
+                Value::Pointer(p, _) if *p <= MEM_SIZE.try_into().unwrap() => todo!(),
+                Value::Pointer(_, _) => todo!(),
                 Value::Int(i) if *i <= 0x7fff => *i as u16,
                 Value::Int(_) => panic!("Int out of range"),
                 Value::Float(_) => unimplemented!(), //TODO two's complement
