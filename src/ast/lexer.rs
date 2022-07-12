@@ -1,6 +1,6 @@
 use super::{Delimiter, Error, Op, Position, Token, TokenDef};
 use crate::{
-    ast::{Identifier, IdentifierTools},
+    ast::{op_chars_pattern, Identifier, IdentifierTools},
     value::Value,
 };
 use std::collections::VecDeque;
@@ -137,12 +137,35 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
             }
             TokenDef::Nil
         }
-        '=' | '+' | '-' | '*' | '/' | '%' | '<' | '>' | '|' | '&' | '!' => {
-            while let '=' | '+' | '-' | '*' | '/' | '%' | '<' | '>' | '|' | '&' | '!' = get_char!()
-            {
-                len += 1;
+        c @ op_chars_pattern!() => {
+            len = Op::MAX_LENGTH;
+            let mut op = None;
+            'while_len : while len > 0 {
+                let str = read_cursor!();
+                for byte in str.as_bytes() {
+                    if let op_chars_pattern!() = *byte as char {
+                    } else {
+                        len -= 1;
+                        continue 'while_len;
+                    }
+                }
+                if let op_ @ Some(_) = Op::from_string(str) {
+                    op = op_;
+                    break;
+                }
+                len -= 1;
             }
-            TokenDef::Op(Op::from_string(read_cursor!()))
+            if let Some(op) = op {
+                TokenDef::Op(op)
+            } else {
+                return (Err(collect_unexpected_chars( //TODO len is always zero here
+                    program,
+                    c,
+                    &mut pos,
+                    &mut len,
+                    LexErrCode::UnexpectedChar,
+                )), len);
+            }
         }
         /* '"' => {
             pos += 1;
@@ -191,7 +214,7 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
 
 fn collect_unexpected_chars(
     program: &str,
-    first_char: char,
+    first_char: char, //TODO get rid of this parameter
     pos: &mut usize,
     len: &mut usize,
     err_code: LexErrCode,

@@ -265,11 +265,11 @@ impl<'e> Interpreter<'e> {
         } else  */{
             match value {
                 Value::Int(i) => match op {
-                    Op::Sub => Value::Int(-i),
+                        Op::SubOrNeg => Value::Int(-i),
                     _ => return Err(ResultErr::Nothing),
                 },
                 Value::Float(f) => match op {
-                    Op::Sub => Value::Float(-f),
+                        Op::SubOrNeg => Value::Float(-f),
                     _ => return Err(ResultErr::Nothing),
                 },
                 Value::Bool(b) => match op {
@@ -317,8 +317,8 @@ impl<'e> Interpreter<'e> {
                 Lt => Bool(l < r),
                 Lte => Bool(l <= r),
                 Add => Int(l + r),
-                Sub => Int(l - r),
-                Mult => Int(l * r),
+                SubOrNeg => Int(l - r),
+                MultOrDeref => Int(l * r),
                 Div => Int(l / r),
                 Mod => Int(l % r),
                 AddAssign => self.assign(e_left, e_right.downcast_position(Int(l + r)))?,
@@ -342,8 +342,8 @@ impl<'e> Interpreter<'e> {
                     Lt => Bool(l < r),
                     Lte => Bool(l < r || eq_f32(l, r, F32_EQ_THRESHOLD)),
                     Add => Float(l + r),
-                    Sub => Float(l - r),
-                    Mult => Float(l * r),
+                    SubOrNeg => Float(l - r),
+                    MultOrDeref => Float(l * r),
                     Div => Float(l / r),
                     Mod => Float(l % r),
                     AddAssign => self.assign(e_left, e_right.downcast_position(Float(l + r)))?,

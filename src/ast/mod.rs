@@ -197,11 +197,11 @@ pub enum Op {
     Not,
     Add,
     AddAssign,
-    Mult,
+    MultOrDeref,
     MultAssign,
     Div,
     DivAssign,
-    Sub,
+    SubOrNeg,
     SubAssign,
     Mod,
     ModAssign,
@@ -214,13 +214,22 @@ pub enum Op {
     BoolAnd,
     BoolOr,
     Assign,
-    AddressOf
+    Addr,
 }
 
+macro_rules! op_chars_pattern {
+    () => {
+        '=' | '+' | '-' | '*' | '/' | '%' | '<' | '>' | '|' | '&' | '!'
+    };
+}
+pub(crate) use op_chars_pattern;
+
 impl Op {
-    pub fn from_string(string: &str) -> Op {
+    const MAX_LENGTH: usize = 2;
+    
+    pub fn from_string(string: &str) -> Option<Op> {
         use Op::*;
-        match string {
+        Some(match string {
             "!" => Not,
             "==" => Equal,
             "!=" => NotEqual,
@@ -230,20 +239,20 @@ impl Op {
             "<=" => Lte,
             "&&" => BoolAnd,
             "||" => BoolOr,
-            "&" => AddressOf,
             "=" => Assign,
             "%" => Mod,
             "%=" => ModAssign,
             "+" => Add,
             "+=" => AddAssign,
-            "-" => Sub,
+            "-" => SubOrNeg,
             "-=" => SubAssign,
-            "*" => Mult,
+            "*" => MultOrDeref,
             "*=" => MultAssign,
             "/" => Div,
             "/=" => DivAssign,
-            _ => panic!("Invalid operator : {}", string),
-        }
+            "&" => Addr,
+            _ => return None,
+        })
     }
 
     pub fn to_string(self) -> &'static str {
@@ -256,7 +265,6 @@ impl Op {
             Gte => ">=",
             Lt => "<",
             Lte => "<=",
-            AddressOf => "&",
             BoolAnd => "&&",
             BoolOr => "||",
             Assign => "=",
@@ -264,25 +272,26 @@ impl Op {
             ModAssign => "%=",
             Add => "+",
             AddAssign => "+=",
-            Sub => "-",
+            SubOrNeg => "-",
             SubAssign => "-=",
-            Mult => "*",
+            MultOrDeref => "*",
             MultAssign => "*=",
             Div => "/",
             DivAssign => "/=",
+            Addr => "&",
         }
     }
 
-    pub fn priority(self) -> u8 {
+    pub fn precedence(self) -> u8 {
         use Op::*;
         match self {
-            AddressOf => 0,
+            Addr => 0,
             Not => 0,
             Mod => 1,
-            Mult => 2,
+            MultOrDeref => 2,
             Div => 2,
             Add => 3,
-            Sub => 3,
+            SubOrNeg => 3,
             Equal => 4,
             NotEqual => 4,
             Gt => 4,
@@ -302,9 +311,10 @@ impl Op {
 
     pub fn is_assign(&self) -> bool {
         use Op::*;
-        match self {
-            Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => true,
-            _ => false,
+        matches!(
+            self,
+            Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign
+        )
         }
     }
 }

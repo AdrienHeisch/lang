@@ -266,7 +266,7 @@ fn parse_structure<'e, 't>(
 
     match &keyword {
         type_id_pattern!() => {
-            let t = if let TokenDef::Op(Op::Mult) = peek(tokens).def {
+            let t = if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
                 next(tokens);
                 Type::from_identifier_ptr(&keyword)
             } else {
@@ -831,7 +831,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
             } else {
                 match t {
                     Int => match op {
-                        Sub => Int,
+                        SubOrNeg => Int,
                         _ => {
                             return Err(Error {
                                 msg: format!("Invalid operation: {} {:?}", op.to_string(), Int),
@@ -840,7 +840,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                         }
                     },
                     Float => match op {
-                        Sub => Float,
+                        SubOrNeg => Float,
                         _ => {
                             return Err(Error {
                                 msg: format!("Invalid operation: {} {:?}", op.to_string(), Float),
@@ -902,7 +902,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                 },
                 (Int, Int) => match op {
                     Equal | NotEqual | Gt | Gte | Lt | Lte => Bool,
-                    Add | Sub | Mult | Div | Mod => Int,
+                    Add | SubOrNeg | MultOrDeref | Div | Mod => Int,
                     Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => {
                         Type::Void
                     }
@@ -920,7 +920,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                 },
                 (Float, Float) => match op {
                     Equal | NotEqual | Gt | Gte | Lt | Lte => Bool,
-                    Add | Sub | Mult | Div | Mod => Float,
+                    Add | SubOrNeg | MultOrDeref | Div | Mod => Float,
                     Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign => {
                         Type::Void
                     }

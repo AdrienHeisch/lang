@@ -16,7 +16,12 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, DebugInfo), ()> {
     if cfg!(lang_print_vm_compiler) {
         println!("========= ASM =========");
         for (offset, instruction) in chunk.iter().enumerate() {
-            println!("{:04} {:>11}   {:04X} ", offset, instruction.to_asm(), instruction);
+            println!(
+                "{:04} {:>11}   {:04X} ",
+                offset,
+                instruction.to_asm(),
+                instruction
+            );
         }
         println!("=======================");
         println!();
@@ -80,7 +85,7 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
         UnOp { op, e } => {
             expr(e, chunk, identifiers, sp); // A = e
             chunk.push(match *op {
-                Op::Sub => 0b1000110011010000, // D = -A
+                Op::SubOrNeg => 0b1000110011010000, // D = -A
                 _ => unimplemented!(),
             });
         }
@@ -133,7 +138,7 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
                     math_binop!();
                     chunk.push(0b1000000010010000); // D = D + A
                 }
-                Op::Sub => {
+                Op::SubOrNeg => {
                     math_binop!();
                     chunk.push(0b1000010011010000); // D = D - A
                 }
