@@ -148,29 +148,31 @@ test_assert_eq!(assign_int, "int i = 6;", "i", Value::Int(6));
 
 test_assert_eq!(assign_int_neg, "int i = -6;", "i", Value::Int(-6));
 
-// test_assert_eq!(assign_float, "float f = 4.5;", "f", Value::Float(4.5));
-
-// test_assert_eq!(assign_float_neg, "float f = -4.5;", "f", Value::Float(-4.5));
-
 test_assert_eq!(add_int, "int i = 2 + 4;", "i", Value::Int(6));
-
-// test_assert_eq!(add_float, "float f = 2.7 + 1.8;", "f", Value::Float(4.5));
 
 test_assert_eq!(sub_int, "int i = 11 - 5;", "i", Value::Int(6));
 
-// test_assert_eq!(sub_float, "float f = 8.2 - 3.7;", "f", Value::Float(4.5));
-
 test_assert_eq!(mul_int, "int i = 3 * 2;", "i", Value::Int(6));
-
-// test_assert_eq!(mul_float, "float f = 9.0 * 0.5;", "f", Value::Float(4.5));
 
 test_assert_eq!(div_int, "int i = 12 / 2;", "i", Value::Int(6));
 
-// test_assert_eq!(div_float, "float f = 11.25 / 2.5;", "f", Value::Float(4.5));
-
 test_assert_eq!(mod_int, "int i = 42 % 9;", "i", Value::Int(6));
 
-// test_assert_eq!(mod_float, "float f = 40.5 % 9.0;", "f", Value::Float(4.5));
+test_assert_eq!(assign_float, "float f = 4.5;", "f", Value::Float(4.5));
+
+test_assert_eq!(assign_float_neg, "float f = -4.5;", "f", Value::Float(-4.5));
+
+test_assert_eq!(add_float, "float f = 2.7 + 1.8;", "f", Value::Float(4.5));
+
+test_assert_eq!(sub_float, "float f = 8.2 - 3.7;", "f", Value::Float(4.5));
+
+test_assert_eq!(mul_float, "float f = 9.0 * 0.5;", "f", Value::Float(4.5));
+
+test_assert_eq!(div_float, "float f = 11.25 / 2.5;", "f", Value::Float(4.5));
+
+test_assert_eq!(mod_float, "float f = 40.5 % 9.0;", "f", Value::Float(4.5));
+
+test_assert_eq!(unop_precedence, "int i = -1 + 5;", "i", Value::Int(4));
 
 test_assert_eq!(parenthesis, "bool b = (true);", "b", Value::Bool(true));
 

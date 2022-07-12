@@ -88,16 +88,14 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                 len += 1;
             }
             match read_cursor!() {
+                //TODO keyword tokens
                 "true" => TokenDef::Const(Value::Bool(true)),
                 "false" => TokenDef::Const(Value::Bool(false)),
                 id => {
                     if id.len() <= 8 {
                         TokenDef::Id(Identifier::make(id))
                     } else {
-                        return (
-                            Err((id.to_owned(), LexErrCode::IdTooLong)),
-                            len,
-                        );
+                        return (Err((id.to_owned(), LexErrCode::IdTooLong)), len);
                     }
                 }
             }
@@ -111,7 +109,13 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                         is_float = true;
                     } else {
                         return (
-                            Err(collect_unexpected_chars(program, c, &mut pos, &mut len, LexErrCode::UnexpectedChar)),
+                            Err(collect_unexpected_chars(
+                                program,
+                                c,
+                                &mut pos,
+                                &mut len,
+                                LexErrCode::UnexpectedChar,
+                            )),
                             len,
                         );
                     }
@@ -170,7 +174,13 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
         }
         c => {
             return (
-                Err(collect_unexpected_chars(program, c, &mut pos, &mut len, LexErrCode::UnexpectedChar)),
+                Err(collect_unexpected_chars(
+                    program,
+                    c,
+                    &mut pos,
+                    &mut len,
+                    LexErrCode::UnexpectedChar,
+                )),
                 len,
             )
         }
@@ -184,7 +194,7 @@ fn collect_unexpected_chars(
     first_char: char,
     pos: &mut usize,
     len: &mut usize,
-    err_code: LexErrCode
+    err_code: LexErrCode,
 ) -> LexErr {
     let mut chars = first_char.to_string();
     *pos += 1;
@@ -196,14 +206,12 @@ fn collect_unexpected_chars(
     (chars, err_code)
 }
 
-
 enum LexErrCode {
     UnexpectedChar,
-    IdTooLong
+    IdTooLong,
 }
 
 impl LexErrCode {
-
     fn to_string(&self) -> &str {
         use LexErrCode::*;
         match self {
@@ -211,7 +219,6 @@ impl LexErrCode {
             IdTooLong => "Id too long",
         }
     }
-
 }
 
 impl Delimiter {
