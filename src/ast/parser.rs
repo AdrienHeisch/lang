@@ -77,49 +77,37 @@ fn parse_expr<'e, 't>(
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
     errors: &mut Vec<Error>,
-) -> &'e Expr<'e> {
+) -> &'e mut Expr<'e> {
     let tk = next(tokens);
     match &tk.def {
-        TokenDef::Op(op) => {
-            if *op == Op::Mult {
-                let tk_id = next(tokens);
-                if let TokenDef::Id(id) = tk_id.def {
-                    match &id {
-                        type_id_pattern!() | b"if\0\0\0\0\0\0" | b"while\0\0\0" | b"return\0\0" | b"struct\0\0" => todo!(), //TODO error handling
-                        id => {
-                            if let None = env.get_from_id(&id) {
-                                push_error(
-                                    errors,
-                                    format!("Undeclared variable : {}", id.to_string()),
-                                    tk_id.pos,
-                                );
-                            };
-                            parse_expr_next(
+        TokenDef::Const(value) => parse_expr_next(
                                 arena,
                                 tokens,
                                 env,
                                 errors,
                                 arena.alloc(Expr {
-                                    def: ExprDef::Id(*id),
+                def: ExprDef::Const(value.clone()),
                                     pos: tk.pos,
                                 }),
-                            )
-                        }
-                    }
-                } else {
-                    push_error(
-                        errors,
-                        format!("Expected identifier, got : {:?}", tk_id.def),
-                        tk_id.pos,
-                    );
-                    make_invalid(arena, tk_id.pos)
-                }
-            } else {
+        ),
+        TokenDef::Id(_) => parse_structure(arena, tokens, env, errors, tk),
+        TokenDef::Op(op) => {
                 let e = parse_expr(arena, tokens, env, errors);
-                let expr = arena.alloc(Expr {
+            let expr = match e.def {
+                ExprDef::BinOp { ref mut left, .. } => {
+                    *left = arena.alloc(Expr {
+                        def: ExprDef::UnOp { op: *op, e: left },
+                        pos: tk.pos + e.pos,
+                    });
+                    e
+                },
+                _ => {
+                    arena.alloc(Expr {
                     def: ExprDef::UnOp { op: *op, e },
                     pos: tk.pos + e.pos,
-                });
+                    })
+                }
+            };
                 if let Err(err) = eval_type(expr, env) {
                     push_error(errors, err.msg, err.pos);
                 }
@@ -140,8 +128,8 @@ fn parse_expr<'e, 't>(
         TokenDef::DelimOpen(Delimiter::Pr) => {
             let e = parse_expr(arena, tokens, env, errors);
             let tk = next(tokens);
-            match tk.def {
-                TokenDef::DelimClose(Delimiter::Pr) => parse_expr_next(
+            if let TokenDef::DelimClose(Delimiter::Pr) = tk.def {
+                parse_expr_next(
                     arena,
                     tokens,
                     env,
@@ -150,8 +138,8 @@ fn parse_expr<'e, 't>(
                         def: ExprDef::Parent(e),
                         pos: tk.pos,
                     }),
-                ),
-                _ => {
+                )
+            } else {
                     push_error(
                         errors,
                         format!("Unclosed delimiter : {:?}", Delimiter::Pr),
@@ -207,7 +195,7 @@ fn parse_expr_next<'e, 't>(
     env: &mut Environment,
     errors: &mut Vec<Error>,
     e: &'e Expr<'e>,
-) -> &'e Expr<'e> {
+) -> &'e mut Expr<'e> {
     let tk = peek(tokens);
     match tk.def {
         TokenDef::Op(op) => {
@@ -256,7 +244,7 @@ fn parse_structure<'e, 't>(
     env: &mut Environment,
     errors: &mut Vec<Error>,
     tk_identifier: &Token,
-) -> &'e Expr<'e> {
+) -> &'e mut Expr<'e> {
     let keyword = if let TokenDef::Id(id) = tk_identifier.def {
         id
     } else {
@@ -435,7 +423,7 @@ fn parse_structure<'e, 't>(
             let elze = match peek(tokens).def {
                 TokenDef::Id(next_id) if &next_id == b"else\0\0\0\0" => {
                     next(tokens);
-                    Some(parse_expr(arena, tokens, env, errors))
+                    Some(parse_expr(arena, tokens, env, errors) as &Expr)
                 }
                 _ => None,
             };
@@ -537,13 +525,13 @@ fn make_binop<'e>(
     op: Op,
     left: &'e Expr<'e>,
     right: &'e Expr<'e>,
-) -> &'e Expr<'e> {
+) -> &'e mut Expr<'e> {
     match right.def {
         ExprDef::BinOp {
             op: op_,
             left: left_,
             right: right_,
-        } if op.priority() <= op_.priority() => arena.alloc(Expr {
+        } if op.precedence() <= op_.precedence() => arena.alloc(Expr {
             def: ExprDef::BinOp {
                 op: op_,
                 left: make_binop(arena, op, left, left_),
@@ -750,7 +738,7 @@ fn push_error(errors: &mut Vec<Error>, msg: String, pos: Position) {
     }
 }
 
-fn make_invalid<'e>(arena: &'e Arena<Expr<'e>>, pos: Position) -> &'e Expr<'e> {
+fn make_invalid<'e>(arena: &'e Arena<Expr<'e>>, pos: Position) -> &'e mut Expr<'e> {
     arena.alloc(Expr {
         def: ExprDef::Invalid,
         pos,
