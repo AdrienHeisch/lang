@@ -113,6 +113,88 @@ fn parse_expr<'e, 't>(
             }
             expr
         }
+        TokenDef::If => {
+            let cond = parse_expr(arena, tokens, env, errors);
+            let then = parse_expr(arena, tokens, env, errors);
+            let mut pos = tk.pos + cond.pos + then.pos;
+
+            let elze = match peek(tokens).def {
+                TokenDef::Id(next_id) if &next_id == b"else\0\0\0\0" => {
+                    next(tokens);
+                    Some(parse_expr(arena, tokens, env, errors) as &Expr)
+                }
+                _ => None,
+            };
+            if let Some(elze) = elze {
+                pos += elze.pos
+            };
+
+            arena.alloc(Expr {
+                def: ExprDef::If { cond, then, elze },
+                pos,
+            })
+        }
+        TokenDef::While => {
+            let cond = parse_expr(arena, tokens, env, errors);
+            let body = parse_expr(arena, tokens, env, errors);
+            arena.alloc(Expr {
+                def: ExprDef::While { cond, body },
+                pos: tk.pos + cond.pos + body.pos,
+            })
+        }
+        TokenDef::Return => {
+            if let Context::TopLevel = env.context {
+                push_error(
+                    errors,
+                    format!("Can't return from top level."),
+                    tk.pos,
+                );
+            }
+            let e = parse_expr(arena, tokens, env, errors);
+            arena.alloc(Expr {
+                def: ExprDef::Return(e),
+                pos: tk.pos + e.pos,
+            })
+        }
+        /* b"struct\0\0" => unimplemented!(), {
+        let mut pos = pos;
+        let tk = next(tokens);
+        let id = match tk.def {
+        TokenDef::Id(id) => id,
+        _ => {
+        push_error(
+        errors,
+        format!("Expected identifier, got : {:?}", tk.def),
+        tk.pos,
+        );
+        Default::default()
+        }
+        };
+
+        let tk = peek(tokens);
+        let fields = match tk.def {
+        TokenDef::DelimOpen(Delimiter::Br) => {
+        next(tokens);
+        let (fields, tk_delim_close) = make_ident_list(tokens, env, errors, tk);
+        pos += tk_delim_close.pos;
+        fields.into_boxed_slice()
+        }
+        _ => {
+        push_error(errors, format!("Expected {{, got : {:?}", tk.def), tk.pos);
+        Default::default()
+        }
+        };
+
+        if let Context::TopLevel = env.context {
+        push_error(errors, "Can't declare a struct here.".to_owned(), pos);
+        make_invalid(arena, pos)
+        } else {
+        arena.alloc(Expr {
+        def: ExprDef::StructDecl { id, fields },
+        pos,
+        })
+        }
+        } */
         TokenDef::DelimOpen(Delimiter::Pr) => {
             let e = parse_expr(arena, tokens, env, errors);
             let tk = next(tokens);
@@ -240,7 +322,7 @@ fn parse_structure<'e, 't>(
     let pos = tk_identifier.pos;
 
     match &keyword {
-        type_id_pattern!() => {
+        type_id_pattern!() => { //TODO should basic types be dedicated tokens ? 
             let t = if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
                 next(tokens);
                 Type::from_identifier_ptr(&keyword)
@@ -402,88 +484,6 @@ fn parse_structure<'e, 't>(
                 }
             }
         }
-        b"if\0\0\0\0\0\0" => {
-            let cond = parse_expr(arena, tokens, env, errors);
-            let then = parse_expr(arena, tokens, env, errors);
-            let mut pos = pos + cond.pos + then.pos;
-
-            let elze = match peek(tokens).def {
-                TokenDef::Id(next_id) if &next_id == b"else\0\0\0\0" => {
-                    next(tokens);
-                    Some(parse_expr(arena, tokens, env, errors) as &Expr)
-                }
-                _ => None,
-            };
-            if let Some(elze) = elze {
-                pos += elze.pos
-            };
-
-            arena.alloc(Expr {
-                def: ExprDef::If { cond, then, elze },
-                pos,
-            })
-        }
-        b"while\0\0\0" => {
-            let cond = parse_expr(arena, tokens, env, errors);
-            let body = parse_expr(arena, tokens, env, errors);
-            arena.alloc(Expr {
-                def: ExprDef::While { cond, body },
-                pos: pos + cond.pos + body.pos,
-            })
-        }
-        b"return\0\0" => {
-            if let Context::TopLevel = env.context {
-                push_error(
-                    errors,
-                    format!("Can't return from top level."),
-                    tk_identifier.pos,
-                );
-            }
-            let e = parse_expr(arena, tokens, env, errors);
-            arena.alloc(Expr {
-                def: ExprDef::Return(e),
-                pos: pos + e.pos,
-            })
-        }
-        b"struct\0\0" => unimplemented!(), /* {
-        let mut pos = pos;
-        let tk = next(tokens);
-        let id = match tk.def {
-        TokenDef::Id(id) => id,
-        _ => {
-        push_error(
-        errors,
-        format!("Expected identifier, got : {:?}", tk.def),
-        tk.pos,
-        );
-        Default::default()
-        }
-        };
-
-        let tk = peek(tokens);
-        let fields = match tk.def {
-        TokenDef::DelimOpen(Delimiter::Br) => {
-        next(tokens);
-        let (fields, tk_delim_close) = make_ident_list(tokens, env, errors, tk);
-        pos += tk_delim_close.pos;
-        fields.into_boxed_slice()
-        }
-        _ => {
-        push_error(errors, format!("Expected {{, got : {:?}", tk.def), tk.pos);
-        Default::default()
-        }
-        };
-
-        if let Context::TopLevel = env.context {
-        push_error(errors, "Can't declare a struct here.".to_owned(), pos);
-        make_invalid(arena, pos)
-        } else {
-        arena.alloc(Expr {
-        def: ExprDef::StructDecl { id, fields },
-        pos,
-        })
-        }
-        } */
         id => {
             if let None = env.get_from_id(id) {
                 push_error(

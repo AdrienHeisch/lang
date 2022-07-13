@@ -91,6 +91,9 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                 //TODO keyword tokens
                 "true" => TokenDef::Const(Value::Bool(true)),
                 "false" => TokenDef::Const(Value::Bool(false)),
+                "if" => TokenDef::If,
+                "while" => TokenDef::While,
+                "return" => TokenDef::Return,
                 id => {
                     if id.len() <= 8 {
                         TokenDef::Id(Identifier::make(id))
