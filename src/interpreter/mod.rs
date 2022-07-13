@@ -315,7 +315,7 @@ impl<'e> Interpreter<'e> {
                                 Ok(Value::Void)
                             }
                             _ => Err(ResultErr::Nothing),
-                        }
+                        };
                     }
                 }
             }
@@ -413,8 +413,7 @@ impl<'e> Interpreter<'e> {
                         ptr
                     } else {
                         panic!("Tried to use function as value.") //DESIGN functions as values ?
-                    }
-                    .clone(),
+                    },
                     &value.def,
                 );
             }

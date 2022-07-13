@@ -41,7 +41,7 @@ pub fn compile_ast(ast: &Ast) -> Result<Chunk, String> {
     if let Ok((chunk, _)) = vm::compiler::compile(&ast.top_level) {
         Ok(chunk)
     } else {
-        Err(format!("Error handling unimplemented."))
+        Err("Error handling unimplemented.".to_string())
     }
 }
 
@@ -49,6 +49,6 @@ pub fn run_bytecode(chunk: &Chunk) -> Result<(), String> {
     if let Ok(()) = vm::interpreter::interpret(chunk) {
         Ok(())
     } else {
-        Err(format!("Error handling unimplemented."))
+        Err("Error handling unimplemented.".to_string())
     }
 }

@@ -1,3 +1,5 @@
+#![allow(clippy::mut_from_ref)]
+
 use super::{
     Delimiter, Error, Expr, ExprDef, Identifier, IdentifierTools, Op, Position, Token, TokenDef,
 };
@@ -100,13 +102,11 @@ fn parse_expr<'e, 't>(
                         pos: tk.pos + e.pos,
                     });
                     e
-                },
-                _ => {
-                    arena.alloc(Expr {
-                        def: ExprDef::UnOp { op: *op, e },
-                        pos: tk.pos + e.pos,
-                    })
                 }
+                _ => arena.alloc(Expr {
+                    def: ExprDef::UnOp { op: *op, e },
+                    pos: tk.pos + e.pos,
+                }),
             };
             if let Err(err) = eval_type(expr, env) {
                 push_error(errors, err.msg, err.pos);
@@ -144,11 +144,7 @@ fn parse_expr<'e, 't>(
         }
         TokenDef::Return => {
             if let Context::TopLevel = env.context {
-                push_error(
-                    errors,
-                    format!("Can't return from top level."),
-                    tk.pos,
-                );
+                push_error(errors, "Can't return from top level.".to_string(), tk.pos);
             }
             let e = parse_expr(arena, tokens, env, errors);
             arena.alloc(Expr {
@@ -322,8 +318,10 @@ fn parse_structure<'e, 't>(
     let pos = tk_identifier.pos;
 
     match &keyword {
-        type_id_pattern!() => { //TODO should basic types be dedicated tokens ? 
+        type_id_pattern!() => {
+            //TODO should basic types be dedicated tokens ?
             let t = if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
+                //TODO pointer of pointer
                 next(tokens);
                 Type::from_identifier_ptr(&keyword)
             } else {
@@ -485,7 +483,7 @@ fn parse_structure<'e, 't>(
             }
         }
         id => {
-            if let None = env.get_from_id(id) {
+            if env.get_from_id(id).is_none() {
                 push_error(
                     errors,
                     format!("Undeclared variable : {}", id.to_string()),
@@ -576,7 +574,6 @@ fn make_ident_list<'t>(
 
         let tk_1 = next(tokens);
         let id = if let TokenDef::Id(id) = tk_1.def {
-            let id = id;
             id
         } else {
             push_error(
@@ -957,7 +954,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
         }
         ExprDef::Call { function, args } => match &function.def {
             ExprDef::Id(id) => {
-                if let Some(local) = env.get_from_id(&id) {
+                if let Some(local) = env.get_from_id(id) {
                     if let Type::Fn(params_t, return_t) = local.t {
                         //TODO function pointer ?
                         if params_t.len() != args.len() {
@@ -984,7 +981,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                             }
                         }
 
-                        *return_t.clone()
+                        *return_t
                     } else {
                         return Err(Error {
                             msg: format!("Expected function, got {:?}", local.t),
@@ -1014,7 +1011,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
             let mut return_type = Type::Void;
             for e in exprs.iter() {
                 match &e.def {
-                    ExprDef::VarDecl(id, t, _) => declare_local(&mut local_env, &id, &t),
+                    ExprDef::VarDecl(id, t, _) => declare_local(&mut local_env, id, t),
                     ExprDef::FnDecl {
                         id,
                         params,
@@ -1022,7 +1019,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                         ..
                     } => declare_local(
                         &mut local_env,
-                        &id,
+                        id,
                         &Type::Fn(
                             params.iter().map(|param| param.1.clone()).collect(),
                             Box::new(return_t.clone()),
@@ -1059,7 +1056,7 @@ fn look_for_return_in(
     }
 
     use ExprDef::*;
-    Ok(match &e.def {
+    match &e.def {
         If { cond, then, elze } => {
             unwrap_or_return!(look_for_return_in(cond, env, return_type));
             unwrap_or_return!(look_for_return_in(then, env, return_type));
@@ -1085,7 +1082,7 @@ fn look_for_return_in(
                 unwrap_or_return!(look_for_return_in(arg, env, return_type));
             }
         }
-        VarDecl(id, t, _) => declare_local(env, &id, &t),
+        VarDecl(id, t, _) => declare_local(env, id, t),
         FnDecl {
             id,
             params,
@@ -1093,7 +1090,7 @@ fn look_for_return_in(
             ..
         } => declare_local(
             env,
-            &id,
+            id,
             &Type::Fn(
                 params.iter().map(|param| param.1.clone()).collect(),
                 Box::new(return_t.clone()),
@@ -1124,5 +1121,6 @@ fn look_for_return_in(
             unwrap_or_return!(look_for_return_in(e, env, return_type));
         }
         _ => (),
-    })
+    };
+    Ok(())
 }

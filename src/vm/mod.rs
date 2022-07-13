@@ -32,6 +32,7 @@ impl InstructionTools for Instruction {
             "*A"
         };
 
+        #[allow(clippy::useless_format)]
         let opcode = match (self & 0b111111000000) >> 6 {
             _ if self & 0b111 == 0b111 => format!(""),
             0b001010 | 0b001100 => format!("D"),

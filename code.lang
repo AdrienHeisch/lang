@@ -25,6 +25,4 @@
 //
 //printmem();
 
-int i = 6; int j = 7; int *p = &j; *p = 8; int k = *p;
-print(j);
-print(k);
+int i = 6; int j = 7; int *p = &j;
