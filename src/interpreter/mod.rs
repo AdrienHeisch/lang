@@ -1,7 +1,7 @@
 use crate::{
     ast::{Error, Expr, ExprDef, Identifier, IdentifierTools, Op, Position, WithPosition},
     env::{Context, Environment, Local},
-    memory::{RawMemory, Address},
+    memory::{Address, RawMemory},
     utils,
     value::{Type, Value},
 };
@@ -238,10 +238,15 @@ impl<'e> Interpreter<'e> {
     }
 
     fn unop(&mut self, op: Op, e_right: &Expr<'e>) -> Result<Value, ResultErr> {
-        if let Op::AddressOf = op {
+        if let Op::Addr = op {
             if let ExprDef::Id(id) = e_right.def {
                 match self.get_ref(&id) {
-                    Some(Reference::Var(var)) => return Ok(Value::Pointer(var.raw.pos.try_into().unwrap(), Box::new(var.t))),
+                    Some(Reference::Var(var)) => {
+                        return Ok(Value::Pointer(
+                            var.raw.pos.try_into().unwrap(),
+                            Box::new(var.t),
+                        ))
+                    }
                     Some(Reference::Fn(_, _)) => todo!(),
                     None => {
                         return Err(self.throw(
@@ -254,30 +259,31 @@ impl<'e> Interpreter<'e> {
         }
 
         let value = self.expr(e_right)?;
-        // let t = value.as_type();
 
-        Ok(/* if let Type::Pointer(_) = t {
-            if let Op::Mult = op {
-                todo!()
-            } else {
-                todo!()
-            }
-        } else  */{
-            match value {
-                Value::Int(i) => match op {
-                        Op::SubOrNeg => Value::Int(-i),
-                    _ => return Err(ResultErr::Nothing),
-                },
-                Value::Float(f) => match op {
-                        Op::SubOrNeg => Value::Float(-f),
-                    _ => return Err(ResultErr::Nothing),
-                },
-                Value::Bool(b) => match op {
-                    Op::Not => Value::Bool(!b),
-                    _ => return Err(ResultErr::Nothing),
-                },
+        Ok(match value {
+            Value::Pointer(addr, t) => match op {
+                Op::MultOrDeref => self.memory.get_var(&Variable {
+                    t: *t.clone(),
+                    raw: Address {
+                        pos: addr.try_into().unwrap(),
+                        len: t.get_size(),
+                    },
+                }),
                 _ => return Err(ResultErr::Nothing),
-            }
+            },
+            Value::Int(i) => match op {
+                Op::SubOrNeg => Value::Int(-i),
+                _ => return Err(ResultErr::Nothing),
+            },
+            Value::Float(f) => match op {
+                Op::SubOrNeg => Value::Float(-f),
+                _ => return Err(ResultErr::Nothing),
+            },
+            Value::Bool(b) => match op {
+                Op::Not => Value::Bool(!b),
+                _ => return Err(ResultErr::Nothing),
+            },
+            _ => return Err(ResultErr::Nothing),
         })
     }
 
@@ -285,23 +291,43 @@ impl<'e> Interpreter<'e> {
         let value_left = self.expr(e_left)?;
         let value_right = self.expr(e_right)?;
 
+        if op == Op::Assign {
+            if let ExprDef::UnOp {
+                op: Op::MultOrDeref,
+                e,
+            } = e_left.def
+            {
+                if let Pointer(addr, ptr_t) = self.expr(e)? {
+                    if *ptr_t == value_right.as_type() {
+                        return match op {
+                            Assign => {
+                                let value = self.expr(e_right)?;
+                                self.memory.set_var(
+                                    &Variable {
+                                        t: *ptr_t.clone(),
+                                        raw: Address {
+                                            pos: addr.try_into().unwrap(),
+                                            len: ptr_t.get_size(),
+                                        },
+                                    },
+                                    &value,
+                                );
+                                Ok(Value::Void)
+                            }
+                            _ => Err(ResultErr::Nothing),
+                        }
+                    }
+                }
+            }
+        }
+
+        // TODO remmove multiple "self.expr(e_right)" calls
         use {Op::*, Value::*};
         Ok(match (value_left, value_right) {
             (Pointer(_, ptr_t_l), Pointer(_, ptr_t_r)) if *ptr_t_l == *ptr_t_r => match op {
                 Assign => {
                     let value = self.expr(e_right)?;
                     self.assign(e_left, e_right.downcast_position(value))?
-                }
-                _ => return Err(ResultErr::Nothing),
-            },
-            (Pointer(address, ptr_t), Int(_)) if matches!(*ptr_t, Type::Int)  => match op {
-                Assign => {
-                    let value = self.expr(e_right)?;
-                    self.memory.set_var(
-                        &Variable { t: *ptr_t.clone(), raw: Address { pos: address.try_into().unwrap(), len: ptr_t.get_size() } },
-                        &value,
-                    );
-                    Value::Void
                 }
                 _ => return Err(ResultErr::Nothing),
             },

@@ -14,13 +14,17 @@
 //int b = 6;
 //int c = a + b;
 
-int a = 7;
-int i = 1;
-int j = 2;
-int *p = &i;
-printmem();
-p = &j;
-printmem();
-*p = 3;
+//int a = 7;
+//int i = 1;
+//int j = 2;
+//int *p = &i;
+//printmem();
+//p = &j;
+//printmem();
+//(*p) = 3;
+//
+//printmem();
 
-printmem();
+int i = 6; int j = 7; int *p = &j; *p = 8; int k = *p;
+print(j);
+print(k);

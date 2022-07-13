@@ -32,7 +32,7 @@ impl<'ast> Ast<'ast> {
                 } {
                     Ok(top_level) => {
                         if cfg!(lang_print_parser_output) && cfg!(not(lang_benchmark)) {
-                            println!("exprs:");
+                            println!("statements:");
                             for e in top_level.iter() {
                                 println!("\t{:#?}", e.def);
                             }
@@ -74,7 +74,7 @@ impl IdentifierTools for Identifier {
 // #endregion
 
 // #region EXPR
-pub type Expr<'e> = WithPosition<ExprDef<'e>>;
+pub type Expr<'e> = WithPosition<ExprDef<'e>>; //TODO derive display
 
 #[derive(Debug, Clone)]
 pub enum ExprDef<'e> {
@@ -315,7 +315,16 @@ impl Op {
             self,
             Assign | AddAssign | SubAssign | MultAssign | DivAssign | ModAssign
         )
-        }
+    }
+
+    pub fn is_unop(&self) -> bool {
+        use Op::*;
+        matches!(self, Not | SubOrNeg | MultOrDeref | Addr)
+    }
+
+    pub fn is_binop(&self) -> bool {
+        use Op::*;
+        !matches!(self, Not | Addr)
     }
 }
 // #endregion

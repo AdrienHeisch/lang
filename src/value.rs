@@ -69,6 +69,18 @@ impl Type {
         Self::Pointer(Box::new(Self::from_identifier(id)))
     }
 
+    pub fn to_value(&self) -> Value {
+        use Type::*;
+        match self {
+            Pointer(t) => Value::Pointer(Default::default(), Box::new(*t.clone())),
+            Int => Value::Int(Default::default()),
+            Float => Value::Float(Default::default()),
+            Bool => Value::Bool(Default::default()),
+            Fn(_, _) => panic!(),
+            Void => Value::Void,
+        }
+    }
+
     pub fn get_size(&self) -> usize {
         use Type::*;
         match self {

@@ -81,40 +81,6 @@ fn parse_expr<'e, 't>(
     let tk = next(tokens);
     match &tk.def {
         TokenDef::Const(value) => parse_expr_next(
-                                arena,
-                                tokens,
-                                env,
-                                errors,
-                                arena.alloc(Expr {
-                def: ExprDef::Const(value.clone()),
-                                    pos: tk.pos,
-                                }),
-        ),
-        TokenDef::Id(_) => parse_structure(arena, tokens, env, errors, tk),
-        TokenDef::Op(op) => {
-                let e = parse_expr(arena, tokens, env, errors);
-            let expr = match e.def {
-                ExprDef::BinOp { ref mut left, .. } => {
-                    *left = arena.alloc(Expr {
-                        def: ExprDef::UnOp { op: *op, e: left },
-                        pos: tk.pos + e.pos,
-                    });
-                    e
-                },
-                _ => {
-                    arena.alloc(Expr {
-                    def: ExprDef::UnOp { op: *op, e },
-                    pos: tk.pos + e.pos,
-                    })
-                }
-            };
-                if let Err(err) = eval_type(expr, env) {
-                    push_error(errors, err.msg, err.pos);
-                }
-                expr
-            }
-        }
-        TokenDef::Const(value) => parse_expr_next(
             arena,
             tokens,
             env,
@@ -125,6 +91,28 @@ fn parse_expr<'e, 't>(
             }),
         ),
         TokenDef::Id(_) => parse_structure(arena, tokens, env, errors, tk),
+        TokenDef::Op(op) => {
+            let e = parse_expr(arena, tokens, env, errors);
+            let expr = match e.def {
+                ExprDef::BinOp { ref mut left, .. } => {
+                    *left = arena.alloc(Expr {
+                        def: ExprDef::UnOp { op: *op, e: left },
+                        pos: tk.pos + e.pos,
+                    });
+                    e
+                },
+                _ => {
+                    arena.alloc(Expr {
+                        def: ExprDef::UnOp { op: *op, e },
+                        pos: tk.pos + e.pos,
+                    })
+                }
+            };
+            if let Err(err) = eval_type(expr, env) {
+                push_error(errors, err.msg, err.pos);
+            }
+            expr
+        }
         TokenDef::DelimOpen(Delimiter::Pr) => {
             let e = parse_expr(arena, tokens, env, errors);
             let tk = next(tokens);
@@ -140,13 +128,12 @@ fn parse_expr<'e, 't>(
                     }),
                 )
             } else {
-                    push_error(
-                        errors,
-                        format!("Unclosed delimiter : {:?}", Delimiter::Pr),
-                        tk.pos,
-                    );
-                    make_invalid(arena, tk.pos)
-                }
+                push_error(
+                    errors,
+                    format!("Unclosed delimiter : {:?}", Delimiter::Pr),
+                    tk.pos,
+                );
+                make_invalid(arena, tk.pos)
             }
         }
         //DESIGN should blocks return last expression only if there is no semicolon like rust ?
@@ -194,7 +181,7 @@ fn parse_expr_next<'e, 't>(
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
     errors: &mut Vec<Error>,
-    e: &'e Expr<'e>,
+    e: &'e mut Expr<'e>,
 ) -> &'e mut Expr<'e> {
     let tk = peek(tokens);
     match tk.def {
@@ -808,16 +795,23 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
         ExprDef::UnOp { op, e } => {
             use {Op::*, Type::*};
             let t = unwrap_or_return!(eval_type(e, env));
-            if let Type::Pointer(ptr_t) = t {
-                if let Mult = op {
-                    *ptr_t
-                } else {
-                    todo!()
-                }
-            } else if let AddressOf = op {
+            if let Addr = op {
                 Type::Pointer(Box::new(t))
             } else {
                 match t {
+                    Pointer(ptr_t) => match op {
+                        MultOrDeref => *ptr_t,
+                        _ => {
+                            return Err(Error {
+                                msg: format!(
+                                    "Invalid operation: {} {:?}",
+                                    op.to_string(),
+                                    Pointer(ptr_t)
+                                ),
+                                pos: expr.pos,
+                            })
+                        }
+                    },
                     Int => match op {
                         SubOrNeg => Int,
                         _ => {
@@ -845,12 +839,15 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                             })
                         }
                     },
-                    t => {
-                        return Err(Error {
-                            msg: format!("Invalid operation: {} {:?}", op.to_string(), t),
-                            pos: expr.pos,
-                        })
-                    }
+                    t => match op {
+                        Addr => Type::Pointer(Box::new(t)),
+                        _ => {
+                            return Err(Error {
+                                msg: format!("Invalid operation: {} {:?}", op.to_string(), t),
+                                pos: expr.pos,
+                            })
+                        }
+                    },
                 }
             }
         }
