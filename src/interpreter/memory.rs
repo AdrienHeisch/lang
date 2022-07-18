@@ -34,7 +34,7 @@ impl Memory for RawMemory {
                 let addr = u32::from_ne_bytes(raw[0..4].try_into().unwrap());
                 let len_ = u32::from_ne_bytes(raw[4..8].try_into().unwrap());
                 if len != len_ {
-                    panic!("Unmatched array lengths");
+                    panic!("Unmatched array lengths: ");
                 }
                 Value::Array {
                     addr,

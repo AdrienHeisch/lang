@@ -44,7 +44,7 @@ impl std::fmt::Display for Value {
         use Value::*;
         match self {
             Pointer(p, t) => write!(fmt, "{} @ {}", t, p),
-            Array { addr, len, t } => write!(fmt, "{} & {}[{}]", t, addr, len),
+            Array { addr, len, t } => write!(fmt, "{}[{}] @ {}", t, len, addr),
             Int(i) => write!(fmt, "{}", i),
             Float(f) => write!(fmt, "{}", f),
             Bool(b) => write!(fmt, "{}", b),

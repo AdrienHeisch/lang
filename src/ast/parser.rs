@@ -227,7 +227,7 @@ fn parse_expr<'e, 't>(
                 make_invalid(arena, tk.pos)
             }
         }
-        TokenDef::DelimOpen(Delimiter::SqBr) => {
+        TokenDef::DelimOpen(Delimiter::SqBr) => { //TODO should be {
             let (items, tk_close) = make_expr_list(arena, tokens, env, statik, errors, tk);
             let pos = Position(tk.pos.0, tk_close.pos.0 + tk.pos.1 - tk.pos.0);
 
@@ -421,6 +421,7 @@ fn parse_structure<'e, 't>(
     match &keyword {
         type_id_pattern!() => {
             //TODO should basic types be dedicated tokens ?
+            //TODO t could be immutable ?
             let mut t = if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
                 //TODO pointer of pointer
                 next(tokens);
@@ -430,12 +431,21 @@ fn parse_structure<'e, 't>(
             };
 
             let mut tk = next(tokens);
-            let array_len = if let TokenDef::DelimOpen(Delimiter::SqBr) = tk.def {
+            if let TokenDef::DelimOpen(Delimiter::SqBr) = tk.def {
                 tk = next(tokens);
-                if let TokenDef::Const(Value::Int(i)) = tk.def {
-                    if i > 0 {
-                        //TODO max array size ?
-                        Some(i as u32)
+                if let TokenDef::Const(Value::Int(len)) = tk.def {
+                    if len > 0 {
+                        t = Type::Array {
+                            len: len as u32,
+                            t: Box::new(t),
+                        };
+                        tk = next(tokens);
+                        if let TokenDef::DelimClose(Delimiter::SqBr) = tk.def {
+                            tk = next(tokens);
+                        } else {
+                            push_error(errors, "Expected ]".to_string(), tk.pos);
+                            return make_invalid(arena, pos);
+                        }
                     } else {
                         push_error(
                             errors,
@@ -445,23 +455,7 @@ fn parse_structure<'e, 't>(
                         return make_invalid(arena, pos);
                     }
                 } else {
-                    push_error(errors, "Arrays need a length".to_string(), tk.pos);
-                    return make_invalid(arena, pos);
-                }
-            } else {
-                None
-            };
-
-            if let Some(len) = array_len {
-                t = Type::Array {
-                    len,
-                    t: Box::new(t),
-                };
-                tk = next(tokens);
-                if let TokenDef::DelimClose(Delimiter::SqBr) = tk.def {
-                    tk = next(tokens);
-                } else {
-                    push_error(errors, "Expected ]".to_string(), tk.pos);
+                    push_error(errors, "Array needs a length".to_string(), tk.pos);
                     return make_invalid(arena, pos);
                 }
             }
@@ -473,10 +467,19 @@ fn parse_structure<'e, 't>(
                 }
                 TokenDef::Id(id) => {
                     let pos = pos + tk.pos;
-                    let tk = next(tokens);
+                    let tk = peek(tokens);
                     match tk.def {
                         // VARIABLE
+                        TokenDef::Semicolon => {
+                            declare_local(env, &id, &t);
+                            arena.alloc(Expr {
+                                def: ExprDef::VarDecl(id, t, None),
+                                pos,
+                            })
+                        }
                         TokenDef::Op(Op::Assign) => {
+                            next(tokens);
+                            
                             let value = parse_expr(arena, tokens, env, statik, errors);
                             let t = match eval_type(value, env) {
                                 Ok(t_) => {
@@ -500,12 +503,14 @@ fn parse_structure<'e, 't>(
                                 }
                             };
                             arena.alloc(Expr {
-                                def: ExprDef::VarDecl(id, t, value),
+                                def: ExprDef::VarDecl(id, t, Some(value)),
                                 pos: pos + value.pos,
                             })
                         }
                         // FUNCTION
                         TokenDef::DelimOpen(Delimiter::Pr) => {
+                            next(tokens);
+
                             let mut local_env = env.clone(); //TODO is this needed ?
                             local_env.context = Context::Function;
 
@@ -1013,33 +1018,6 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                 },
                 (Pointer(ptr_t), t) if *ptr_t == t => match op {
                     Assign => Type::Void,
-                    _ => {
-                        return Err(Error {
-                            msg: format!(
-                                "Invalid operation : {:?} {} {:?}",
-                                Int,
-                                op.to_string(),
-                                Int
-                            ),
-                            pos: expr.pos,
-                        })
-                    }
-                },
-                (ref t_left @ Array { t: ref t_l, len: ref len_l }, ref t_right @ Array { t: ref t_r, len: ref len_r }) => match op {
-                    Assign => {
-                        if t_l != t_r || len_l != len_r {
-                            return Err(Error {
-                                msg: format!(
-                                    "Invalid operation : {:?} {} {:?}",
-                                    t_left,
-                                    op.to_string(),
-                                    t_right
-                                ),
-                                pos: expr.pos,
-                            })
-                        }
-                        Type::Void
-                    },
                     _ => {
                         return Err(Error {
                             msg: format!(

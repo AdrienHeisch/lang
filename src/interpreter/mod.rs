@@ -123,10 +123,7 @@ impl<'e> Interpreter<'e> {
                     self.memory.set_var(
                         &Variable {
                             t: *t.clone(),
-                            raw: Address {
-                                pos,
-                                len: t_len,
-                            },
+                            raw: Address { pos, len: t_len },
                         },
                         &value,
                     ); // FIXME ptr is for the whole array !
@@ -204,19 +201,36 @@ impl<'e> Interpreter<'e> {
                 if self.get_ref(id).is_some() {
                     self.throw("There is already a variable named ".to_owned(), expr.pos);
                 }
-                let value = self.expr(assign_expr)?;
-                let t_ = value.as_type();
-                if t != &t_ {
-                    return Err(self.throw(format!("Can't assign {:?} to {:?}", t, t_), expr.pos));
-                }
+
                 let ptr = match self.declare_var(id, t) {
                     Ok(ptr) => ptr,
                     Err(message) => return Err(self.throw(message, expr.pos)),
                 };
+
                 //TODO remove this hack
                 self.stack[self.frame_ptr as usize + self.env.locals_count as usize - 1] =
                     Reference::Var(ptr.clone());
-                self.memory.set_var(&ptr, &value);
+
+                if let Some(assign_expr) = assign_expr {
+                    let value = self.expr(assign_expr)?;
+                    let t_ = value.as_type();
+                    if t != &t_ {
+                        return Err(
+                            self.throw(format!("Can't assign {:?} to {:?}", t, t_), expr.pos)
+                        );
+                    }
+                    self.memory.set_var(&ptr, &value)
+                } else if let Type::Array { len, t } = &t {
+                    let addr = self.memory.alloc(t.get_size() * *len as usize);
+                    self.memory.set_var(
+                        &ptr,
+                        &Value::Array {
+                            addr: addr.pos as u32,
+                            len: *len,
+                            t: t.clone(),
+                        },
+                    )
+                }
                 Value::Void
             }
             FnDecl {
@@ -352,22 +366,18 @@ impl<'e> Interpreter<'e> {
                 }
                 _ => return Err(ResultErr::Nothing),
             },
-            (Array { .. }, Array { .. }) => match op {
-                Assign => {
-                    let value = self.expr(e_right)?;
-                    self.assign(e_left, e_right.downcast_position(value))?
-                }
-                _ => return Err(ResultErr::Nothing),
-            },
             (Array { addr, t, .. }, Int(i)) => match op {
-                Index => /* Pointer(addr + (i * t.get_size() as i32) as u32, t), */
-                self.memory.get_var(&Variable {
-                    t: *t.clone(),
-                    raw: Address {
-                        pos: t.get_size() * i as usize + addr as usize,
-                        len: t.get_size(),
-                    },
-                }),
+                Index =>
+                /* Pointer(addr + (i * t.get_size() as i32) as u32, t), */
+                {
+                    self.memory.get_var(&Variable {
+                        t: *t.clone(),
+                        raw: Address {
+                            pos: t.get_size() * i as usize + addr as usize,
+                            len: t.get_size(),
+                        },
+                    })
+                }
                 _ => return Err(ResultErr::Nothing),
             },
             (Int(l), Int(r)) => match op {
@@ -654,7 +664,41 @@ impl<'e> Interpreter<'e> {
             } else {
                 continue;
             };
-            println!("{} => {:?} => {:?}", id_str, ptr, self.memory.get_var(&ptr));
+
+            let value = self.memory.get_var(&ptr);
+            print!("{id_str} => {ptr:?} => {value}");
+            match value {
+                Value::Pointer(addr, t) => println!(
+                    " => {}",
+                    self.memory.get_var(&Variable {
+                        t: *t.clone(),
+                        raw: Address {
+                            pos: addr.try_into().unwrap(),
+                            len: t.get_size(),
+                        },
+                    })
+                ),
+                Value::Array { addr, len, t } => println!(
+                    " => [{}]",
+                    (0..len)
+                        .into_iter()
+                        .map(|i| {
+                            format!(
+                                "{}",
+                                self.memory.get_var(&Variable {
+                                    t: *t.clone(),
+                                    raw: Address {
+                                        pos: t.get_size() * i as usize + addr as usize,
+                                        len: t.get_size(),
+                                    },
+                                })
+                            )
+                        })
+                        .reduce(|acc, str| format!("{acc}, {str}"))
+                        .unwrap_or_default()
+                ),
+                _ => println!(),
+            }
         }
 
         println!();

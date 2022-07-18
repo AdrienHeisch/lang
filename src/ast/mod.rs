@@ -108,7 +108,7 @@ pub enum ExprDef<'e> {
         args: Box<[&'e Expr<'e>]>,
     },
     // --- Declarations
-    VarDecl(Identifier, Type, &'e Expr<'e>),
+    VarDecl(Identifier, Type, Option<&'e Expr<'e>>),
     FnDecl {
         id: Identifier,
         params: Box<[(Identifier, Type)]>,

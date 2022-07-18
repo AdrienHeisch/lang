@@ -173,7 +173,8 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
         }
         Call { .. } => unimplemented!(),
         Field(_, _) => unimplemented!(),
-        VarDecl(id, _, assign_expr) => {
+        VarDecl(.., None) => todo!(),
+        VarDecl(id, _, Some(assign_expr)) => {
             identifiers.insert(*id, *sp);
             expr(assign_expr, chunk, identifiers, sp);
             if let Const(_) = assign_expr.def {
