@@ -6,12 +6,19 @@ use super::{
 use crate::{
     ast::WithPosition,
     env::{Context, Environment, Local},
-    value::{type_id_pattern, Type},
+    value::{type_id_pattern, Type, Value},
 };
 use std::collections::VecDeque;
 use typed_arena::Arena;
 
 type TkIter<'t> = std::iter::Peekable<std::collections::vec_deque::Iter<'t, Token>>;
+
+#[allow(dead_code)]
+#[derive(Default)]
+struct StaticMem {
+    values: Vec<Option<Value>>,
+    len: u32,
+}
 
 // ----- PARSING -----
 
@@ -24,12 +31,14 @@ pub fn parse<'e, 't>(
     let mut errors = Vec::new();
 
     let mut statements = Vec::new();
+    let mut statik: StaticMem = Default::default();
 
     loop {
         statements.push(parse_statement(
             arena,
             &mut tokens_iter,
             &mut env,
+            &mut statik,
             &mut errors,
         ));
         if tokens_iter.peek().is_none() {
@@ -50,9 +59,10 @@ fn parse_statement<'e, 't>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
+    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
 ) -> &'e Expr<'e> {
-    let expr = parse_expr(arena, tokens, env, errors);
+    let expr = parse_expr(arena, tokens, env, statik, errors);
 
     if peek(tokens).def == TokenDef::Semicolon {
         next(tokens);
@@ -78,6 +88,7 @@ fn parse_expr<'e, 't>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
+    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
 ) -> &'e mut Expr<'e> {
     let tk = next(tokens);
@@ -86,15 +97,16 @@ fn parse_expr<'e, 't>(
             arena,
             tokens,
             env,
+            statik,
             errors,
             arena.alloc(Expr {
                 def: ExprDef::Const(value.clone()),
                 pos: tk.pos,
             }),
         ),
-        TokenDef::Id(_) => parse_structure(arena, tokens, env, errors, tk),
+        TokenDef::Id(_) => parse_structure(arena, tokens, env, statik, errors, tk),
         TokenDef::Op(op) => {
-            let e = parse_expr(arena, tokens, env, errors);
+            let e = parse_expr(arena, tokens, env, statik, errors);
             let expr = match e.def {
                 ExprDef::BinOp { ref mut left, .. } => {
                     *left = arena.alloc(Expr {
@@ -114,14 +126,14 @@ fn parse_expr<'e, 't>(
             expr
         }
         TokenDef::If => {
-            let cond = parse_expr(arena, tokens, env, errors);
-            let then = parse_expr(arena, tokens, env, errors);
+            let cond = parse_expr(arena, tokens, env, statik, errors);
+            let then = parse_expr(arena, tokens, env, statik, errors);
             let mut pos = tk.pos + cond.pos + then.pos;
 
             let elze = match peek(tokens).def {
                 TokenDef::Id(next_id) if &next_id == b"else\0\0\0\0" => {
                     next(tokens);
-                    Some(parse_expr(arena, tokens, env, errors) as &Expr)
+                    Some(parse_expr(arena, tokens, env, statik, errors) as &Expr)
                 }
                 _ => None,
             };
@@ -135,8 +147,8 @@ fn parse_expr<'e, 't>(
             })
         }
         TokenDef::While => {
-            let cond = parse_expr(arena, tokens, env, errors);
-            let body = parse_expr(arena, tokens, env, errors);
+            let cond = parse_expr(arena, tokens, env, statik, errors);
+            let body = parse_expr(arena, tokens, env, statik, errors);
             arena.alloc(Expr {
                 def: ExprDef::While { cond, body },
                 pos: tk.pos + cond.pos + body.pos,
@@ -146,7 +158,7 @@ fn parse_expr<'e, 't>(
             if let Context::TopLevel = env.context {
                 push_error(errors, "Can't return from top level.".to_string(), tk.pos);
             }
-            let e = parse_expr(arena, tokens, env, errors);
+            let e = parse_expr(arena, tokens, env, statik, errors);
             arena.alloc(Expr {
                 def: ExprDef::Return(e),
                 pos: tk.pos + e.pos,
@@ -192,13 +204,14 @@ fn parse_expr<'e, 't>(
         }
         } */
         TokenDef::DelimOpen(Delimiter::Pr) => {
-            let e = parse_expr(arena, tokens, env, errors);
+            let e = parse_expr(arena, tokens, env, statik, errors);
             let tk = next(tokens);
             if let TokenDef::DelimClose(Delimiter::Pr) = tk.def {
                 parse_expr_next(
                     arena,
                     tokens,
                     env,
+                    statik,
                     errors,
                     arena.alloc(Expr {
                         def: ExprDef::Parent(e),
@@ -213,6 +226,62 @@ fn parse_expr<'e, 't>(
                 );
                 make_invalid(arena, tk.pos)
             }
+        }
+        TokenDef::DelimOpen(Delimiter::SqBr) => {
+            let (items, tk_close) = make_expr_list(arena, tokens, env, statik, errors, tk);
+            let pos = Position(tk.pos.0, tk_close.pos.0 + tk.pos.1 - tk.pos.0);
+
+            let t = eval_type(items[0], env);
+            if let Err(err) = t {
+                push_error(errors, err.msg, err.pos);
+                return make_invalid(arena, pos);
+            }
+
+            let t = t.unwrap(); //TODO remove unwrap
+            for item in &items[1..] {
+                match eval_type(item, env) {
+                    Ok(t_) => {
+                        if t != t_ {
+                            push_error(errors, "Array items type mismatch".to_string(), pos);
+                        }
+                    }
+                    Err(err) => {
+                        push_error(errors, err.msg, err.pos);
+                    }
+                }
+            }
+
+            /* let addr = statik.len;
+            let len = items.len() as u32;
+
+            statik.values.append(
+                &mut items
+                    .into_iter()
+                    .map(|item| {
+                        if let ExprDef::Const(val) = &item.def {
+                            Some(val.clone())
+                        } else {
+                            None
+                        }
+                    })
+                    .collect(),
+            );
+            statik.len += len * t.get_size() as u32; */
+
+            parse_expr_next(
+                arena,
+                tokens,
+                env,
+                statik,
+                errors,
+                arena.alloc(Expr {
+                    def: ExprDef::ArrayLit {
+                        items: items.into_boxed_slice(),
+                        t: Box::new(t),
+                    },
+                    pos: tk.pos,
+                }),
+            )
         }
         //DESIGN should blocks return last expression only if there is no semicolon like rust ?
         TokenDef::DelimOpen(Delimiter::Br) => {
@@ -230,7 +299,7 @@ fn parse_expr<'e, 't>(
                     _ => true,
                 }
             } {
-                statements.push(parse_statement(arena, tokens, env, errors));
+                statements.push(parse_statement(arena, tokens, env, statik, errors));
             }
             next(tokens);
 
@@ -258,6 +327,7 @@ fn parse_expr_next<'e, 't>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
+    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
     e: &'e mut Expr<'e>,
 ) -> &'e mut Expr<'e> {
@@ -265,8 +335,37 @@ fn parse_expr_next<'e, 't>(
     match tk.def {
         TokenDef::Op(op) => {
             next(tokens);
-            let e_ = parse_expr(arena, tokens, env, errors);
+            let e_ = parse_expr(arena, tokens, env, statik, errors);
             let expr = make_binop(arena, op, e, e_);
+            if let Err(err) = eval_type(expr, env) {
+                push_error(errors, err.msg, err.pos);
+            }
+            expr
+        }
+        TokenDef::DelimOpen(Delimiter::SqBr) => {
+            next(tokens);
+            let e_ = parse_expr(arena, tokens, env, statik, errors);
+            if let TokenDef::DelimClose(Delimiter::SqBr) = peek(tokens).def {
+                next(tokens);
+            } else {
+                push_error(errors, "Unclosed delimiter [.".to_owned(), tk.pos);
+            }
+            let expr = parse_expr_next(
+                arena,
+                tokens,
+                env,
+                statik,
+                errors,
+                make_binop(
+                    arena,
+                    Op::Index,
+                    e,
+                    arena.alloc(Expr {
+                        def: ExprDef::Parent(e_),
+                        pos: e_.pos,
+                    }),
+                ),
+            );
             if let Err(err) = eval_type(expr, env) {
                 push_error(errors, err.msg, err.pos);
             }
@@ -274,7 +373,8 @@ fn parse_expr_next<'e, 't>(
         }
         TokenDef::DelimOpen(Delimiter::Pr) => {
             next(tokens);
-            let (expr_list, tk_delim_close) = make_expr_list(arena, tokens, env, errors, tk);
+            let (expr_list, tk_delim_close) =
+                make_expr_list(arena, tokens, env, statik, errors, tk);
             let expr = arena.alloc(Expr {
                 def: ExprDef::Call {
                     function: e,
@@ -291,7 +391,7 @@ fn parse_expr_next<'e, 't>(
         TokenDef::Dot => {
             next(tokens);
             let expr = arena.alloc(Expr {
-                def: ExprDef::Field(e, parse_expr(arena, tokens, env, errors)),
+                def: ExprDef::Field(e, parse_expr(arena, tokens, env, statik, errors)),
                 pos: tk.pos,
             });
             if let Err(err) = eval_type(expr, env) {
@@ -307,6 +407,7 @@ fn parse_structure<'e, 't>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
+    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
     tk_identifier: &Token,
 ) -> &'e mut Expr<'e> {
@@ -320,14 +421,51 @@ fn parse_structure<'e, 't>(
     match &keyword {
         type_id_pattern!() => {
             //TODO should basic types be dedicated tokens ?
-            let t = if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
+            let mut t = if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
                 //TODO pointer of pointer
                 next(tokens);
                 Type::from_identifier_ptr(&keyword)
             } else {
                 Type::from_identifier(&keyword)
             };
-            let tk = next(tokens);
+
+            let mut tk = next(tokens);
+            let array_len = if let TokenDef::DelimOpen(Delimiter::SqBr) = tk.def {
+                tk = next(tokens);
+                if let TokenDef::Const(Value::Int(i)) = tk.def {
+                    if i > 0 {
+                        //TODO max array size ?
+                        Some(i as u32)
+                    } else {
+                        push_error(
+                            errors,
+                            "Array length must be superior to 0".to_string(),
+                            tk.pos,
+                        );
+                        return make_invalid(arena, pos);
+                    }
+                } else {
+                    push_error(errors, "Arrays need a length".to_string(), tk.pos);
+                    return make_invalid(arena, pos);
+                }
+            } else {
+                None
+            };
+
+            if let Some(len) = array_len {
+                t = Type::Array {
+                    len,
+                    t: Box::new(t),
+                };
+                tk = next(tokens);
+                if let TokenDef::DelimClose(Delimiter::SqBr) = tk.def {
+                    tk = next(tokens);
+                } else {
+                    push_error(errors, "Expected ]".to_string(), tk.pos);
+                    return make_invalid(arena, pos);
+                }
+            }
+
             match tk.def {
                 TokenDef::Id(id) if matches!(&id, type_id_pattern!()) => {
                     push_error(errors, format!("Invalid identifier : {:?}", tk.def), tk.pos);
@@ -335,12 +473,11 @@ fn parse_structure<'e, 't>(
                 }
                 TokenDef::Id(id) => {
                     let pos = pos + tk.pos;
-                    let tk = peek(tokens);
+                    let tk = next(tokens);
                     match tk.def {
                         // VARIABLE
                         TokenDef::Op(Op::Assign) => {
-                            next(tokens);
-                            let value = parse_expr(arena, tokens, env, errors);
+                            let value = parse_expr(arena, tokens, env, statik, errors);
                             let t = match eval_type(value, env) {
                                 Ok(t_) => {
                                     if t != t_ {
@@ -369,8 +506,6 @@ fn parse_structure<'e, 't>(
                         }
                         // FUNCTION
                         TokenDef::DelimOpen(Delimiter::Pr) => {
-                            next(tokens);
-
                             let mut local_env = env.clone(); //TODO is this needed ?
                             local_env.context = Context::Function;
 
@@ -410,6 +545,7 @@ fn parse_structure<'e, 't>(
                                                 arena,
                                                 tokens,
                                                 &mut local_env,
+                                                statik,
                                                 errors,
                                             );
 
@@ -495,6 +631,7 @@ fn parse_structure<'e, 't>(
                 arena,
                 tokens,
                 env,
+                statik,
                 errors,
                 arena.alloc(Expr {
                     def: ExprDef::Id(*id),
@@ -624,6 +761,7 @@ fn make_expr_list<'e, 't>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
+    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
     tk_delim_open: &Token,
 ) -> (Vec<&'e Expr<'e>>, &'t Token) {
@@ -640,7 +778,7 @@ fn make_expr_list<'e, 't>(
     }
 
     loop {
-        list.push(parse_expr(arena, tokens, env, errors));
+        list.push(parse_expr(arena, tokens, env, statik, errors));
 
         let tk = peek(tokens);
         match tk.def {
@@ -746,6 +884,7 @@ fn sort_functions_first(statements: &mut [&Expr]) {
 // ----- TYPING -----
 
 fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
+    // TODO could this be replaced by an interpreter instance ?
     macro_rules! unwrap_or_return {
         ($e:expr) => {
             match $e {
@@ -767,6 +906,10 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                 });
             }
         }
+        ExprDef::ArrayLit { items, t } => Type::Array {
+            len: items.len() as u32,
+            t: t.clone(),
+        },
         ExprDef::If { then, elze, .. } => {
             let then_type = unwrap_or_return!(eval_type(then, env));
             match elze {
@@ -875,6 +1018,47 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                             msg: format!(
                                 "Invalid operation : {:?} {} {:?}",
                                 Int,
+                                op.to_string(),
+                                Int
+                            ),
+                            pos: expr.pos,
+                        })
+                    }
+                },
+                (ref t_left @ Array { t: ref t_l, len: ref len_l }, ref t_right @ Array { t: ref t_r, len: ref len_r }) => match op {
+                    Assign => {
+                        if t_l != t_r || len_l != len_r {
+                            return Err(Error {
+                                msg: format!(
+                                    "Invalid operation : {:?} {} {:?}",
+                                    t_left,
+                                    op.to_string(),
+                                    t_right
+                                ),
+                                pos: expr.pos,
+                            })
+                        }
+                        Type::Void
+                    },
+                    _ => {
+                        return Err(Error {
+                            msg: format!(
+                                "Invalid operation : {:?} {} {:?}",
+                                Int,
+                                op.to_string(),
+                                Int
+                            ),
+                            pos: expr.pos,
+                        })
+                    }
+                },
+                (ref t_left @ Array { ref t, .. }, Int) => match op {
+                    Index => *t.clone(),
+                    _ => {
+                        return Err(Error {
+                            msg: format!(
+                                "Invalid operation : {:?} {} {:?}",
+                                t_left.clone(),
                                 op.to_string(),
                                 Int
                             ),

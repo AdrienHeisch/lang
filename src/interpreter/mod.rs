@@ -113,6 +113,31 @@ impl<'e> Interpreter<'e> {
                     }
                 }
             }
+            ArrayLit { items, t } => {
+                let t_len = t.get_size();
+                let arr_len = items.len();
+                let ptr = self.memory.alloc(t_len * arr_len);
+                let mut pos = ptr.pos;
+                for item in items.iter() {
+                    let value = self.expr(item)?;
+                    self.memory.set_var(
+                        &Variable {
+                            t: *t.clone(),
+                            raw: Address {
+                                pos,
+                                len: t_len,
+                            },
+                        },
+                        &value,
+                    ); // FIXME ptr is for the whole array !
+                    pos += t_len;
+                }
+                Value::Array {
+                    addr: ptr.pos as u32,
+                    len: arr_len as u32,
+                    t: t.clone(),
+                }
+            }
             // --- Control Flow
             If { cond, then, elze } => match self.expr(cond)? {
                 Value::Bool(b) => {
@@ -217,8 +242,8 @@ impl<'e> Interpreter<'e> {
                             err @ Err(_) => return err,
                         };
                     }
-                    let n_vars = self.env.close_scope();
-                    self.free_unused_stack(n_vars as usize);
+                    self.env.close_scope();
+                    self.free_unused_stack();
                     ret
                 } else {
                     Value::Void
@@ -287,6 +312,7 @@ impl<'e> Interpreter<'e> {
         })
     }
 
+    // TODO remove all unnecessary check (performed in parser)
     fn binop(&mut self, op: Op, e_left: &Expr<'e>, e_right: &Expr<'e>) -> Result<Value, ResultErr> {
         let value_left = self.expr(e_left)?;
         let value_right = self.expr(e_right)?;
@@ -299,23 +325,18 @@ impl<'e> Interpreter<'e> {
             {
                 if let Pointer(addr, ptr_t) = self.expr(e)? {
                     if *ptr_t == value_right.as_type() {
-                        return match op {
-                            Assign => {
-                                let value = self.expr(e_right)?;
-                                self.memory.set_var(
-                                    &Variable {
-                                        t: *ptr_t.clone(),
-                                        raw: Address {
-                                            pos: addr.try_into().unwrap(),
-                                            len: ptr_t.get_size(),
-                                        },
-                                    },
-                                    &value,
-                                );
-                                Ok(Value::Void)
-                            }
-                            _ => Err(ResultErr::Nothing),
-                        };
+                        let value = self.expr(e_right)?;
+                        self.memory.set_var(
+                            &Variable {
+                                t: *ptr_t.clone(),
+                                raw: Address {
+                                    pos: addr.try_into().unwrap(),
+                                    len: ptr_t.get_size(),
+                                },
+                            },
+                            &value,
+                        );
+                        return Ok(Value::Void);
                     }
                 }
             }
@@ -329,6 +350,24 @@ impl<'e> Interpreter<'e> {
                     let value = self.expr(e_right)?;
                     self.assign(e_left, e_right.downcast_position(value))?
                 }
+                _ => return Err(ResultErr::Nothing),
+            },
+            (Array { .. }, Array { .. }) => match op {
+                Assign => {
+                    let value = self.expr(e_right)?;
+                    self.assign(e_left, e_right.downcast_position(value))?
+                }
+                _ => return Err(ResultErr::Nothing),
+            },
+            (Array { addr, t, .. }, Int(i)) => match op {
+                Index => /* Pointer(addr + (i * t.get_size() as i32) as u32, t), */
+                self.memory.get_var(&Variable {
+                    t: *t.clone(),
+                    raw: Address {
+                        pos: t.get_size() * i as usize + addr as usize,
+                        len: t.get_size(),
+                    },
+                }),
                 _ => return Err(ResultErr::Nothing),
             },
             (Int(l), Int(r)) => match op {
@@ -504,8 +543,8 @@ impl<'e> Interpreter<'e> {
                             },
                         };
 
-                        let n_vars = self.env.clear();
-                        self.free_unused_stack(n_vars as usize);
+                        self.env.clear();
+                        self.free_unused_stack();
 
                         self.frame_ptr = prev_frame_ptr;
                         // std::mem::replace(&mut self.env, prev_env); //what was that
@@ -579,15 +618,10 @@ impl<'e> Interpreter<'e> {
         None
     }
 
-    fn free_unused_stack(&mut self, n_variables: usize) {
-        for reference in self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)..]
-            .iter()
-            .take(n_variables)
-        {
-            match reference {
-                Reference::Var(ptr) => self.memory.free_ptr(ptr),
-                Reference::Fn(_, _) => (),
-            }
+    fn free_unused_stack(&mut self) {
+        match &self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)] {
+            Reference::Var(ptr) => self.memory.free_from(ptr.raw.pos),
+            Reference::Fn(_, _) => (), //TODO ?
         }
     }
 

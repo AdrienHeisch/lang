@@ -399,3 +399,10 @@ test_should_panic!(
     function_invalid_type,
     "int add(int a, int b) { a + b; } bool i = add(2, 4);"
 );
+
+test_assert_eq!(
+    array,
+    "int[3] a = [12, 53, 84]; int k = a[5 - 4] + 7;",
+    "k",
+    Value::Int(60)
+);

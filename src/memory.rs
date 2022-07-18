@@ -1,5 +1,5 @@
 //IN BYTES
-const MEMORY_SIZE: usize = 32;
+const MEMORY_SIZE: usize = 64;
 
 //TODO retry other types of memory with fixed benchmarking
 //TODO stack, faster heap allocator ?
@@ -88,6 +88,12 @@ impl RawMemory {
     //RESEARCH shift everything to the right so there is always free memory on the left ?
     {
         for state in self.allocation_map.iter_mut().skip(ptr.pos).take(ptr.len) {
+            *state = false;
+        }
+    }
+
+    pub fn free_from(&mut self, addr: usize) {
+        for state in self.allocation_map.iter_mut().skip(addr) {
             *state = false;
         }
     }

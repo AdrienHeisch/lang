@@ -7,7 +7,7 @@ use crate::{
 pub struct Variable {
     pub t: Type,
     pub raw: Address,
-}
+} //TODO refactor without type ?
 
 pub trait Memory {
     fn new() -> Self;
@@ -25,7 +25,23 @@ impl Memory for RawMemory {
 
     fn get_var(&self, var: &Variable) -> Value {
         match var.t {
-            Type::Pointer(ref t) => Value::Pointer(u32::from_ne_bytes(self.access(var.raw).try_into().unwrap()), t.clone()),
+            Type::Pointer(ref t) => Value::Pointer(
+                u32::from_ne_bytes(self.access(var.raw).try_into().unwrap()),
+                t.clone(),
+            ),
+            Type::Array { len, ref t } => {
+                let raw = self.access(var.raw);
+                let addr = u32::from_ne_bytes(raw[0..4].try_into().unwrap());
+                let len_ = u32::from_ne_bytes(raw[4..8].try_into().unwrap());
+                if len != len_ {
+                    panic!("Unmatched array lengths");
+                }
+                Value::Array {
+                    addr,
+                    len,
+                    t: t.clone(),
+                }
+            },
             Type::Int => Value::Int(i32::from_ne_bytes(self.access(var.raw).try_into().unwrap())),
             Type::Float => {
                 Value::Float(f32::from_ne_bytes(self.access(var.raw).try_into().unwrap()))
@@ -43,13 +59,15 @@ impl Memory for RawMemory {
                 self.access_mut(var.raw)
                     .copy_from_slice(&(*p).to_ne_bytes());
             }
-            Int(i) => {
+            Array { addr, len, .. } => {
                 self.access_mut(var.raw)
-                    .copy_from_slice(&(*i).to_ne_bytes());
+                    .copy_from_slice(&[addr.to_ne_bytes(), len.to_ne_bytes()].concat());
+            }
+            Int(i) => {
+                self.access_mut(var.raw).copy_from_slice(&i.to_ne_bytes());
             }
             Float(f) => {
-                self.access_mut(var.raw)
-                    .copy_from_slice(&(*f).to_ne_bytes());
+                self.access_mut(var.raw).copy_from_slice(&f.to_ne_bytes());
             }
             Bool(b) => {
                 self.access_mut(var.raw)[0] = if *b { 1u8 } else { 0u8 };

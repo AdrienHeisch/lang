@@ -81,6 +81,7 @@ pub enum ExprDef<'e> {
     // --- Values
     Const(Value),
     Id(Identifier),
+    ArrayLit{ items: Box<[&'e Expr<'e>]>, t: Box<Type> },
     // --- Control Flow
     If {
         cond: &'e Expr<'e>,
@@ -149,7 +150,7 @@ impl<'e> Expr<'e> {
 // #region TOKEN
 pub type Token = WithPosition<TokenDef>;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum TokenDef {
     Id(Identifier),
     Const(Value),
@@ -218,6 +219,7 @@ pub enum Op {
     BoolOr,
     Assign,
     Addr,
+    Index,
 }
 
 macro_rules! op_chars_pattern {
@@ -229,7 +231,7 @@ pub(crate) use op_chars_pattern;
 
 impl Op {
     const MAX_LENGTH: usize = 2;
-    
+
     pub fn from_string(string: &str) -> Option<Op> {
         use Op::*;
         Some(match string {
@@ -254,6 +256,7 @@ impl Op {
             "/" => Div,
             "/=" => DivAssign,
             "&" => Addr,
+            "[" => Index,
             _ => return None,
         })
     }
@@ -282,6 +285,7 @@ impl Op {
             Div => "/",
             DivAssign => "/=",
             Addr => "&",
+            Index => "[",
         }
     }
 
@@ -290,6 +294,7 @@ impl Op {
         match self {
             Addr => 0,
             Not => 0,
+            Index => 1,
             Mod => 1,
             MultOrDeref => 2,
             Div => 2,

@@ -88,10 +88,8 @@ impl Environment {
         n_locals - self.locals_count
     }
 
-    pub fn clear(&mut self) -> u8 {
-        let n_locals = self.locals_count;
+    pub fn clear(&mut self) {
         self.scope_depth = 0;
         self.locals_count = 0;
-        n_locals
     }
 }

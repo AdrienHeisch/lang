@@ -43,6 +43,7 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
                 Value::Bool(false) => 0,
                 Value::Bool(true) => 1,
                 Value::Void => panic!(),
+                Value::Array { .. } => todo!(),
             });
         }
         Id(id) => {
@@ -53,6 +54,7 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
                 panic!("Unknown identifier : {}", id.to_string())
             }
         }
+        ArrayLit { .. } => todo!(),
         If { cond, then, elze } => {
             let before_if = chunk.len();
             chunk.push(0); // A = tbd
