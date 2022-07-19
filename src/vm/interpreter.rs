@@ -2,7 +2,7 @@ use super::*;
 use std::num::Wrapping;
 
 pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
-    if cfg!(lang_print_vm_interpreter) {
+    if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
         /* print!("BYTECODE: ");
         for s in chunk.iter().map(|el| format!("{:04X}", el)) {
             print!("{} ", s);
@@ -26,7 +26,7 @@ pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
         };
 
         let instruction = chunk[offset];
-        if cfg!(lang_print_vm_interpreter) {
+        if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
             print!("{:04} {:>12}   -->   ", offset, instruction.to_asm());
         }
         if check_bit(instruction, 15) {
@@ -46,13 +46,13 @@ pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
         } else {
             a = instruction;
         }
-        if cfg!(lang_print_vm_interpreter) {
+        if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
             println!("A: {:>3} | D: {:>3} | A*: {:>3}", a as i16, d as i16, *in_mem as i16);
         }
         offset += 1;
     }
     
-    if cfg!(lang_print_vm_interpreter) {
+    if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
         println!("===================================================");
         println!("\nMEMORY: {:?}\n", memory);
     }

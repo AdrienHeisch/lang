@@ -33,5 +33,5 @@ fn run_bytecode(c: &mut Criterion) {
     });
 }
 
-criterion_group!(all, /* build_ast, */walk_ast, /*compile_bytecode,  */run_bytecode);
+criterion_group!(all, build_ast, walk_ast, compile_bytecode, run_bytecode);
 criterion_main!(all);

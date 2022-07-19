@@ -402,7 +402,36 @@ test_should_panic!(
 
 test_assert_eq!(
     array,
-    "int[3] a = [12, 53, 84]; int k = a[5 - 4] + 7;",
+    "int[3] a = {12, 53, 84}; int k = a[5 - 4] + 7;",
     "k",
     Value::Int(60)
+);
+
+test_assert_eq!(
+    array_uninit,
+    "int[3] a; int k = a[1];",
+    "k",
+    Value::Int(0)
+);
+
+test_assert_eq!(
+    array_assign,
+    "int[3] a; a[1] = 60; int k = a[1];",
+    "k",
+    Value::Int(60)
+);
+
+test_should_panic!(
+    array_invalid_length,
+    "int[3] a = {12, 53};"
+);
+
+test_should_panic!(
+    array_invalid_type,
+    "bool[3] a = {12, 53, 84};"
+);
+
+test_should_panic!(
+    array_invalid_literal,
+    "int[3] a = [12, 53, 84];"
 );

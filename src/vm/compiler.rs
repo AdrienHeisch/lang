@@ -13,7 +13,7 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, DebugInfo), ()> {
         expr(s, &mut chunk, &mut identifiers, &mut sp);
     }
 
-    if cfg!(lang_print_vm_compiler) {
+    if cfg!(lang_print_vm_compiler) && !cfg!(lang_benchmark) {
         println!("========= ASM =========");
         for (offset, instruction) in chunk.iter().enumerate() {
             println!(

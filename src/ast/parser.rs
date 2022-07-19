@@ -227,62 +227,6 @@ fn parse_expr<'e, 't>(
                 make_invalid(arena, tk.pos)
             }
         }
-        TokenDef::DelimOpen(Delimiter::SqBr) => { //TODO should be {
-            let (items, tk_close) = make_expr_list(arena, tokens, env, statik, errors, tk);
-            let pos = Position(tk.pos.0, tk_close.pos.0 + tk.pos.1 - tk.pos.0);
-
-            let t = eval_type(items[0], env);
-            if let Err(err) = t {
-                push_error(errors, err.msg, err.pos);
-                return make_invalid(arena, pos);
-            }
-
-            let t = t.unwrap(); //TODO remove unwrap
-            for item in &items[1..] {
-                match eval_type(item, env) {
-                    Ok(t_) => {
-                        if t != t_ {
-                            push_error(errors, "Array items type mismatch".to_string(), pos);
-                        }
-                    }
-                    Err(err) => {
-                        push_error(errors, err.msg, err.pos);
-                    }
-                }
-            }
-
-            /* let addr = statik.len;
-            let len = items.len() as u32;
-
-            statik.values.append(
-                &mut items
-                    .into_iter()
-                    .map(|item| {
-                        if let ExprDef::Const(val) = &item.def {
-                            Some(val.clone())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect(),
-            );
-            statik.len += len * t.get_size() as u32; */
-
-            parse_expr_next(
-                arena,
-                tokens,
-                env,
-                statik,
-                errors,
-                arena.alloc(Expr {
-                    def: ExprDef::ArrayLit {
-                        items: items.into_boxed_slice(),
-                        t: Box::new(t),
-                    },
-                    pos: tk.pos,
-                }),
-            )
-        }
         //DESIGN should blocks return last expression only if there is no semicolon like rust ?
         TokenDef::DelimOpen(Delimiter::Br) => {
             env.open_scope();
@@ -479,8 +423,58 @@ fn parse_structure<'e, 't>(
                         }
                         TokenDef::Op(Op::Assign) => {
                             next(tokens);
+
+                            let value = if let Type::Array { .. } = &t {
+                                let tk = next(tokens);
+                                if let TokenDef::DelimOpen(Delimiter::Br) = &tk.def {
+                                    let (items, tk_close) = make_expr_list(arena, tokens, env, statik, errors, tk);
+                                    let pos = Position(tk.pos.0, tk_close.pos.0 + tk.pos.1 - tk.pos.0);
                             
-                            let value = parse_expr(arena, tokens, env, statik, errors);
+                                    let t = eval_type(items[0], env);
+                                    if let Err(err) = t {
+                                        push_error(errors, err.msg, err.pos);
+                                        return make_invalid(arena, pos);
+                                    }
+                            
+                                    let t = t.unwrap(); //TODO remove unwrap
+                                    for item in &items[1..] {
+                                        match eval_type(item, env) {
+                                            Ok(t_) => {
+                                                if t != t_ {
+                                                    push_error(errors, "Array items type mismatch".to_string(), pos);
+                                                }
+                                            }
+                                            Err(err) => {
+                                                push_error(errors, err.msg, err.pos);
+                                            }
+                                        }
+                                    }
+                            
+                                    parse_expr_next(
+                                        arena,
+                                        tokens,
+                                        env,
+                                        statik,
+                                        errors,
+                                        arena.alloc(Expr {
+                                            def: ExprDef::ArrayLit {
+                                                items: items.into_boxed_slice(),
+                                                t: Box::new(t),
+                                            },
+                                            pos: tk.pos,
+                                        }),
+                                    )
+                                } else {
+                                    push_error(errors, "Expected array literal".to_string(), pos);
+                                    declare_local(env, &id, &t);
+                                    arena.alloc(Expr {
+                                        def: ExprDef::VarDecl(id, t.clone(), None),
+                                        pos,
+                                    })
+                                }
+                            } else {
+                                parse_expr(arena, tokens, env, statik, errors)
+                            };
                             let t = match eval_type(value, env) {
                                 Ok(t_) => {
                                     if t != t_ {

@@ -1,4 +1,6 @@
+#[cfg(test)]
 mod tests;
+
 mod ast;
 mod env;
 mod interpreter;
@@ -9,7 +11,7 @@ mod vm;
 
 use ast::Ast;
 use interpreter::Interpreter;
-use vm::{ Chunk };
+use vm::Chunk;
 
 pub fn build_ast<'a>(program: &str) -> Result<Ast<'a>, String> {
     match Ast::from_str(program) {

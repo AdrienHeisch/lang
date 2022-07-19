@@ -331,32 +331,59 @@ impl<'e> Interpreter<'e> {
         let value_left = self.expr(e_left)?;
         let value_right = self.expr(e_right)?;
 
-        if op == Op::Assign {
-            if let ExprDef::UnOp {
-                op: Op::MultOrDeref,
-                e,
-            } = e_left.def
-            {
-                if let Pointer(addr, ptr_t) = self.expr(e)? {
-                    if *ptr_t == value_right.as_type() {
-                        let value = self.expr(e_right)?;
-                        self.memory.set_var(
-                            &Variable {
-                                t: *ptr_t.clone(),
-                                raw: Address {
-                                    pos: addr.try_into().unwrap(),
-                                    len: ptr_t.get_size(),
+        if op == Op::Assign { // TODO move to self.assign
+            match e_left.def {
+                ExprDef::UnOp {
+                            op: Op::MultOrDeref,
+                            e,
+                        } => {
+                    if let Pointer(addr, t) = self.expr(e)? {
+                        if value_right.as_type() == *t {
+                            self.memory.set_var(
+                                &Variable {
+                                    t: *t.clone(),
+                                    raw: Address {
+                                        pos: addr.try_into().unwrap(),
+                                        len: t.get_size(),
+                                    },
                                 },
-                            },
-                            &value,
-                        );
-                        return Ok(Value::Void);
+                                &value_right,
+                            );
+                            return Ok(Value::Void);
+                        }
+                    }
+                },
+                ExprDef::BinOp{ op: Op::Index, left, right } => {
+                    if let Array { addr, len, t } = self.expr(left)? {
+                        if let Int(index) = self.expr(right)? {
+                            let index = index as u32;
+                            if index >= len {
+                                panic!()
+                            }
+                            let value = self.expr(e_right)?;
+                            self.memory.set_var(
+                                &Variable {
+                                    t: *t.clone(),
+                                    raw: Address {
+                                        pos: addr as usize + t.get_size() * index as usize,
+                                        len: t.get_size(),
+                                    },
+                                },
+                                &value,
+                            );
+                            return Ok(Value::Void);
+                        } else {
+                            panic!()
+                        }
+                    } else {
+                        panic!()
                     }
                 }
+                _ => (),
             }
         }
 
-        // TODO remmove multiple "self.expr(e_right)" calls
+        // TODO remove multiple "self.expr(e_right)" calls
         use {Op::*, Value::*};
         Ok(match (value_left, value_right) {
             (Pointer(_, ptr_t_l), Pointer(_, ptr_t_r)) if *ptr_t_l == *ptr_t_r => match op {

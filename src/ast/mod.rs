@@ -14,7 +14,7 @@ pub struct Ast<'a> {
 }
 
 impl<'ast> Ast<'ast> {
-    pub fn from_str(source: &str) -> Result<Self, Vec<Error>> {
+    pub fn from_str(source: &str) -> Result<Self, Vec<Error>> { // TODO should return (Ast, Vec<Error>)
         match lexer::lex(source) {
             Ok(tokens) => {
                 if cfg!(lang_print_lexer_output) && cfg!(not(lang_benchmark)) {
