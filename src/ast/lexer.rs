@@ -133,6 +133,38 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                 TokenDef::Const(Value::Int(read_cursor!().parse().unwrap()))
             }
         }
+        '\'' => {
+            let char = get_char!();
+            len += 1;
+            let c = get_char!();
+            if c != '\'' {
+                return (
+                    Err(collect_unexpected_chars(
+                        program,
+                        c,
+                        &mut pos,
+                        &mut len,
+                        LexErrCode::UnexpectedChar,
+                    )),
+                    len,
+                )
+            }
+            len += 1;
+            TokenDef::Const(Value::Char(char))
+        }
+        '"' => {
+            pos += 1;
+            loop
+            {
+                let c = get_char!();
+                if c == '"' { break; }
+                len += 1;
+            }
+            // let tk = TokenDef::Const(Value::Str(String::from(read_cursor!())));
+            let tk = TokenDef::StringLit(read_cursor!().chars().collect());
+            len += 2;
+            tk
+        },
         '/' if { get_char!() == '/' } => {
             //COMMENT
             while get_char!() != '\n' && get_char!() != EOF {
@@ -170,18 +202,6 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                 )), len);
             }
         }
-        /* '"' => {
-            pos += 1;
-            loop
-            {
-                let c = get_char!();
-                if c == '"' { break; }
-                len += 1;
-            }
-            let tk = TokenDef::Const(Value::Str(String::from(read_cursor!())));
-            len += 2;
-            tk
-        }, */
         c @ '(' | c @ '[' | c @ '{' => TokenDef::DelimOpen(Delimiter::from_char(c)),
         c @ ')' | c @ ']' | c @ '}' => TokenDef::DelimClose(Delimiter::from_char(c)),
         ',' => TokenDef::Comma,

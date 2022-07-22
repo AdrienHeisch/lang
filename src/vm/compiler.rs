@@ -39,6 +39,7 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
                 Value::Pointer(_, _) => todo!(),
                 Value::Int(i) if *i <= 0x7fff => *i as u16,
                 Value::Int(_) => panic!("Int out of range"),
+                Value::Char(c) => *c as u16,
                 Value::Float(_) => unimplemented!(), //TODO two's complement
                 Value::Bool(false) => 0,
                 Value::Bool(true) => 1,
@@ -55,6 +56,7 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, u16>,
             }
         }
         ArrayLit { .. } => todo!(),
+        StringLit { .. } => todo!(),
         If { cond, then, elze } => {
             let before_if = chunk.len();
             chunk.push(0); // A = tbd

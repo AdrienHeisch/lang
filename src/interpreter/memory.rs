@@ -43,6 +43,7 @@ impl Memory for RawMemory {
                 }
             },
             Type::Int => Value::Int(i32::from_ne_bytes(self.access(var.raw).try_into().unwrap())),
+            Type::Char => Value::Char(self.access(var.raw)[0] as char),
             Type::Float => {
                 Value::Float(f32::from_ne_bytes(self.access(var.raw).try_into().unwrap()))
             }
@@ -65,6 +66,9 @@ impl Memory for RawMemory {
             }
             Int(i) => {
                 self.access_mut(var.raw).copy_from_slice(&i.to_ne_bytes());
+            }
+            Char(c) => {
+                self.access_mut(var.raw)[0] = *c as u8;
             }
             Float(f) => {
                 self.access_mut(var.raw).copy_from_slice(&f.to_ne_bytes());

@@ -81,6 +81,7 @@ pub enum ExprDef<'e> {
     // --- Values
     Const(Value),
     Id(Identifier),
+    StringLit(Vec<char>), //TODO any way to use Box<T> ?
     ArrayLit{ items: Box<[&'e Expr<'e>]>, t: Box<Type> },
     // --- Control Flow
     If {
@@ -154,6 +155,7 @@ pub type Token = WithPosition<TokenDef>;
 pub enum TokenDef {
     Id(Identifier),
     Const(Value),
+    StringLit(Vec<char>), //TODO any way to use Box<T> ?
     Op(Op),
     DelimOpen(Delimiter),
     DelimClose(Delimiter),

@@ -7,6 +7,7 @@ pub enum Value {
     Pointer(u32, Box<Type>), //TODO u32 or usize ?
     Array { addr: u32, len: u32, t: Box<Type> },
     Int(i32),
+    Char(char),
     Float(f32),
     Bool(bool),
     Void,
@@ -17,6 +18,7 @@ pub enum Type {
     Pointer(Box<Type>),
     Array { len: u32, t: Box<Type> },
     Int,
+    Char,
     Float,
     Bool,
     Fn(Box<[Type]>, Box<Type>),
@@ -32,6 +34,7 @@ impl Value {
                 t: t.clone(),
             },
             Value::Int(_) => Type::Int,
+            Value::Char(_) => Type::Char,
             Value::Float(_) => Type::Float,
             Value::Bool(_) => Type::Bool,
             Value::Void => Type::Void,
@@ -46,6 +49,7 @@ impl std::fmt::Display for Value {
             Pointer(p, t) => write!(fmt, "{} @ {}", t, p),
             Array { addr, len, t } => write!(fmt, "{}[{}] @ {}", t, len, addr),
             Int(i) => write!(fmt, "{}", i),
+            Char(c) => write!(fmt, "{}", c),
             Float(f) => write!(fmt, "{}", f),
             Bool(b) => write!(fmt, "{}", b),
             Void => write!(fmt, "void"),
@@ -55,7 +59,7 @@ impl std::fmt::Display for Value {
 
 macro_rules! type_id_pattern {
     () => {
-        b"int\0\0\0\0\0" | b"float\0\0\0" | b"bool\0\0\0\0"
+        b"int\0\0\0\0\0" | b"float\0\0\0" | b"bool\0\0\0\0" | b"char\0\0\0\0"
     };
 }
 pub(crate) use type_id_pattern;
@@ -65,6 +69,7 @@ impl Type {
         use Type::*;
         match id {
             b"int\0\0\0\0\0" => Int,
+            b"char\0\0\0\0" => Char,
             b"float\0\0\0" => Float,
             b"bool\0\0\0\0" => Bool,
             b"void\0\0\0\0" => Void,
@@ -86,6 +91,7 @@ impl Type {
                 t: Box::new(*t.clone()),
             },
             Int => Value::Int(Default::default()),
+            Char => Value::Char(Default::default()),
             Float => Value::Float(Default::default()),
             Bool => Value::Bool(Default::default()),
             Fn(_, _) => panic!(),
@@ -99,6 +105,7 @@ impl Type {
             Pointer(_) => size_of::<u32>(),
             Array { .. } => size_of::<u32>() * 2,
             Int => size_of::<i32>(),
+            Char => size_of::<char>(),
             Float => size_of::<f32>(),
             Bool => size_of::<bool>(),
             Fn(_, _) => panic!(),

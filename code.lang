@@ -1,1 +1,1 @@
-int[3] a; a[1] = 60; int k = a[1];
+char[5] a = "Hello";

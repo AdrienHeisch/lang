@@ -31,7 +31,7 @@ pub fn parse<'e, 't>(
     let mut errors = Vec::new();
 
     let mut statements = Vec::new();
-    let mut statik: StaticMem = Default::default();
+    let mut statik: StaticMem = Default::default(); //TODO remove this
 
     loop {
         statements.push(parse_statement(
@@ -105,6 +105,17 @@ fn parse_expr<'e, 't>(
             }),
         ),
         TokenDef::Id(_) => parse_structure(arena, tokens, env, statik, errors, tk),
+        TokenDef::StringLit(chars) => parse_expr_next(
+            arena,
+            tokens,
+            env,
+            statik,
+            errors,
+            arena.alloc(Expr {
+                def: ExprDef::StringLit(chars.clone()),
+                pos: tk.pos,
+            }),
+        ),
         TokenDef::Op(op) => {
             let e = parse_expr(arena, tokens, env, statik, errors);
             let expr = match e.def {
@@ -424,24 +435,31 @@ fn parse_structure<'e, 't>(
                         TokenDef::Op(Op::Assign) => {
                             next(tokens);
 
-                            let value = if let Type::Array { .. } = &t {
-                                let tk = next(tokens);
+                            let value = if let Type::Array { t: t_arr, .. } = &t {
+                                let tk = peek(tokens);
                                 if let TokenDef::DelimOpen(Delimiter::Br) = &tk.def {
-                                    let (items, tk_close) = make_expr_list(arena, tokens, env, statik, errors, tk);
-                                    let pos = Position(tk.pos.0, tk_close.pos.0 + tk.pos.1 - tk.pos.0);
-                            
+                                    next(tokens);
+                                    let (items, tk_close) =
+                                        make_expr_list(arena, tokens, env, statik, errors, tk);
+                                    let pos =
+                                        Position(tk.pos.0, tk_close.pos.0 + tk.pos.1 - tk.pos.0);
+
                                     let t = eval_type(items[0], env);
                                     if let Err(err) = t {
                                         push_error(errors, err.msg, err.pos);
                                         return make_invalid(arena, pos);
                                     }
-                            
+
                                     let t = t.unwrap(); //TODO remove unwrap
                                     for item in &items[1..] {
                                         match eval_type(item, env) {
                                             Ok(t_) => {
                                                 if t != t_ {
-                                                    push_error(errors, "Array items type mismatch".to_string(), pos);
+                                                    push_error(
+                                                        errors,
+                                                        "Array items type mismatch".to_string(),
+                                                        pos,
+                                                    );
                                                 }
                                             }
                                             Err(err) => {
@@ -449,7 +467,7 @@ fn parse_structure<'e, 't>(
                                             }
                                         }
                                     }
-                            
+
                                     parse_expr_next(
                                         arena,
                                         tokens,
@@ -464,6 +482,21 @@ fn parse_structure<'e, 't>(
                                             pos: tk.pos,
                                         }),
                                     )
+                                } else if **t_arr == Type::Char {
+                                    let expr = parse_expr(arena, tokens, env, statik, errors);
+                                    if let ExprDef::StringLit(_) = expr.def {
+                                        expr
+                                    } else {
+                                        push_error(
+                                            errors,
+                                            "Expected string literal".to_string(),
+                                            pos,
+                                        );
+                                        arena.alloc(Expr {
+                                            def: ExprDef::VarDecl(id, t.clone(), None),
+                                            pos,
+                                        })
+                                    }
                                 } else {
                                     push_error(errors, "Expected array literal".to_string(), pos);
                                     declare_local(env, &id, &t);
@@ -908,6 +941,10 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
         ExprDef::ArrayLit { items, t } => Type::Array {
             len: items.len() as u32,
             t: t.clone(),
+        },
+        ExprDef::StringLit(chars) => Type::Array {
+            len: chars.len() as u32,
+            t: Box::new(Type::Char),
         },
         ExprDef::If { then, elze, .. } => {
             let then_type = unwrap_or_return!(eval_type(then, env));

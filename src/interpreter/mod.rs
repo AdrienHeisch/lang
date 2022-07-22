@@ -126,13 +126,35 @@ impl<'e> Interpreter<'e> {
                             raw: Address { pos, len: t_len },
                         },
                         &value,
-                    ); // FIXME ptr is for the whole array !
+                    );
                     pos += t_len;
                 }
                 Value::Array {
                     addr: ptr.pos as u32,
                     len: arr_len as u32,
                     t: t.clone(),
+                }
+            }
+            StringLit(chars) => {
+                let t_len = Type::Char.get_size();
+                let arr_len = chars.len();
+                let ptr = self.memory.alloc(t_len * arr_len);
+                let mut pos = ptr.pos;
+                for char in chars.iter() {
+                    let value = Value::Char(*char);
+                    self.memory.set_var(
+                        &Variable {
+                            t: Type::Char,
+                            raw: Address { pos, len: t_len },
+                        },
+                        &value,
+                    );
+                    pos += t_len;
+                }
+                Value::Array {
+                    addr: ptr.pos as u32,
+                    len: arr_len as u32,
+                    t: Box::new(Type::Char),
                 }
             }
             // --- Control Flow
