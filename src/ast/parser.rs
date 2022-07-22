@@ -385,32 +385,34 @@ fn parse_structure<'e, 't>(
                 Type::from_identifier(&keyword)
             };
 
+            let mut array_len_tdb = false;
             let mut tk = next(tokens);
             if let TokenDef::DelimOpen(Delimiter::SqBr) = tk.def {
                 tk = next(tokens);
-                if let TokenDef::Const(Value::Int(len)) = tk.def {
-                    if len > 0 {
-                        t = Type::Array {
-                            len: len as u32,
-                            t: Box::new(t),
-                        };
+                let len = if let TokenDef::Const(Value::Int(len)) = tk.def {
+                    tk = next(tokens);
+                    len
+                } else {
+                    array_len_tdb = true;
+                    1
+                };
+                if len > 0 {
+                    t = Type::Array {
+                        len: len as u32,
+                        t: Box::new(t),
+                    };
+                    if let TokenDef::DelimClose(Delimiter::SqBr) = tk.def {
                         tk = next(tokens);
-                        if let TokenDef::DelimClose(Delimiter::SqBr) = tk.def {
-                            tk = next(tokens);
-                        } else {
-                            push_error(errors, "Expected ]".to_string(), tk.pos);
-                            return make_invalid(arena, pos);
-                        }
                     } else {
-                        push_error(
-                            errors,
-                            "Array length must be superior to 0".to_string(),
-                            tk.pos,
-                        );
+                        push_error(errors, format!("Expected ], got {:?}", tk.def), tk.pos);
                         return make_invalid(arena, pos);
                     }
                 } else {
-                    push_error(errors, "Array needs a length".to_string(), tk.pos);
+                    push_error(
+                        errors,
+                        "Array length must be superior to 0".to_string(),
+                        tk.pos,
+                    );
                     return make_invalid(arena, pos);
                 }
             }
@@ -426,6 +428,12 @@ fn parse_structure<'e, 't>(
                     match tk.def {
                         // VARIABLE
                         TokenDef::Semicolon => {
+                            if array_len_tdb {
+                                if let Type::Array { .. } = t {
+                                    push_error(errors, "Array needs a length".to_string(), tk.pos);
+                                    return make_invalid(arena, pos);
+                                }
+                            }
                             declare_local(env, &id, &t);
                             arena.alloc(Expr {
                                 def: ExprDef::VarDecl(id, t, None),
@@ -435,12 +443,16 @@ fn parse_structure<'e, 't>(
                         TokenDef::Op(Op::Assign) => {
                             next(tokens);
 
-                            let value = if let Type::Array { t: t_arr, .. } = &t {
+                            let value = if let Type::Array { t: t_arr, len } = &mut t {
                                 let tk = peek(tokens);
                                 if let TokenDef::DelimOpen(Delimiter::Br) = &tk.def {
                                     next(tokens);
                                     let (items, tk_close) =
                                         make_expr_list(arena, tokens, env, statik, errors, tk);
+                                    if array_len_tdb {
+                                        *len = items.len() as u32;
+                                    }
+
                                     let pos =
                                         Position(tk.pos.0, tk_close.pos.0 + tk.pos.1 - tk.pos.0);
 
@@ -484,7 +496,10 @@ fn parse_structure<'e, 't>(
                                     )
                                 } else if **t_arr == Type::Char {
                                     let expr = parse_expr(arena, tokens, env, statik, errors);
-                                    if let ExprDef::StringLit(_) = expr.def {
+                                    if let ExprDef::StringLit(chars) = &expr.def {
+                                        if array_len_tdb {
+                                            *len = chars.len() as u32;
+                                        }
                                         expr
                                     } else {
                                         push_error(

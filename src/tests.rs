@@ -421,6 +421,13 @@ test_assert_eq!(
     Value::Int(60)
 );
 
+test_assert_eq!(
+    array_auto_length,
+    "int[] a = {24, 60, 183}; int k = a[1];",
+    "k",
+    Value::Int(60)
+);
+
 test_should_panic!(
     array_invalid_length,
     "int[3] a = {12, 53};"
@@ -434,4 +441,11 @@ test_should_panic!(
 test_should_panic!(
     array_invalid_literal,
     "int[3] a = [12, 53, 84];"
+);
+
+test_assert_eq!(
+    string,
+    "char[5] s = \"Hello\"; char c = s[3];",
+    "c",
+    Value::Char('l')
 );
