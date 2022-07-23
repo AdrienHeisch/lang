@@ -77,10 +77,6 @@ impl Type {
         }
     }
 
-    pub fn from_identifier_ptr(id: &Identifier) -> Self {
-        Self::Pointer(Box::new(Self::from_identifier(id)))
-    }
-
     pub fn to_value(&self) -> Value {
         use Type::*;
         match self {
@@ -118,8 +114,8 @@ impl std::fmt::Display for Type {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Type::*;
         match self {
-            Pointer(t) => write!(fmt, "{:?}*", t),
-            Array { len, t } => write!(fmt, "{:?}[{}]", t, len),
+            Pointer(t) => write!(fmt, "{}*", t),
+            Array { len, t } => write!(fmt, "{}[{}]", t, len),
             _ => write!(fmt, "{:?}", self),
         }
     }

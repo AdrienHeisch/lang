@@ -352,7 +352,7 @@ impl<'e> Interpreter<'e> {
         let value_right = self.expr(e_right)?;
 
         if op == Op::Assign {
-            // TODO move to self.assign
+            // TODO move to self.assign ?
             match e_left.def {
                 ExprDef::UnOp {
                     op: Op::MultOrDeref,
@@ -523,7 +523,6 @@ impl<'e> Interpreter<'e> {
             }
         }
         Ok(Value::Void)
-        // Ok(value.def) //TODO should be void ?
     }
 
     fn call(&mut self, e_id: &Expr<'e>, args: &[&Expr<'e>]) -> Result<Value, ResultErr> {
@@ -553,7 +552,8 @@ impl<'e> Interpreter<'e> {
                         // eprintln!("Unknown function identifier : {}", std::str::from_utf8(id).ok().unwrap());
                         let (params, body) =
                             if let Reference::Fn(params, body) = self.get_ref(id).unwrap() {
-                                (params, body) //TODO env / args
+                                //TODO unwrap panics on recursion
+                                (params, body)
                             } else {
                                 panic!("Tried to call on a value.") //DESIGN functions as values ?
                             };
@@ -576,9 +576,7 @@ impl<'e> Interpreter<'e> {
                         self.frame_ptr += self.env.locals_count;
 
                         let prev_env =
-                            std::mem::replace(&mut self.env, Environment::new(Context::Function)); //TODO id this needed ?
-
-                        // self.declare_fn(id, params: Box<[Identifier]>, body: &Expr<'e>)
+                            std::mem::replace(&mut self.env, Environment::new(Context::Function));
 
                         if params.len() != args.len() {
                             // panic!("Invalid number of arguments.");
@@ -683,7 +681,7 @@ impl<'e> Interpreter<'e> {
     fn free_unused_stack(&mut self) {
         match &self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)] {
             Reference::Var(ptr) => self.memory.free_from(ptr.raw.pos),
-            Reference::Fn(_, _) => (), //TODO ?
+            Reference::Fn(_, _) => (),
         }
     }
 

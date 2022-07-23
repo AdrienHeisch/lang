@@ -7,7 +7,7 @@ use std::collections::VecDeque;
 
 type LexErr = (String, LexErrCode);
 
-pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> //TODO retest vecdeque vs vec
+pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>>
 {
     let mut tokens = VecDeque::new();
     let mut errors = Vec::new();
@@ -88,7 +88,6 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                 len += 1;
             }
             match read_cursor!() {
-                //TODO keyword tokens
                 "true" => TokenDef::Const(Value::Bool(true)),
                 "false" => TokenDef::Const(Value::Bool(false)),
                 "if" => TokenDef::If,

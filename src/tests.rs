@@ -371,9 +371,38 @@ test_assert_eq!(
 
 test_assert_eq!(
     pointer_assign,
-    "int i = 6; int j = 7; int *p = &j; *p = 8; int k = *p;",
+    "int i = 6; int j = 7; int *p = &j; *p = 9; int k = *p;",
     "k",
-    Value::Int(8)
+    Value::Int(9)
+);
+
+test_assert_eq!(
+    pointer_double_create,
+    "int i = 6; int j = 7; int *p = &j; int **pp = &p;",
+    "pp",
+    Value::Pointer(8, Box::new(Type::Pointer(Box::new(Type::Int))))
+);
+
+test_assert_eq!(
+    pointer_double_deref,
+    "int i = 6; int j = 7; int *p = &j; int **pp = &p; int k = **pp;",
+    "k",
+    Value::Int(7)
+);
+
+//TODO fixed by disabling parser errors (works in interpreter)
+test_assert_eq!(
+    pointer_double_assign,
+    "int i = 6; int j = 7; int *p = &j; int **pp = &p; **pp = 9; int k = **pp;",
+    "k",
+    Value::Int(9)
+);
+
+test_assert_eq!(
+    pointer_double_assign_ptr,
+    "int i = 6; int j = 7; int *q = &i; int **pp = &q; int *p = &j; pp = &p; int k = **pp;",
+    "k",
+    Value::Int(7)
 );
 
 test_assert_eq!(

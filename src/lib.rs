@@ -17,6 +17,7 @@ use vm::Chunk;
 //TODO main() function
 //TODO top level
 //TODO use real C compiler tests
+//TODO hunt unwrap / clone / panic!
 
 pub fn build_ast<'a>(program: &str) -> Result<Ast<'a>, String> {
     match Ast::from_str(program) {

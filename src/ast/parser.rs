@@ -276,7 +276,6 @@ fn parse_expr<'e, 't>(
     }
 }
 
-//TODO assert previous expression
 fn parse_expr_next<'e, 't>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'t>,
@@ -375,14 +374,12 @@ fn parse_structure<'e, 't>(
     match &keyword {
         type_id_pattern!() => {
             //TODO should basic types be dedicated tokens ?
-            //TODO t could be immutable ?
-            let mut t = if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
-                //TODO pointer of pointer
+            //TODO pointer of pointer
+            let mut t = Type::from_identifier(&keyword);
+            while let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
                 next(tokens);
-                Type::from_identifier_ptr(&keyword)
-            } else {
-                Type::from_identifier(&keyword)
-            };
+                t = Type::Pointer(Box::new(t))
+            }
 
             let mut array_len_tdb = false;
             let mut tk = next(tokens);
@@ -461,7 +458,7 @@ fn parse_structure<'e, 't>(
                                         return make_invalid(arena, pos);
                                     }
 
-                                    let t = t.unwrap(); //TODO remove unwrap
+                                    let t = t.unwrap();
                                     for item in &items[1..] {
                                         match eval_type(item, env) {
                                             Ok(t_) => {
@@ -624,7 +621,6 @@ fn parse_structure<'e, 't>(
                                 }
                             };
 
-                            //TODO recursion ?
                             declare_local(
                                 env,
                                 &id,
@@ -651,10 +647,9 @@ fn parse_structure<'e, 't>(
                             }
                         }
                         _ => {
-                            //TODO uninitialized var
                             push_error(
                                 errors,
-                                format!("Expected assign operator, got : {:?}", tk.def),
+                                format!("Unexpected token : {:?}", tk.def),
                                 tk.pos,
                             );
                             make_invalid(arena, pos)
@@ -886,6 +881,7 @@ fn next<'t>(tokens: &mut TkIter<'t>) -> &'t Token {
 
 // ----- SCOPES -----
 
+//TODO better error handling here
 fn declare_local(env: &mut Environment, id: &Identifier, t: &Type) {
     let n_locals = env.locals_count;
 
@@ -909,7 +905,7 @@ fn declare_local(env: &mut Environment, id: &Identifier, t: &Type) {
         env.locals_count = n_locals;
     } else {
         // push_error("Too many locals.", tk.pos);
-        panic!("Too many locals."); //TODO better error handling here
+        panic!("Too many locals.");
     }
 }
 
@@ -950,8 +946,8 @@ fn sort_functions_first(statements: &mut [&Expr]) {
 // ----- TYPING -----
 
 //TODO should type checking be performed after parsing ?
-fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
     // TODO could this be replaced by an interpreter instance ?
+fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
     macro_rules! unwrap_or_return {
         ($e:expr) => {
             match $e {
@@ -1235,18 +1231,17 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
         ExprDef::FnDecl { .. } => Type::Void,
         ExprDef::StructDecl { .. } => Type::Void,
         ExprDef::Block(exprs) => {
-            let mut local_env = env.clone(); //TODO is this needed ?
-            local_env.open_scope();
+            env.open_scope();
             for e in exprs.iter() {
                 match &e.def {
-                    ExprDef::VarDecl(id, t, _) => declare_local(&mut local_env, id, t),
+                    ExprDef::VarDecl(id, t, _) => declare_local(env, id, t),
                     ExprDef::FnDecl {
                         id,
                         params,
                         return_t,
                         ..
                     } => declare_local(
-                        &mut local_env,
+                        env,
                         id,
                         &Type::Fn(
                             params.iter().map(|param| param.1.clone()).collect(),
@@ -1255,9 +1250,9 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                     ),
                     _ => (),
                 }
-                unwrap_or_return!(eval_type(e, &local_env)); //TODO is the inner type checking on e needed ?
+                unwrap_or_return!(eval_type(e, env)); //TODO is the inner type checking on e needed ?
             }
-            local_env.close_scope();
+            env.close_scope();
             Type::Void
         }
         ExprDef::Parent(e) => {

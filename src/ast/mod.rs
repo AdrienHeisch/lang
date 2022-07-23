@@ -81,7 +81,7 @@ pub enum ExprDef<'e> {
     // --- Values
     Const(Value),
     Id(Identifier),
-    StringLit(Vec<char>), //TODO any way to use Box<T> ?
+    StringLit(Box<[char]>),
     //TODO what about scalar initializers ?
     ArrayLit {
         items: Box<[&'e Expr<'e>]>,
@@ -129,7 +129,7 @@ pub enum ExprDef<'e> {
     Parent(&'e Expr<'e>),
     Return(&'e Expr<'e>),
     Invalid,
-    End, //TODO this seems to be useless
+    End,
 }
 
 impl<'e> Expr<'e> {
@@ -159,7 +159,7 @@ pub type Token = WithPosition<TokenDef>;
 pub enum TokenDef {
     Id(Identifier),
     Const(Value),
-    StringLit(Vec<char>), //TODO any way to use Box<T> ?
+    StringLit(Box<[char]>),
     Op(Op),
     DelimOpen(Delimiter),
     DelimClose(Delimiter),
