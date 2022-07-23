@@ -6,7 +6,8 @@
         "TODO",
         "FIXME",
         "DESIGN",
-        "RESEARCH"
+        "RESEARCH",
+        "HACK"
     ],
     "todo-tree.highlights.defaultHighlight": {
         "iconColour": "white"

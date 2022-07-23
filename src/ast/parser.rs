@@ -117,9 +117,13 @@ fn parse_expr<'e, 't>(
             }),
         ),
         TokenDef::Op(op) => {
+            let n_errs = errors.len();
             let e = parse_expr(arena, tokens, env, statik, errors);
             let expr = match e.def {
                 ExprDef::BinOp { ref mut left, .. } => {
+                    while errors.len() > n_errs { //HACK
+                        errors.pop();
+                    }
                     *left = arena.alloc(Expr {
                         def: ExprDef::UnOp { op: *op, e: left },
                         pos: tk.pos + e.pos,

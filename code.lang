@@ -1,7 +1,6 @@
-int add(int a, int b) {
-    return a + b;
-}
-
-int a = 5;
-int b = add(a, 6);
-print(b);
+int i = 6;
+int j = 7;
+int *p = &j;
+int **pp = &p;
+**pp = 9;
+int k = **pp;
