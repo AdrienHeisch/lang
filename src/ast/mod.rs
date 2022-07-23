@@ -82,6 +82,7 @@ pub enum ExprDef<'e> {
     Const(Value),
     Id(Identifier),
     StringLit(Vec<char>), //TODO any way to use Box<T> ?
+    //TODO what about scalar initializers ?
     ArrayLit {
         items: Box<[&'e Expr<'e>]>,
         t: Box<Type>,

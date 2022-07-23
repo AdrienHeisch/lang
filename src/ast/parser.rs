@@ -238,7 +238,6 @@ fn parse_expr<'e, 't>(
                 make_invalid(arena, tk.pos)
             }
         }
-        //DESIGN should blocks return last expression only if there is no semicolon like rust ?
         TokenDef::DelimOpen(Delimiter::Br) => {
             env.open_scope();
 
@@ -1238,7 +1237,6 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
         ExprDef::Block(exprs) => {
             let mut local_env = env.clone(); //TODO is this needed ?
             local_env.open_scope();
-            let mut return_type = Type::Void;
             for e in exprs.iter() {
                 match &e.def {
                     ExprDef::VarDecl(id, t, _) => declare_local(&mut local_env, id, t),
@@ -1257,10 +1255,10 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                     ),
                     _ => (),
                 }
-                return_type = unwrap_or_return!(eval_type(e, &local_env));
+                unwrap_or_return!(eval_type(e, &local_env)); //TODO is the inner type checking on e needed ?
             }
             local_env.close_scope();
-            return_type
+            Type::Void
         }
         ExprDef::Parent(e) => {
             unwrap_or_return!(eval_type(e, env))

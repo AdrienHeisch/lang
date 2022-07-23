@@ -339,11 +339,9 @@ test_assert_eq!(
 
 test_should_panic!(scope_1, "{ int a = 0; } int b = a;");
 
-test_assert_eq!(
+test_should_panic!(
     block_value,
-    "int a = { int b = 1; b; };",
-    "a",
-    Value::Int(1)
+    "int a = { 5; };"
 );
 
 test_should_panic!(assign_expr_value, "int a = { int b = 1; };");

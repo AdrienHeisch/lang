@@ -272,19 +272,16 @@ impl<'e> Interpreter<'e> {
             Block(exprs) => {
                 if !exprs.is_empty() {
                     self.env.open_scope();
-                    let mut ret = Value::Void;
                     for expr in exprs.iter() {
-                        ret = match self.expr(expr) {
+                        match self.expr(expr) {
                             Ok(val) => val,
                             err @ Err(_) => return err,
                         };
                     }
                     self.env.close_scope();
                     self.free_unused_stack();
-                    ret
-                } else {
-                    Value::Void
                 }
+                Value::Void
             }
             Parent(e) => self.expr(e)?,
             Return(e) => {
@@ -354,12 +351,13 @@ impl<'e> Interpreter<'e> {
         let value_left = self.expr(e_left)?;
         let value_right = self.expr(e_right)?;
 
-        if op == Op::Assign { // TODO move to self.assign
+        if op == Op::Assign {
+            // TODO move to self.assign
             match e_left.def {
                 ExprDef::UnOp {
-                            op: Op::MultOrDeref,
-                            e,
-                        } => {
+                    op: Op::MultOrDeref,
+                    e,
+                } => {
                     if let Pointer(addr, t) = self.expr(e)? {
                         if value_right.as_type() == *t {
                             self.memory.set_var(
@@ -375,8 +373,12 @@ impl<'e> Interpreter<'e> {
                             return Ok(Value::Void);
                         }
                     }
-                },
-                ExprDef::BinOp{ op: Op::Index, left, right } => {
+                }
+                ExprDef::BinOp {
+                    op: Op::Index,
+                    left,
+                    right,
+                } => {
                     if let Array { addr, len, t } = self.expr(left)? {
                         if let Int(index) = self.expr(right)? {
                             let index = index as u32;

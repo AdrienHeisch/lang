@@ -13,6 +13,11 @@ use ast::Ast;
 use interpreter::Interpreter;
 use vm::Chunk;
 
+//TODO linker
+//TODO main() function
+//TODO top level
+//TODO use real C compiler tests
+
 pub fn build_ast<'a>(program: &str) -> Result<Ast<'a>, String> {
     match Ast::from_str(program) {
         Ok(ast) => Ok(ast),
