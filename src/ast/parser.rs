@@ -121,7 +121,8 @@ fn parse_expr<'e, 't>(
             let e = parse_expr(arena, tokens, env, statik, errors);
             let expr = match e.def {
                 ExprDef::BinOp { ref mut left, .. } => {
-                    while errors.len() > n_errs { //HACK
+                    while errors.len() > n_errs {
+                        //HACK
                         errors.pop();
                     }
                     *left = arena.alloc(Expr {
@@ -380,50 +381,86 @@ fn parse_structure<'e, 't>(
             //TODO should basic types be dedicated tokens ?
             //TODO pointer of pointer
             let mut t = Type::from_identifier(&keyword);
-            while let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
-                next(tokens);
-                t = Type::Pointer(Box::new(t))
-            }
 
-            let mut array_len_tdb = false;
-            let mut tk = next(tokens);
-            if let TokenDef::DelimOpen(Delimiter::SqBr) = tk.def {
-                tk = next(tokens);
-                let len = if let TokenDef::Const(Value::Int(len)) = tk.def {
-                    tk = next(tokens);
-                    len
+            if let TokenDef::DelimOpen(Delimiter::Pr) = peek(tokens).def {
+                next(tokens);
+                if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
+                    next(tokens);
                 } else {
-                    array_len_tdb = true;
-                    1
-                };
-                if len > 0 {
-                    t = Type::Array {
-                        len: len as u32,
-                        t: Box::new(t),
-                    };
-                    if let TokenDef::DelimClose(Delimiter::SqBr) = tk.def {
-                        tk = next(tokens);
-                    } else {
-                        push_error(errors, format!("Expected ], got {:?}", tk.def), tk.pos);
-                        return make_invalid(arena, pos);
-                    }
-                } else {
-                    push_error(
-                        errors,
-                        "Array length must be superior to 0".to_string(),
-                        tk.pos,
-                    );
-                    return make_invalid(arena, pos);
+                    panic!();
+                }
+                t = Type::Fn(Box::new([]), Box::new(t));
+            } else {
+                while let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
+                    next(tokens);
+                    t = Type::Pointer(Box::new(t))
                 }
             }
 
+            let mut tk = next(tokens);
             match tk.def {
                 TokenDef::Id(id) if matches!(&id, type_id_pattern!()) => {
                     push_error(errors, format!("Invalid identifier : {:?}", tk.def), tk.pos);
                     make_invalid(arena, pos)
                 }
                 TokenDef::Id(id) => {
-                    let pos = pos + tk.pos;
+                    let mut array_len_tdb = false;
+                    if let Type::Fn(ref mut args, _) = t {
+                        if let TokenDef::DelimClose(Delimiter::Pr) = peek(tokens).def {
+                            next(tokens);
+                        } else {
+                            panic!();
+                        }
+
+                        tk = next(tokens);
+                        if let TokenDef::DelimOpen(Delimiter::Pr) = tk.def {
+                        } else {
+                            panic!();
+                        }
+
+                        let mut args_vec = Vec::new();
+                        let (arg_types, _) = make_types_list(tokens, errors, tk);
+                        for arg_t in arg_types.into_iter() {
+                            args_vec.push(arg_t);
+                        }
+                        *args = args_vec.into_boxed_slice();
+                    } else if let TokenDef::DelimOpen(Delimiter::SqBr) = peek(tokens).def {
+                        next(tokens);
+                        tk = next(tokens);
+                        let len = if let TokenDef::Const(Value::Int(len)) = tk.def {
+                            tk = next(tokens);
+                            len
+                        } else {
+                            array_len_tdb = true;
+                            1
+                        };
+                        if len > 0 {
+                            t = Type::Array {
+                                len: len as u32,
+                                t: Box::new(t),
+                            };
+                            if let TokenDef::DelimClose(Delimiter::SqBr) = tk.def {
+                            } else {
+                                push_error(
+                                    errors,
+                                    format!("Expected ], got {:?}", tk.def),
+                                    tk.pos,
+                                );
+                                return make_invalid(arena, pos);
+                            }
+                        } else {
+                            push_error(
+                                errors,
+                                "Array length must be superior to 0".to_string(),
+                                tk.pos,
+                            );
+                            return make_invalid(arena, pos);
+                        }
+                    }
+
+                    //TODO functions can't return an array
+
+                    let pos = pos + tk.pos; //TODO clarify this
                     let tk = peek(tokens);
                     match tk.def {
                         // VARIABLE
@@ -434,7 +471,7 @@ fn parse_structure<'e, 't>(
                                     return make_invalid(arena, pos);
                                 }
                             }
-                            declare_local(env, &id, &t);
+                            declare_local(env, &t, &id);
                             arena.alloc(Expr {
                                 def: ExprDef::VarDecl(id, t, None),
                                 pos,
@@ -514,7 +551,7 @@ fn parse_structure<'e, 't>(
                                     }
                                 } else {
                                     push_error(errors, "Expected array literal".to_string(), pos);
-                                    declare_local(env, &id, &t);
+                                    declare_local(env, &t, &id);
                                     arena.alloc(Expr {
                                         def: ExprDef::VarDecl(id, t.clone(), None),
                                         pos,
@@ -535,12 +572,12 @@ fn parse_structure<'e, 't>(
                                             pos + value.pos,
                                         );
                                     }
-                                    declare_local(env, &id, &t);
+                                    declare_local(env, &t, &id);
                                     t.clone()
                                 }
                                 Err(err) => {
                                     push_error(errors, err.msg, err.pos);
-                                    declare_local(env, &id, &Type::Void);
+                                    declare_local(env, &Type::Void, &id);
                                     Type::Void
                                 }
                             };
@@ -555,7 +592,7 @@ fn parse_structure<'e, 't>(
 
                             env.context = Context::Function;
 
-                            let (params, end_tk) = make_ident_list(tokens, errors, tk);
+                            let (params, end_tk) = make_args_list(tokens, errors, tk);
 
                             let arity = params.len() as u8;
                             if arity > u8::max_value() {
@@ -587,13 +624,8 @@ fn parse_structure<'e, 't>(
                                                 _ => true,
                                             }
                                         } {
-                                            let statement = parse_statement(
-                                                arena,
-                                                tokens,
-                                                env,
-                                                statik,
-                                                errors,
-                                            );
+                                            let statement =
+                                                parse_statement(arena, tokens, env, statik, errors);
 
                                             if let Err(error) =
                                                 look_for_return_in(statement, env, &t)
@@ -627,11 +659,11 @@ fn parse_structure<'e, 't>(
 
                             declare_local(
                                 env,
-                                &id,
                                 &Type::Fn(
-                                    params.iter().map(|param| param.1.clone()).collect(),
+                                    params.iter().map(|param| param.0.clone()).collect(),
                                     Box::new(t.clone()),
                                 ),
+                                &id,
                             );
 
                             if let Some(body) = body {
@@ -651,11 +683,7 @@ fn parse_structure<'e, 't>(
                             }
                         }
                         _ => {
-                            push_error(
-                                errors,
-                                format!("Unexpected token : {:?}", tk.def),
-                                tk.pos,
-                            );
+                            push_error(errors, format!("Unexpected token : {:?}", tk.def), tk.pos);
                             make_invalid(arena, pos)
                         }
                     }
@@ -720,11 +748,11 @@ fn make_binop<'e>(
     }
 }
 
-fn make_ident_list<'t>(
+fn make_args_list<'t>(
     tokens: &mut TkIter<'t>,
     errors: &mut Vec<Error>,
     tk_delim_open: &Token,
-) -> (Vec<(Identifier, Type)>, &'t Token) {
+) -> (Vec<(Type, Identifier)>, &'t Token) {
     let mut list = Vec::new();
 
     let delimiter = if let TokenDef::DelimOpen(delimiter) = tk_delim_open.def {
@@ -773,7 +801,84 @@ fn make_ident_list<'t>(
             Default::default()
         };
 
-        list.push((id, t));
+        list.push((t, id));
+
+        let tk_2 = peek(tokens);
+        match tk_2.def {
+            TokenDef::Comma => {
+                next(tokens);
+            }
+            TokenDef::DelimClose(delimiter_) if delimiter_ == delimiter => {
+                break;
+            }
+            TokenDef::Eof => {
+                push_error(
+                    errors,
+                    format!("Unclosed delimiter : {}", delimiter.to_str(false)),
+                    tk_delim_open.pos,
+                );
+                break;
+            }
+            _ => {
+                push_error(
+                    errors,
+                    format!(
+                        "Expected , or {}, got {:?}",
+                        delimiter.to_str(true),
+                        tk_2.def
+                    ),
+                    tk_2.pos,
+                );
+                break;
+            }
+        }
+    }
+
+    (list, next(tokens))
+}
+
+fn make_types_list<'t>(
+    tokens: &mut TkIter<'t>,
+    errors: &mut Vec<Error>,
+    tk_delim_open: &Token,
+) -> (Vec<Type>, &'t Token) {
+    let mut list = Vec::new();
+
+    let delimiter = if let TokenDef::DelimOpen(delimiter) = tk_delim_open.def {
+        delimiter
+    } else {
+        panic!("Only a TokenDef::DelimOpen should be passed here.");
+    };
+
+    if peek(tokens).def == TokenDef::DelimClose(delimiter) {
+        return (list, next(tokens));
+    }
+
+    loop {
+        let tk_0 = next(tokens);
+        let t = match tk_0.def {
+            TokenDef::Id(id) if matches!(&id, type_id_pattern!()) => {
+                let id = id;
+                Type::from_identifier(&id)
+            }
+            _ => {
+                push_error(
+                    errors,
+                    if let TokenDef::Id(id) = tk_0.def {
+                        format!(
+                            "Expected type identifier, got identifier : {}",
+                            id.to_string()
+                        )
+                    } else {
+                        format!("Expected type identifier, got : {:?}", tk_0.def)
+                    },
+                    tk_0.pos,
+                );
+                Type::Void
+            }
+        };
+
+        list.push(t);
 
         let tk_2 = peek(tokens);
         match tk_2.def {
@@ -886,12 +991,16 @@ fn next<'t>(tokens: &mut TkIter<'t>) -> &'t Token {
 // ----- SCOPES -----
 
 //TODO better error handling here
-fn declare_local(env: &mut Environment, id: &Identifier, t: &Type) {
+fn declare_local(env: &mut Environment, t: &Type, id: &Identifier) {
     let n_locals = env.locals_count;
 
     for local in env.locals.iter() {
         match &local {
-            Local { id: id_, t: t_, depth } if id_ == id && depth >= &env.scope_depth => match t_ {
+            Local {
+                id: id_,
+                t: t_,
+                depth,
+            } if id_ == id && depth >= &env.scope_depth => match t_ {
                 Type::Fn(_, _) if t_ == t => (),
                 Type::Fn(_, _) => panic!("Mismatched function signatures"),
                 _ => panic!("Redefinition of variable {}", id.to_string()),
@@ -950,7 +1059,7 @@ fn sort_functions_first(statements: &mut [&Expr]) {
 // ----- TYPING -----
 
 //TODO should type checking be performed after parsing ?
-    // TODO could this be replaced by an interpreter instance ?
+// TODO could this be replaced by an interpreter instance ?
 fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
     macro_rules! unwrap_or_return {
         ($e:expr) => {
@@ -1238,7 +1347,7 @@ fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
             env.open_scope();
             for e in exprs.iter() {
                 match &e.def {
-                    ExprDef::VarDecl(id, t, _) => declare_local(env, id, t),
+                    ExprDef::VarDecl(id, t, _) => declare_local(env, t, id),
                     ExprDef::FnDecl {
                         id,
                         params,
@@ -1246,11 +1355,11 @@ fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
                         ..
                     } => declare_local(
                         env,
-                        id,
                         &Type::Fn(
-                            params.iter().map(|param| param.1.clone()).collect(),
+                            params.iter().map(|param| param.0.clone()).collect(),
                             Box::new(return_t.clone()),
                         ),
+                        id,
                     ),
                     _ => (),
                 }
@@ -1309,7 +1418,7 @@ fn look_for_return_in(
                 unwrap_or_return!(look_for_return_in(arg, env, return_type));
             }
         }
-        VarDecl(id, t, _) => declare_local(env, id, t),
+        VarDecl(id, t, _) => declare_local(env, t, id),
         FnDecl {
             id,
             params,
@@ -1317,11 +1426,11 @@ fn look_for_return_in(
             ..
         } => declare_local(
             env,
-            id,
             &Type::Fn(
-                params.iter().map(|param| param.1.clone()).collect(),
+                params.iter().map(|param| param.0.clone()).collect(),
                 Box::new(return_t.clone()),
             ),
+            id,
         ),
         StructDecl { .. } => unimplemented!(),
         Block(exprs) => {

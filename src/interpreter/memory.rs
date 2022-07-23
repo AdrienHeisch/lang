@@ -48,7 +48,7 @@ impl Memory for RawMemory {
                 Value::Float(f32::from_ne_bytes(self.access(var.raw).try_into().unwrap()))
             }
             Type::Bool => Value::Bool(self.access(var.raw)[0] == 1),
-            Type::Fn(_, _) => panic!(),
+            Type::Fn(_, _) => Value::Fn(self.access(var.raw).try_into().unwrap(), var.t.clone()),
             Type::Void => Value::Void,
         }
     }
@@ -58,7 +58,7 @@ impl Memory for RawMemory {
         match value {
             Pointer(p, _) => {
                 self.access_mut(var.raw)
-                    .copy_from_slice(&(*p).to_ne_bytes());
+                    .copy_from_slice(&p.to_ne_bytes());
             }
             Array { addr, len, .. } => {
                 self.access_mut(var.raw)
@@ -76,6 +76,10 @@ impl Memory for RawMemory {
             Bool(b) => {
                 self.access_mut(var.raw)[0] = if *b { 1u8 } else { 0u8 };
             }
+            Fn(id, _) => {
+                self.access_mut(var.raw)
+                    .copy_from_slice(id);
+            },
             Void => panic!(), //DESIGN set var to Void ?
         }
     }

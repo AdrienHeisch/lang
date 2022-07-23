@@ -24,7 +24,7 @@ enum Reference<'e>
 //TODO function pointers in memory, points to a value in a table in the interpreter
 {
     Var(Variable),
-    Fn(Box<[(Identifier, Type)]>, Expr<'e>),
+    Fn(Box<[(Type, Identifier)]>, Type, Expr<'e>),
 }
 
 enum ResultErr {
@@ -103,11 +103,13 @@ impl<'e> Interpreter<'e> {
             Id(id) => {
                 match self.get_ref(id) {
                     Some(Reference::Var(var)) => self.memory.get_var(&var),
-                    Some(Reference::Fn(_, _)) => {
-                        return Err(
-                            self.throw("Tried to use function as value.".to_owned(), expr.pos)
-                        )
-                    } //DESIGN functions as values ?
+                    Some(Reference::Fn(args, ret_t, _)) => Value::Fn(
+                        *id,
+                        Type::Fn(
+                            args.iter().map(|arg| arg.0.clone()).collect(),
+                            Box::new(ret_t),
+                        ),
+                    ), //DESIGN functions as values ?
                     None => {
                         return Err(self
                             .throw(format!("Unknown identifier : {}", id.to_string()), expr.pos));
@@ -225,7 +227,7 @@ impl<'e> Interpreter<'e> {
                     self.throw("There is already a variable named ".to_owned(), expr.pos);
                 } */
 
-                let ptr = match self.declare_var(id, t) {
+                let ptr = match self.declare_var(t, id) {
                     Ok(ptr) => ptr,
                     Err(message) => return Err(self.throw(message, expr.pos)),
                 };
@@ -306,7 +308,7 @@ impl<'e> Interpreter<'e> {
                             Box::new(var.t),
                         ))
                     }
-                    Some(Reference::Fn(_, _)) => todo!(),
+                    Some(Reference::Fn(_, _, _)) => todo!(),
                     None => {
                         return Err(self.throw(
                             format!("Unknown identifier : {}", id.to_string()),
@@ -549,14 +551,28 @@ impl<'e> Interpreter<'e> {
                         Value::Void
                     }
                     id => {
-                        // eprintln!("Unknown function identifier : {}", std::str::from_utf8(id).ok().unwrap());
-                        let (params, body) =
-                            if let Reference::Fn(params, body) = self.get_ref(id).unwrap() {
-                                //TODO unwrap panics on recursion
-                                (params, body)
-                            } else {
-                                panic!("Tried to call on a value.") //DESIGN functions as values ?
-                            };
+                        let (params, body) = {
+                            //TODO unwrap panics on recursion
+                            //TODO handle None
+                            let (params, body);
+                            let mut reference = self.get_ref(id).unwrap();
+                            loop {
+                                match reference {
+                                    Reference::Fn(params_, _, body_) => {
+                                        (params, body) = (params_, body_);
+                                        break;
+                                    },
+                                    Reference::Var(var) => {
+                                        if let Value::Fn(id, _) = self.memory.get_var(&var) {
+                                            reference = self.get_ref(&id).unwrap();
+                                        } else {
+                                            panic!()
+                                        }
+                                    }
+                                }
+                            }
+                            (params, body)
+                        };
 
                         let values_and_params = args
                             .iter()
@@ -629,20 +645,20 @@ impl<'e> Interpreter<'e> {
     fn declare_fn(
         &mut self,
         id: &Identifier,
-        params: Box<[(Identifier, Type)]>,
+        params: Box<[(Type, Identifier)]>,
         return_t: &Type,
         body: &Expr<'e>,
     ) -> Result<(), String> {
         self.env.locals[self.env.locals_count as usize] = Local {
             id: *id,
             t: Type::Fn(
-                params.iter().map(|param| param.1.clone()).collect(),
+                params.iter().map(|param| param.0.clone()).collect(),
                 Box::new(return_t.clone()),
             ),
             depth: self.env.scope_depth,
         };
         self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
-            Reference::Fn(params, body.clone());
+            Reference::Fn(params, return_t.clone(), body.clone());
         if let Some(n) = self.env.locals_count.checked_add(1) {
             self.env.locals_count = n;
         } else {
@@ -651,7 +667,7 @@ impl<'e> Interpreter<'e> {
         Ok(())
     }
 
-    fn declare_var(&mut self, id: &Identifier, t: &Type) -> Result<Variable, String> {
+    fn declare_var(&mut self, t: &Type, id: &Identifier) -> Result<Variable, String> {
         let ptr = self.memory.make_pointer_for_type(t);
         self.env.locals[self.env.locals_count as usize] = Local {
             id: *id,
@@ -681,7 +697,7 @@ impl<'e> Interpreter<'e> {
     fn free_unused_stack(&mut self) {
         match &self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)] {
             Reference::Var(ptr) => self.memory.free_from(ptr.raw.pos),
-            Reference::Fn(_, _) => (),
+            Reference::Fn(_, _, _) => (),
         }
     }
 

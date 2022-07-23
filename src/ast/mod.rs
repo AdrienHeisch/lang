@@ -116,7 +116,7 @@ pub enum ExprDef<'e> {
     VarDecl(Identifier, Type, Option<&'e Expr<'e>>),
     FnDecl {
         id: Identifier,
-        params: Box<[(Identifier, Type)]>,
+        params: Box<[(Type, Identifier)]>,
         return_t: Type,
         body: &'e Expr<'e>,
     },

@@ -441,28 +441,28 @@ test_should_panic!(
 
 test_assert_eq!(
     array,
-    "int[3] a = {12, 53, 84}; int k = a[5 - 4] + 7;",
+    "int a[3] = {12, 53, 84}; int k = a[5 - 4] + 7;",
     "k",
     Value::Int(60)
 );
 
 test_assert_eq!(
     array_uninit,
-    "int[3] a; int k = a[1];",
+    "int a[3]; int k = a[1];",
     "k",
     Value::Int(0)
 );
 
 test_assert_eq!(
     array_assign,
-    "int[3] a; a[1] = 60; int k = a[1];",
+    "int a[3]; a[1] = 60; int k = a[1];",
     "k",
     Value::Int(60)
 );
 
 test_assert_eq!(
     array_auto_length,
-    "int[] a = {24, 60, 183}; int k = a[1];",
+    "int a[] = {24, 60, 183}; int k = a[1];",
     "k",
     Value::Int(60)
 );
@@ -474,17 +474,17 @@ test_should_panic!(
 
 test_should_panic!(
     array_invalid_type,
-    "bool[3] a = {12, 53, 84};"
+    "bool a[3] = {12, 53, 84};"
 );
 
 test_should_panic!(
     array_invalid_literal,
-    "int[3] a = [12, 53, 84];"
+    "int a[3] = [12, 53, 84];"
 );
 
 test_assert_eq!(
     string,
-    "char[5] s = \"Hello\"; char c = s[3];",
+    "char s[5] = \"Hello\"; char c = s[3];",
     "c",
     Value::Char('l')
 );

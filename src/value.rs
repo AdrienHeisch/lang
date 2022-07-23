@@ -4,8 +4,9 @@ use crate::ast::{Identifier, IdentifierTools};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Value {
-    Pointer(u32, Box<Type>), //TODO u32 or usize ?
-    Array { addr: u32, len: u32, t: Box<Type> },
+    Fn(Identifier, Type),
+    Pointer(u32, Box<Type>), //TODO u32 or usize ? //TODO remove box
+    Array { addr: u32, len: u32, t: Box<Type> }, //TODO remove box
     Int(i32),
     Char(char),
     Float(f32),
@@ -15,19 +16,20 @@ pub enum Value {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Type {
+    Fn(Box<[Type]>, Box<Type>), //TODO is this a pointer or a value
     Pointer(Box<Type>),
     Array { len: u32, t: Box<Type> },
     Int,
     Char,
     Float,
     Bool,
-    Fn(Box<[Type]>, Box<Type>),
     Void,
 }
 
 impl Value {
     pub fn as_type(&self) -> Type {
         match self {
+            Value::Fn(_, t) => t.clone(),
             Value::Pointer(_, t) => Type::Pointer(t.clone()),
             Value::Array { len, t, .. } => Type::Array {
                 len: *len,
@@ -46,6 +48,7 @@ impl std::fmt::Display for Value {
     fn fmt(&self, fmt: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         use Value::*;
         match self {
+            Fn(_, t) => write!(fmt, "{}", t),
             Pointer(p, t) => write!(fmt, "{} @ {}", t, p),
             Array { addr, len, t } => write!(fmt, "{}[{}] @ {}", t, len, addr),
             Int(i) => write!(fmt, "{}", i),
@@ -104,7 +107,7 @@ impl Type {
             Char => size_of::<char>(),
             Float => size_of::<f32>(),
             Bool => size_of::<bool>(),
-            Fn(_, _) => panic!(),
+            Fn(_, _) => size_of::<Identifier>(),
             Void => 0,
         }
     }
