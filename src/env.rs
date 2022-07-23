@@ -11,6 +11,7 @@ pub struct Environment {
     pub context: Context,
 }
 
+//TODO change name to be more general than "Local" (or create "Globals" ?)
 #[derive(Clone, Default)]
 pub struct Local {
     pub id: Identifier,
@@ -46,7 +47,7 @@ impl Environment {
             }),
             b"printmem" => Some(Local {
                 id: *id,
-                t: Type::Fn(Box::new([]), Box::new(Type::Void)),
+                t: Type::Fn(Box::new([]), Box::new(Type::Void),),
                 depth: 0,
             }),
             id => {

@@ -553,24 +553,23 @@ fn parse_structure<'e, 't>(
                         TokenDef::DelimOpen(Delimiter::Pr) => {
                             next(tokens);
 
-                            let mut local_env = env.clone(); //TODO is this needed ?
-                            local_env.context = Context::Function;
+                            env.context = Context::Function;
 
                             let (params, end_tk) = make_ident_list(tokens, errors, tk);
-                            for param in params.iter() {
-                                declare_local(&mut local_env, &param.0, &param.1);
-                            }
 
                             let arity = params.len() as u8;
                             if arity > u8::max_value() {
                                 push_error(errors, "Too many parameters !".to_owned(), end_tk.pos);
                             }
 
-                            let body = {
+                            let body: Option<&WithPosition<ExprDef>> = {
                                 let tk = next(tokens);
                                 match &tk.def {
                                     TokenDef::DelimOpen(Delimiter::Br) => {
-                                        local_env.open_scope();
+                                        env.open_scope();
+                                        for param in params.iter() {
+                                            declare_local(env, &param.0, &param.1);
+                                        }
 
                                         let mut statements: Vec<&Expr> = Vec::new();
                                         while {
@@ -591,13 +590,13 @@ fn parse_structure<'e, 't>(
                                             let statement = parse_statement(
                                                 arena,
                                                 tokens,
-                                                &mut local_env,
+                                                env,
                                                 statik,
                                                 errors,
                                             );
 
                                             if let Err(error) =
-                                                look_for_return_in(statement, &mut local_env, &t)
+                                                look_for_return_in(statement, env, &t)
                                             {
                                                 push_error(errors, error.msg, error.pos);
                                             }
@@ -606,21 +605,22 @@ fn parse_structure<'e, 't>(
                                         }
                                         next(tokens);
 
-                                        local_env.close_scope();
+                                        env.close_scope();
 
                                         sort_functions_first(&mut statements);
-                                        arena.alloc(Expr {
+                                        Some(arena.alloc(Expr {
                                             def: ExprDef::Block(statements.into_boxed_slice()),
                                             pos: tk.pos,
-                                        })
+                                        }))
                                     }
+                                    TokenDef::Semicolon => None,
                                     _ => {
                                         push_error(
                                             errors,
                                             format!("Unexpected token : {:?}", tk.def),
                                             tk.pos,
                                         );
-                                        make_invalid(arena, tk.pos)
+                                        None
                                     }
                                 }
                             };
@@ -634,15 +634,22 @@ fn parse_structure<'e, 't>(
                                     Box::new(t.clone()),
                                 ),
                             );
-                            arena.alloc(Expr {
-                                def: ExprDef::FnDecl {
-                                    id,
-                                    params: params.into_boxed_slice(),
-                                    return_t: t,
-                                    body,
-                                },
-                                pos: pos + body.pos,
-                            })
+
+                            if let Some(body) = body {
+                                arena.alloc(Expr {
+                                    def: ExprDef::FnDecl {
+                                        id,
+                                        params: params.into_boxed_slice(),
+                                        return_t: t,
+                                        body,
+                                    },
+                                    pos: pos + body.pos,
+                                })
+                            } else {
+                                //TODO create function header expression
+                                //TODO LINKER
+                                parse_expr(arena, tokens, env, statik, errors)
+                            }
                         }
                         _ => {
                             //TODO uninitialized var
@@ -671,8 +678,8 @@ fn parse_structure<'e, 't>(
                     errors,
                     format!("Undeclared variable : {}", id.to_string()),
                     tk_identifier.pos,
-                ); //FIXME throws an error if function is used before being declared
-                   // println!("At {} -> Unknown identifier : {}", tk_identifier.pos, id_str); //DESIGN maybe there should only be closures (no non-capturing local functions)
+                );
+                // println!("At {} -> Unknown identifier : {}", tk_identifier.pos, id_str); //DESIGN maybe there should only be closures (no non-capturing local functions)
             };
             parse_expr_next(
                 arena,
@@ -882,6 +889,18 @@ fn next<'t>(tokens: &mut TkIter<'t>) -> &'t Token {
 
 fn declare_local(env: &mut Environment, id: &Identifier, t: &Type) {
     let n_locals = env.locals_count;
+
+    for local in env.locals.iter() {
+        match &local {
+            Local { id: id_, t: t_, depth } if id_ == id && depth >= &env.scope_depth => match t_ {
+                Type::Fn(_, _) if t_ == t => (),
+                Type::Fn(_, _) => panic!("Mismatched function signatures"),
+                _ => panic!("Redefinition of variable {}", id.to_string()),
+            },
+            _ => (),
+        };
+    }
+
     env.locals[n_locals as usize] = Local {
         id: *id,
         t: t.clone(),
@@ -916,6 +935,7 @@ fn make_invalid<'e>(arena: &'e Arena<Expr<'e>>, pos: Position) -> &'e mut Expr<'
 
 // ----- UTILITY -----
 
+//TODO LINKER
 fn sort_functions_first(statements: &mut [&Expr]) {
     statements.sort_by(|e1, e2| {
         use std::cmp::Ordering;
@@ -930,6 +950,7 @@ fn sort_functions_first(statements: &mut [&Expr]) {
 
 // ----- TYPING -----
 
+//TODO should type checking be performed after parsing ?
 fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
     // TODO could this be replaced by an interpreter instance ?
     macro_rules! unwrap_or_return {
@@ -1197,6 +1218,7 @@ fn eval_type(expr: &Expr, env: &Environment) -> Result<Type, Error> {
                         });
                     }
                 } else {
+                    //TODO functions as values
                     return Err(Error {
                         msg: format!("Undefined variable : {}", id.to_string()),
                         pos: expr.pos,

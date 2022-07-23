@@ -14,7 +14,8 @@ pub struct Ast<'a> {
 }
 
 impl<'ast> Ast<'ast> {
-    pub fn from_str(source: &str) -> Result<Self, Vec<Error>> { // TODO should return (Ast, Vec<Error>)
+    pub fn from_str(source: &str) -> Result<Self, Vec<Error>> {
+        // TODO should return (Ast, Vec<Error>)
         match lexer::lex(source) {
             Ok(tokens) => {
                 if cfg!(lang_print_lexer_output) && cfg!(not(lang_benchmark)) {
@@ -24,12 +25,11 @@ impl<'ast> Ast<'ast> {
                     );
                 }
 
+                //TODO get rid of unsafe code
                 let arena = Arena::new();
-                match unsafe {
-                    //TODO remove unsafe code
-                    let arena_ref = &*(&arena as *const Arena<Expr<'ast>>);
-                    parser::parse(arena_ref, &tokens)
-                } {
+                let arena_ref = unsafe { &*(&arena as *const Arena<Expr<'ast>>) };
+
+                match parser::parse(arena_ref, &tokens) {
                     Ok(top_level) => {
                         if cfg!(lang_print_parser_output) && cfg!(not(lang_benchmark)) {
                             println!("statements:");
@@ -82,7 +82,10 @@ pub enum ExprDef<'e> {
     Const(Value),
     Id(Identifier),
     StringLit(Vec<char>), //TODO any way to use Box<T> ?
-    ArrayLit{ items: Box<[&'e Expr<'e>]>, t: Box<Type> },
+    ArrayLit {
+        items: Box<[&'e Expr<'e>]>,
+        t: Box<Type>,
+    },
     // --- Control Flow
     If {
         cond: &'e Expr<'e>,

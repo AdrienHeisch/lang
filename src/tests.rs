@@ -385,6 +385,13 @@ test_assert_eq!(
     Value::Int(6)
 );
 
+test_assert_eq!(
+    function_header,
+    "int add(int a, int b); int i = add(2, 4); int add(int a, int b) { return a + b; }",
+    "i",
+    Value::Int(6)
+);
+
 test_should_panic!(
     function_invalid_arg,
     "int add(int a, int b) { a + b; } int i = add(true, 4);"
@@ -398,6 +405,11 @@ test_should_panic!(
 test_should_panic!(
     function_invalid_type,
     "int add(int a, int b) { a + b; } bool i = add(2, 4);"
+);
+
+test_should_panic!(
+    function_header_mismatch,
+    "int add(int a, int b); int i = add(2, 4); int add(int a, int b, int c) { return a + b; }"
 );
 
 test_assert_eq!(

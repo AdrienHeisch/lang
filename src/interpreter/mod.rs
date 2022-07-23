@@ -33,6 +33,7 @@ enum ResultErr {
     Nothing,
 }
 
+//TODO remove all unnecessary tests already performed by the parser
 impl<'e> Interpreter<'e> {
     pub fn new() -> Self {
         Self {
@@ -219,10 +220,10 @@ impl<'e> Interpreter<'e> {
             Field(_, _) => unimplemented!(),
             // --- Declarations
             VarDecl(id, t, assign_expr) => {
-                //DESIGN should redeclaration be allowed ?
-                if self.get_ref(id).is_some() {
+                //TODO should already be checked by parser (test)
+                /* if self.get_ref(id).is_some() {
                     self.throw("There is already a variable named ".to_owned(), expr.pos);
-                }
+                } */
 
                 let ptr = match self.declare_var(id, t) {
                     Ok(ptr) => ptr,

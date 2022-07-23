@@ -1,1 +1,14 @@
-char[5] a = "Hello";
+bool add (int a, int b);
+
+int a = 5;
+{
+    int a  = 6;
+    print(a);
+}
+print(a);
+bool b = add(a, -6);
+if b {
+    print(1);
+} else {
+    print(0);
+}
