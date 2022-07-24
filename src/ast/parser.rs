@@ -30,11 +30,11 @@ pub fn parse<'e, 't>(
     let mut env = Environment::new(Context::TopLevel);
     let mut errors = Vec::new();
 
-    let mut statements = Vec::new();
+    let mut top_level = Vec::new();
     let mut statik: StaticMem = Default::default(); //TODO remove this
 
     loop {
-        statements.push(parse_statement(
+        top_level.push(parse_statement(
             arena,
             &mut tokens_iter,
             &mut env,
@@ -46,10 +46,10 @@ pub fn parse<'e, 't>(
         }
     }
 
-    sort_functions_first(&mut statements);
+    sort_functions_first(&mut top_level);
 
     if errors.is_empty() || cfg!(lang_ignore_parse_errors) {
-        Ok(statements)
+        Ok(top_level)
     } else {
         Err(errors)
     }
@@ -63,6 +63,20 @@ fn parse_statement<'e, 't>(
     errors: &mut Vec<Error>,
 ) -> &'e Expr<'e> {
     let expr = parse_expr(arena, tokens, env, statik, errors);
+
+    if let Context::TopLevel = env.context {
+        match expr.def {
+            ExprDef::FnDecl { .. } | ExprDef::VarDecl(_, _, _) => (),
+            ExprDef::End => (),
+            _ => {
+                push_error(
+                    errors,
+                    format!("Unexpected non-declaration statement : {:?}", expr.def),
+                    expr.pos,
+                )
+            }
+        }
+    }
 
     if peek(tokens).def == TokenDef::Semicolon {
         next(tokens);
@@ -136,7 +150,7 @@ fn parse_expr<'e, 't>(
                     pos: tk.pos + e.pos,
                 }),
             };
-            if let Err(err) = eval_type(expr, env) {
+            if let Err(err) = eval_type(expr, env, errors) {
                 push_error(errors, err.msg, err.pos);
             }
             expr
@@ -295,7 +309,7 @@ fn parse_expr_next<'e, 't>(
             next(tokens);
             let e_ = parse_expr(arena, tokens, env, statik, errors);
             let expr = make_binop(arena, op, e, e_);
-            if let Err(err) = eval_type(expr, env) {
+            if let Err(err) = eval_type(expr, env, errors) {
                 push_error(errors, err.msg, err.pos);
             }
             expr
@@ -324,7 +338,7 @@ fn parse_expr_next<'e, 't>(
                     }),
                 ),
             );
-            if let Err(err) = eval_type(expr, env) {
+            if let Err(err) = eval_type(expr, env, errors) {
                 push_error(errors, err.msg, err.pos);
             }
             expr
@@ -341,7 +355,7 @@ fn parse_expr_next<'e, 't>(
 
                 pos: e.pos + tk_delim_close.pos,
             });
-            if let Err(err) = eval_type(expr, env) {
+            if let Err(err) = eval_type(expr, env, errors) {
                 push_error(errors, err.msg, err.pos);
             }
             expr
@@ -352,7 +366,7 @@ fn parse_expr_next<'e, 't>(
                 def: ExprDef::Field(e, parse_expr(arena, tokens, env, statik, errors)),
                 pos: tk.pos,
             });
-            if let Err(err) = eval_type(expr, env) {
+            if let Err(err) = eval_type(expr, env, errors) {
                 push_error(errors, err.msg, err.pos);
             }
             expr
@@ -441,11 +455,7 @@ fn parse_structure<'e, 't>(
                             };
                             if let TokenDef::DelimClose(Delimiter::SqBr) = tk.def {
                             } else {
-                                push_error(
-                                    errors,
-                                    format!("Expected ], got {:?}", tk.def),
-                                    tk.pos,
-                                );
+                                push_error(errors, format!("Expected ], got {:?}", tk.def), tk.pos);
                                 return make_invalid(arena, pos);
                             }
                         } else {
@@ -471,7 +481,7 @@ fn parse_structure<'e, 't>(
                                     return make_invalid(arena, pos);
                                 }
                             }
-                            declare_local(env, &t, &id);
+                            declare(env, errors, &t, &id);
                             arena.alloc(Expr {
                                 def: ExprDef::VarDecl(id, t, None),
                                 pos,
@@ -493,7 +503,7 @@ fn parse_structure<'e, 't>(
                                     let pos =
                                         Position(tk.pos.0, tk_close.pos.0 + tk.pos.1 - tk.pos.0);
 
-                                    let t = eval_type(items[0], env);
+                                    let t = eval_type(items[0], env, errors);
                                     if let Err(err) = t {
                                         push_error(errors, err.msg, err.pos);
                                         return make_invalid(arena, pos);
@@ -501,7 +511,7 @@ fn parse_structure<'e, 't>(
 
                                     let t = t.unwrap();
                                     for item in &items[1..] {
-                                        match eval_type(item, env) {
+                                        match eval_type(item, env, errors) {
                                             Ok(t_) => {
                                                 if t != t_ {
                                                     push_error(
@@ -551,7 +561,7 @@ fn parse_structure<'e, 't>(
                                     }
                                 } else {
                                     push_error(errors, "Expected array literal".to_string(), pos);
-                                    declare_local(env, &t, &id);
+                                    declare(env, errors, &t, &id);
                                     arena.alloc(Expr {
                                         def: ExprDef::VarDecl(id, t.clone(), None),
                                         pos,
@@ -560,7 +570,7 @@ fn parse_structure<'e, 't>(
                             } else {
                                 parse_expr(arena, tokens, env, statik, errors)
                             };
-                            let t = match eval_type(value, env) {
+                            let t = match eval_type(value, env, errors) {
                                 Ok(t_) => {
                                     if t != t_ {
                                         push_error(
@@ -572,12 +582,12 @@ fn parse_structure<'e, 't>(
                                             pos + value.pos,
                                         );
                                     }
-                                    declare_local(env, &t, &id);
+                                    declare(env, errors, &t, &id);
                                     t.clone()
                                 }
                                 Err(err) => {
                                     push_error(errors, err.msg, err.pos);
-                                    declare_local(env, &Type::Void, &id);
+                                    declare(env, errors, &Type::Void, &id);
                                     Type::Void
                                 }
                             };
@@ -590,8 +600,7 @@ fn parse_structure<'e, 't>(
                         TokenDef::DelimOpen(Delimiter::Pr) => {
                             next(tokens);
 
-                            env.context = Context::Function;
-
+                            //TODO allow unnamed parameters in function headers
                             let (params, end_tk) = make_args_list(tokens, errors, tk);
 
                             let arity = params.len() as u8;
@@ -599,13 +608,16 @@ fn parse_structure<'e, 't>(
                                 push_error(errors, "Too many parameters !".to_owned(), end_tk.pos);
                             }
 
+                            let prev_context = env.context;
+                            env.context = Context::Function;
                             let body: Option<&WithPosition<ExprDef>> = {
                                 let tk = next(tokens);
                                 match &tk.def {
+                                    //TODO could this be a function (merge code with block in parse_expr)
                                     TokenDef::DelimOpen(Delimiter::Br) => {
                                         env.open_scope();
                                         for param in params.iter() {
-                                            declare_local(env, &param.0, &param.1);
+                                            declare(env, errors, &param.0, &param.1);
                                         }
 
                                         let mut statements: Vec<&Expr> = Vec::new();
@@ -628,7 +640,7 @@ fn parse_structure<'e, 't>(
                                                 parse_statement(arena, tokens, env, statik, errors);
 
                                             if let Err(error) =
-                                                look_for_return_in(statement, env, &t)
+                                                look_for_return_in(statement, env, errors, &t)
                                             {
                                                 push_error(errors, error.msg, error.pos);
                                             }
@@ -656,9 +668,11 @@ fn parse_structure<'e, 't>(
                                     }
                                 }
                             };
+                            env.context = prev_context;
 
-                            declare_local(
+                            declare(
                                 env,
+                                errors,
                                 &Type::Fn(
                                     params.iter().map(|param| param.0.clone()).collect(),
                                     Box::new(t.clone()),
@@ -991,34 +1005,53 @@ fn next<'t>(tokens: &mut TkIter<'t>) -> &'t Token {
 // ----- SCOPES -----
 
 //TODO better error handling here
-fn declare_local(env: &mut Environment, t: &Type, id: &Identifier) {
-    let n_locals = env.locals_count;
+fn declare(env: &mut Environment, errors: &mut Vec<Error>, t: &Type, id: &Identifier) {
+    if let Context::TopLevel = env.context {
+        if let Some(local) = env.globals.iter().find(|item| item.id == *id) {
+            let Local { id: id_, t: t_, .. } = local;
+            if id_ == id {
+                match t_ {
+                    Type::Fn(_, _) if t_ == t => (),
+                    Type::Fn(_, _) => push_error(errors, "Mismatched function signatures".to_string(), Position::zero()), //TODO position
+                    _ => push_error(errors, format!("Redefinition of global variable {}", id.to_string()), Position::zero()), //TODO position
+                }
+            }
+        }
 
-    for local in env.locals.iter() {
-        match &local {
-            Local {
+        env.globals.push(Local {
+            id: *id,
+            t: t.clone(),
+            depth: 0,
+        });
+    } else {
+        let n_locals = env.locals_count;
+
+        for local in env.locals.iter() {
+            let Local {
                 id: id_,
                 t: t_,
                 depth,
-            } if id_ == id && depth >= &env.scope_depth => match t_ {
-                Type::Fn(_, _) if t_ == t => (),
-                Type::Fn(_, _) => panic!("Mismatched function signatures"),
-                _ => panic!("Redefinition of variable {}", id.to_string()),
-            },
-            _ => (),
-        };
-    }
+            } = local;
+            if id_ == id && depth >= &env.scope_depth {
+                match t_ {
+                    Type::Fn(_, _) if t_ == t => (),
+                    Type::Fn(_, _) => push_error(errors, "Mismatched function signatures".to_string(), Position::zero()), //TODO position
+                    _ => push_error(errors, format!("Redefinition of local variable {}", id.to_string()), Position::zero()), //TODO position
+                }
+            }
+        }
 
-    env.locals[n_locals as usize] = Local {
-        id: *id,
-        t: t.clone(),
-        depth: env.scope_depth,
-    };
-    if let Some(n_locals) = n_locals.checked_add(1) {
-        env.locals_count = n_locals;
-    } else {
-        // push_error("Too many locals.", tk.pos);
-        panic!("Too many locals.");
+        env.locals[n_locals as usize] = Local {
+            id: *id,
+            t: t.clone(),
+            depth: env.scope_depth,
+        };
+        if let Some(n_locals) = n_locals.checked_add(1) {
+            env.locals_count = n_locals;
+        } else {
+            // push_error("Too many locals.", tk.pos);
+            panic!("Too many locals.");
+        }
     }
 }
 
@@ -1027,6 +1060,7 @@ fn declare_local(env: &mut Environment, t: &Type, id: &Identifier) {
 fn push_error(errors: &mut Vec<Error>, msg: String, pos: Position) {
     //TODO turn into a macro for better call stacks ?
     let error = Error { msg, pos };
+    //TODO replace all !cfg!(_) with cfg!(not(_))
     if cfg!(lang_panic_on_error) && !cfg!(lang_ignore_parse_errors) {
         panic!("{}", error);
     } else {
@@ -1060,7 +1094,7 @@ fn sort_functions_first(statements: &mut [&Expr]) {
 
 //TODO should type checking be performed after parsing ?
 // TODO could this be replaced by an interpreter instance ?
-fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
+fn eval_type(expr: &Expr, env: &mut Environment, errors: &mut Vec<Error>) -> Result<Type, Error> {
     macro_rules! unwrap_or_return {
         ($e:expr) => {
             match $e {
@@ -1090,31 +1124,12 @@ fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
             len: chars.len() as u32,
             t: Box::new(Type::Char),
         },
-        ExprDef::If { then, elze, .. } => {
-            let then_type = unwrap_or_return!(eval_type(then, env));
-            match elze {
-                Some(elze) => {
-                    let elze_type = unwrap_or_return!(eval_type(elze, env));
-                    if then_type == elze_type {
-                        then_type
-                    } else {
-                        return Err(Error {
-                            msg: format!(
-                                "If statement has mismatched types : {:?} / {:?}",
-                                then_type, elze_type
-                            ),
-                            pos: expr.pos,
-                        });
-                    }
-                }
-                _ => then_type,
-            }
-        }
+        ExprDef::If { .. } => Type::Void,
         ExprDef::While { .. } => Type::Void,
         ExprDef::Field(_, _) => todo!(),
         ExprDef::UnOp { op, e } => {
             use {Op::*, Type::*};
-            let t = unwrap_or_return!(eval_type(e, env));
+            let t = unwrap_or_return!(eval_type(e, env, errors));
             if let Addr = op {
                 Type::Pointer(Box::new(t))
             } else {
@@ -1174,8 +1189,8 @@ fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
         ExprDef::BinOp { op, left, right } => {
             use {Op::*, Type::*};
             match (
-                unwrap_or_return!(eval_type(left, env)),
-                unwrap_or_return!(eval_type(right, env)),
+                unwrap_or_return!(eval_type(left, env, errors)),
+                unwrap_or_return!(eval_type(right, env, errors)),
             ) {
                 (Pointer(_), Pointer(_)) => match op {
                     Assign => Type::Void,
@@ -1306,7 +1321,7 @@ fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
                         }
 
                         for (param_t, arg) in params_t.iter().zip(args.iter()) {
-                            let arg_t = unwrap_or_return!(eval_type(arg, env));
+                            let arg_t = unwrap_or_return!(eval_type(arg, env, errors));
                             if param_t != &arg_t {
                                 return Err(Error {
                                     msg: format!(
@@ -1347,14 +1362,15 @@ fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
             env.open_scope();
             for e in exprs.iter() {
                 match &e.def {
-                    ExprDef::VarDecl(id, t, _) => declare_local(env, t, id),
+                    ExprDef::VarDecl(id, t, _) => declare(env, errors, t, id),
                     ExprDef::FnDecl {
                         id,
                         params,
                         return_t,
                         ..
-                    } => declare_local(
+                    } => declare(
                         env,
+                        errors,
                         &Type::Fn(
                             params.iter().map(|param| param.0.clone()).collect(),
                             Box::new(return_t.clone()),
@@ -1363,13 +1379,13 @@ fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
                     ),
                     _ => (),
                 }
-                unwrap_or_return!(eval_type(e, env)); //TODO is the inner type checking on e needed ?
+                unwrap_or_return!(eval_type(e, env, errors)); //TODO is the inner type checking on e needed ?
             }
             env.close_scope();
             Type::Void
         }
         ExprDef::Parent(e) => {
-            unwrap_or_return!(eval_type(e, env))
+            unwrap_or_return!(eval_type(e, env, errors))
         }
         ExprDef::Return(_) => Type::Void,
         ExprDef::Invalid => Type::Void,
@@ -1380,6 +1396,7 @@ fn eval_type(expr: &Expr, env: &mut Environment) -> Result<Type, Error> {
 fn look_for_return_in(
     e: &WithPosition<ExprDef>,
     env: &mut Environment,
+    errors: &mut Vec<Error>,
     return_type: &Type,
 ) -> Result<(), Error> {
     macro_rules! unwrap_or_return {
@@ -1394,52 +1411,38 @@ fn look_for_return_in(
     use ExprDef::*;
     match &e.def {
         If { cond, then, elze } => {
-            unwrap_or_return!(look_for_return_in(cond, env, return_type));
-            unwrap_or_return!(look_for_return_in(then, env, return_type));
+            unwrap_or_return!(look_for_return_in(cond, env, errors, return_type));
+            unwrap_or_return!(look_for_return_in(then, env, errors, return_type));
             if let Some(elze) = elze {
-                unwrap_or_return!(look_for_return_in(elze, env, return_type));
+                unwrap_or_return!(look_for_return_in(elze, env, errors, return_type));
             }
         }
         While { cond, body } => {
-            unwrap_or_return!(look_for_return_in(cond, env, return_type));
-            unwrap_or_return!(look_for_return_in(body, env, return_type));
+            unwrap_or_return!(look_for_return_in(cond, env, errors, return_type));
+            unwrap_or_return!(look_for_return_in(body, env, errors, return_type));
         }
         Field(_, _) => unimplemented!(),
         UnOp { e, .. } => {
-            unwrap_or_return!(look_for_return_in(e, env, return_type));
+            unwrap_or_return!(look_for_return_in(e, env, errors, return_type));
         }
         BinOp { left, right, .. } => {
-            unwrap_or_return!(look_for_return_in(left, env, return_type));
-            unwrap_or_return!(look_for_return_in(right, env, return_type));
+            unwrap_or_return!(look_for_return_in(left, env, errors, return_type));
+            unwrap_or_return!(look_for_return_in(right, env, errors, return_type));
         }
         Call { function, args } => {
-            unwrap_or_return!(look_for_return_in(function, env, return_type));
+            unwrap_or_return!(look_for_return_in(function, env, errors, return_type));
             for arg in args.iter() {
-                unwrap_or_return!(look_for_return_in(arg, env, return_type));
+                unwrap_or_return!(look_for_return_in(arg, env, errors, return_type));
             }
         }
-        VarDecl(id, t, _) => declare_local(env, t, id),
-        FnDecl {
-            id,
-            params,
-            return_t,
-            ..
-        } => declare_local(
-            env,
-            &Type::Fn(
-                params.iter().map(|param| param.0.clone()).collect(),
-                Box::new(return_t.clone()),
-            ),
-            id,
-        ),
         StructDecl { .. } => unimplemented!(),
         Block(exprs) => {
             for e in exprs.iter() {
-                unwrap_or_return!(look_for_return_in(e, env, return_type));
+                unwrap_or_return!(look_for_return_in(e, env, errors, return_type));
             }
         }
         Return(return_expr) => {
-            let t = match eval_type(return_expr, env) {
+            let t = match eval_type(return_expr, env, errors) {
                 Ok(t) => t,
                 Err(error) => return Err(error),
             };
@@ -1454,7 +1457,7 @@ fn look_for_return_in(
             }
         }
         Parent(e) => {
-            unwrap_or_return!(look_for_return_in(e, env, return_type));
+            unwrap_or_return!(look_for_return_in(e, env, errors, return_type));
         }
         _ => (),
     };

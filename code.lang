@@ -2,5 +2,10 @@ int add(int a, int b) {
     return a + b;
 }
 
-int (*f) (int, int) = add;
-print(f(2, 5));
+int x = 7;
+
+int main () {
+    int w = 6;
+    print(add(x, w));
+    return 0;
+}

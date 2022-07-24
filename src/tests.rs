@@ -6,7 +6,7 @@ macro_rules! test_assert_eq {
             #[allow(unused_imports)]
             use crate::value::{Type, Value};
 
-            let ast = match crate::build_ast($program) {
+            let ast = match crate::build_ast(&format!("int main () {{ {} return 0; }}", $program)) {
                 Ok(ast) => ast,
                 Err(error) => panic!("PARSER ERROR : {}", error),
             };
@@ -51,7 +51,7 @@ macro_rules! test_should_panic {
             use crate::interpreter::Interpreter;
 
             let ast = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                crate::build_ast($program)
+                crate::build_ast(&format!("int main () {{ {} return 0; }}", $program))
             })) {
                 Ok(result) => match result {
                     Ok(ast) => {
@@ -339,10 +339,7 @@ test_assert_eq!(
 
 test_should_panic!(scope_1, "{ int a = 0; } int b = a;");
 
-test_should_panic!(
-    block_value,
-    "int a = { 5; };"
-);
+test_should_panic!(block_value, "int a = { 5; };");
 
 test_should_panic!(assign_expr_value, "int a = { int b = 1; };");
 
@@ -446,12 +443,7 @@ test_assert_eq!(
     Value::Int(60)
 );
 
-test_assert_eq!(
-    array_uninit,
-    "int a[3]; int k = a[1];",
-    "k",
-    Value::Int(0)
-);
+test_assert_eq!(array_uninit, "int a[3]; int k = a[1];", "k", Value::Int(0));
 
 test_assert_eq!(
     array_assign,
@@ -467,20 +459,11 @@ test_assert_eq!(
     Value::Int(60)
 );
 
-test_should_panic!(
-    array_invalid_length,
-    "int[3] a = {12, 53};"
-);
+test_should_panic!(array_invalid_length, "int[3] a = {12, 53};");
 
-test_should_panic!(
-    array_invalid_type,
-    "bool a[3] = {12, 53, 84};"
-);
+test_should_panic!(array_invalid_type, "bool a[3] = {12, 53, 84};");
 
-test_should_panic!(
-    array_invalid_literal,
-    "int a[3] = [12, 53, 84];"
-);
+test_should_panic!(array_invalid_literal, "int a[3] = [12, 53, 84];");
 
 test_assert_eq!(
     string,

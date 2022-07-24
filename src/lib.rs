@@ -15,6 +15,7 @@ use vm::Chunk;
 
 //TODO linker
 //TODO main() function
+//TODO main() function parameters
 //TODO top level
 //TODO use real C compiler tests
 //TODO hunt unwrap / clone / panic!

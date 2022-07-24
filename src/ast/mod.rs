@@ -88,7 +88,7 @@ pub enum ExprDef<'e> {
         t: Box<Type>,
     },
     // --- Control Flow
-    If {
+    If { //TODO else if
         cond: &'e Expr<'e>,
         then: &'e Expr<'e>,
         elze: Option<&'e Expr<'e>>,

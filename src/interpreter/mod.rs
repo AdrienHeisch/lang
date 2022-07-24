@@ -16,6 +16,7 @@ pub struct Interpreter<'e> {
     memory: RawMemory,
     stack: [Reference<'e>; STACK_SIZE],
     frame_ptr: u8,
+    globals: Vec<Reference<'e>>,
     env: Environment,
 }
 
@@ -40,27 +41,33 @@ impl<'e> Interpreter<'e> {
             memory: Memory::new(),
             stack: [(); STACK_SIZE].map(|_| Reference::Var(Default::default())),
             frame_ptr: 0,
+            globals: Vec::new(),
             env: Environment::new(Context::TopLevel),
         }
     }
 
     // ----- INTERP
 
-    pub fn run(&mut self, statements: &[&Expr<'e>]) -> Result<(), Error> {
+    pub fn run(&mut self, top_level: &[&Expr<'e>]) -> Result<(), Error> {
         if cfg!(not(lang_benchmark)) {
             println!("Program stdout :");
         }
 
-        for e in statements {
+        for e in top_level {
             if let Err(ResultErr::Error(error)) = self.expr(e) {
                 return Err(error);
             }
         }
 
+        if let Err(ResultErr::Error(error)) =
+            self.call_id(&IdentifierTools::make("main"), &[], Position::zero())
+        {
+            return Err(error);
+        }
+
         if cfg!(not(lang_benchmark)) {
             println!();
         }
-
         if cfg!(lang_print_interpreter) {
             self.print_locals();
         }
@@ -232,9 +239,9 @@ impl<'e> Interpreter<'e> {
                     Err(message) => return Err(self.throw(message, expr.pos)),
                 };
 
-                //TODO remove this hack
+                /* //TODO remove this hack
                 self.stack[self.frame_ptr as usize + self.env.locals_count as usize - 1] =
-                    Reference::Var(ptr.clone());
+                    Reference::Var(ptr.clone()); */
 
                 if let Some(assign_expr) = assign_expr {
                     let value = self.expr(assign_expr)?;
@@ -550,94 +557,90 @@ impl<'e> Interpreter<'e> {
                         }
                         Value::Void
                     }
-                    id => {
-                        let (params, body) = {
-                            //TODO unwrap panics on recursion
-                            //TODO handle None
-                            let (params, body);
-                            let mut reference = self.get_ref(id).unwrap();
-                            loop {
-                                match reference {
-                                    Reference::Fn(params_, _, body_) => {
-                                        (params, body) = (params_, body_);
-                                        break;
-                                    },
-                                    Reference::Var(var) => {
-                                        if let Value::Fn(id, _) = self.memory.get_var(&var) {
-                                            reference = self.get_ref(&id).unwrap();
-                                        } else {
-                                            panic!()
-                                        }
-                                    }
-                                }
-                            }
-                            (params, body)
-                        };
-
-                        let values_and_params = args
-                            .iter()
-                            .map(|arg| self.expr(arg))
-                            .zip(params.iter())
-                            .collect::<Vec<_>>();
-
-                        let args_pos = if args.is_empty() {
-                            e_id.pos
-                        } else {
-                            args.iter()
-                                .skip(1)
-                                .fold(args[0].pos, |acc, arg| acc + arg.pos)
-                        };
-
-                        let prev_frame_ptr = self.frame_ptr;
-                        self.frame_ptr += self.env.locals_count;
-
-                        let prev_env =
-                            std::mem::replace(&mut self.env, Environment::new(Context::Function));
-
-                        if params.len() != args.len() {
-                            // panic!("Invalid number of arguments.");
-                            return Err(
-                                self.throw("Invalid number of arguments.".to_owned(), args_pos)
-                            );
-                        }
-
-                        for (value, param) in values_and_params {
-                            let value = value?;
-                            let ptr = match self.declare_var(&param.0, &param.1) {
-                                Ok(ptr) => ptr,
-                                Err(message) => return Err(self.throw(message, e_id.pos)),
-                            };
-                            self.memory.set_var(&ptr, &value);
-                        }
-
-                        let out = match self.expr(&body) {
-                            Ok(val) => val,
-                            Err(e) => match e {
-                                ResultErr::Return(val) => val,
-                                error @ ResultErr::Error(_) => return Err(error),
-                                ResultErr::Nothing => panic!("Should not happen."),
-                            },
-                        };
-
-                        self.env.clear();
-                        self.free_unused_stack();
-
-                        self.frame_ptr = prev_frame_ptr;
-                        // std::mem::replace(&mut self.env, prev_env); //what was that
-                        self.env = prev_env;
-
-                        out
-                    }
+                    id => self.call_id(id, args, e_id.pos)?,
                 }
             }
+            //TODO any other cases ?
             _ => {
-                //TODO call variable (functions as value)
                 return Err(self.throw(
                     format!("Expected an identifier, got : {:?}", e_id),
                     e_id.pos,
                 ));
             }
         })
+    }
+
+    fn call_id(
+        &mut self,
+        id: &[u8; 8],
+        args: &[&Expr<'e>],
+        id_pos: Position,
+    ) -> Result<Value, ResultErr> {
+        let (params, body) = {
+            //TODO unwrap panics on recursion
+            let (params, body);
+            let mut reference = if let Some(reference) = self.get_ref(id) {
+                reference
+            } else {
+                return Err(self.throw(format!("Unknown identifier {}", id.to_string()), id_pos));
+            };
+            loop {
+                match reference {
+                    Reference::Fn(params_, _, body_) => {
+                        (params, body) = (params_, body_);
+                        break;
+                    }
+                    Reference::Var(var) => {
+                        if let Value::Fn(id, _) = self.memory.get_var(&var) {
+                            reference = self.get_ref(&id).unwrap();
+                        } else {
+                            panic!()
+                        }
+                    }
+                }
+            }
+            (params, body)
+        };
+        let values_and_params = args
+            .iter()
+            .map(|arg| self.expr(arg))
+            .zip(params.iter())
+            .collect::<Vec<_>>();
+        let args_pos = if args.is_empty() {
+            id_pos
+        } else {
+            args.iter()
+                .skip(1)
+                .fold(args[0].pos, |acc, arg| acc + arg.pos)
+        };
+        let prev_frame_ptr = self.frame_ptr;
+        self.frame_ptr += self.env.locals_count;
+        let prev_context = self.env.context;
+        self.env.context = Context::Function;
+        if params.len() != args.len() {
+            // panic!("Invalid number of arguments.");
+            return Err(self.throw("Invalid number of arguments.".to_owned(), args_pos));
+        }
+        for (value, param) in values_and_params {
+            let value = value?;
+            let ptr = match self.declare_var(&param.0, &param.1) {
+                Ok(ptr) => ptr,
+                Err(message) => return Err(self.throw(message, id_pos)),
+            };
+            self.memory.set_var(&ptr, &value);
+        }
+        let out = match self.expr(&body) {
+            Ok(val) => val,
+            Err(e) => match e {
+                ResultErr::Return(val) => val,
+                error @ ResultErr::Error(_) => return Err(error),
+                ResultErr::Nothing => panic!("Should not happen."),
+            },
+        };
+        self.free_unused_stack();
+        self.frame_ptr = prev_frame_ptr;
+        self.env.context = prev_context;
+        Ok(out)
     }
 
     // ----- VARIABLES
@@ -649,38 +652,63 @@ impl<'e> Interpreter<'e> {
         return_t: &Type,
         body: &Expr<'e>,
     ) -> Result<(), String> {
-        self.env.locals[self.env.locals_count as usize] = Local {
-            id: *id,
-            t: Type::Fn(
-                params.iter().map(|param| param.0.clone()).collect(),
-                Box::new(return_t.clone()),
-            ),
-            depth: self.env.scope_depth,
-        };
-        self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
-            Reference::Fn(params, return_t.clone(), body.clone());
-        if let Some(n) = self.env.locals_count.checked_add(1) {
-            self.env.locals_count = n;
+        if let Context::TopLevel = self.env.context {
+            self.env.globals.push(Local {
+                id: *id,
+                t: Type::Fn(
+                    params.iter().map(|param| param.0.clone()).collect(),
+                    Box::new(return_t.clone()),
+                ),
+                depth: self.env.scope_depth,
+            });
+            self.globals
+                .push(Reference::Fn(params, return_t.clone(), body.clone()));
         } else {
-            return Err("Too many locals.".to_owned());
+            self.env.locals[self.env.locals_count as usize] = Local {
+                id: *id,
+                t: Type::Fn(
+                    params.iter().map(|param| param.0.clone()).collect(),
+                    Box::new(return_t.clone()),
+                ),
+                depth: self.env.scope_depth,
+            };
+            self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
+                Reference::Fn(params, return_t.clone(), body.clone());
+            if let Some(n) = self.env.locals_count.checked_add(1) {
+                self.env.locals_count = n;
+            } else {
+                return Err("Too many locals.".to_owned());
+            }
         }
         Ok(())
     }
 
     fn declare_var(&mut self, t: &Type, id: &Identifier) -> Result<Variable, String> {
         let ptr = self.memory.make_pointer_for_type(t);
-        self.env.locals[self.env.locals_count as usize] = Local {
-            id: *id,
-            t: t.clone(),
-            depth: self.env.scope_depth,
-        };
-        self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
-            Reference::Var(ptr.clone());
-        if let Some(n) = self.env.locals_count.checked_add(1) {
-            self.env.locals_count = n;
+
+        if let Context::TopLevel = self.env.context {
+            self.env.globals.push(Local {
+                id: *id,
+                t: t.clone(),
+                depth: 0,
+            });
+            self.globals.push(Reference::Var(ptr.clone()));
         } else {
-            return Err("Too many locals.".to_owned());
+            self.env.locals[self.env.locals_count as usize] = Local {
+                id: *id,
+                t: t.clone(),
+                depth: self.env.scope_depth,
+            };
+            self.stack[self.frame_ptr as usize + self.env.locals_count as usize] =
+                Reference::Var(ptr.clone());
+
+            if let Some(n) = self.env.locals_count.checked_add(1) {
+                self.env.locals_count = n;
+            } else {
+                return Err("Too many locals.".to_owned());
+            }
         }
+
         Ok(ptr)
     }
 
@@ -689,6 +717,11 @@ impl<'e> Interpreter<'e> {
             let Local { id: id_, .. } = self.env.locals[i];
             if *id == id_ {
                 return Some(self.stack[self.frame_ptr as usize + i].clone());
+            }
+        }
+        for (index, global) in self.env.globals.iter().enumerate() {
+            if *id == global.id {
+                return Some(self.globals[index].clone());
             }
         }
         None
@@ -706,7 +739,6 @@ impl<'e> Interpreter<'e> {
         if cfg!(lang_benchmark) {
             return;
         }
-        // println!("Env ({}): {}", self.env.locals_count, crate::utils::slice_to_string_debug(&self.env.locals));
 
         let mut current_depth = if self.env.scope_depth > 0 {
             self.env.scope_depth + 1
@@ -725,46 +757,47 @@ impl<'e> Interpreter<'e> {
             let id_str = String::from_utf8(id.iter().take_while(|i| **i != 0).cloned().collect())
                 .ok()
                 .unwrap();
-            let ptr = if let Reference::Var(ptr) = self.get_ref(&id).unwrap() {
-                ptr
-            } else {
-                continue;
-            };
-
-            let value = self.memory.get_var(&ptr);
-            print!("{id_str} => {ptr:?} => {value}");
-            match value {
-                Value::Pointer(addr, t) => println!(
-                    " => {}",
-                    self.memory.get_var(&Variable {
-                        t: *t.clone(),
-                        raw: Address {
-                            pos: addr.try_into().unwrap(),
-                            len: t.get_size(),
-                        },
-                    })
-                ),
-                Value::Array { addr, len, t } => println!(
-                    " => [{}]",
-                    (0..len)
-                        .into_iter()
-                        .map(|i| {
-                            format!(
-                                "{}",
-                                self.memory.get_var(&Variable {
-                                    t: *t.clone(),
-                                    raw: Address {
-                                        pos: t.get_size() * i as usize + addr as usize,
-                                        len: t.get_size(),
-                                    },
+            match self.get_ref(&id).unwrap() {
+                Reference::Var(ptr) => {
+                    let value = self.memory.get_var(&ptr);
+                    print!("{id_str} => {ptr:?} => {value}");
+                    match value {
+                        Value::Pointer(addr, t) => println!(
+                            " => {}",
+                            self.memory.get_var(&Variable {
+                                t: *t.clone(),
+                                raw: Address {
+                                    pos: addr.try_into().unwrap(),
+                                    len: t.get_size(),
+                                },
+                            })
+                        ),
+                        Value::Array { addr, len, t } => println!(
+                            " => [{}]",
+                            (0..len)
+                                .into_iter()
+                                .map(|i| {
+                                    format!(
+                                        "{}",
+                                        self.memory.get_var(&Variable {
+                                            t: *t.clone(),
+                                            raw: Address {
+                                                pos: t.get_size() * i as usize + addr as usize,
+                                                len: t.get_size(),
+                                            },
+                                        })
+                                    )
                                 })
-                            )
-                        })
-                        .reduce(|acc, str| format!("{acc}, {str}"))
-                        .unwrap_or_default()
-                ),
-                _ => println!(),
-            }
+                                .reduce(|acc, str| format!("{acc}, {str}"))
+                                .unwrap_or_default()
+                        ),
+                        _ => println!(),
+                    }
+                }
+                Reference::Fn(params, ret_t, _) => {
+                    println!("{id_str} => {params:?} => {ret_t}");
+                }
+            };
         }
 
         println!();

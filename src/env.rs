@@ -5,6 +5,7 @@ use crate::{
 
 #[derive(Clone)]
 pub struct Environment {
+    pub globals: Vec<Local>,
     pub locals: [Local; 256], //TODO max locals ? (u8?)
     pub locals_count: u8,
     pub scope_depth: u8,
@@ -28,6 +29,7 @@ pub enum Context {
 impl Environment {
     pub fn new(context: Context) -> Self {
         Environment {
+            globals: Vec::new(),
             locals: [(); 256].map(|_| Local::default()),
             locals_count: 0,
             scope_depth: 0,
@@ -54,6 +56,12 @@ impl Environment {
                 for local in self.locals.iter().take(self.locals_count.into()).rev() {
                     if *id == local.id {
                         return Some(local.clone());
+                    }
+                }
+
+                for global in self.globals.iter() {
+                    if *id == global.id {
+                        return Some(global.clone());
                     }
                 }
 
@@ -89,6 +97,7 @@ impl Environment {
         n_locals - self.locals_count
     }
 
+    #[allow(dead_code)]
     pub fn clear(&mut self) {
         self.scope_depth = 0;
         self.locals_count = 0;
