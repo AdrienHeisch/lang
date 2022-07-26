@@ -357,9 +357,7 @@ impl<'e> Interpreter<'e> {
 
     // TODO remove all unnecessary check (performed in parser)
     fn binop(&mut self, op: Op, e_left: &Expr<'e>, e_right: &Expr<'e>) -> Result<Value, ResultErr> {
-        let value_left = self.expr(e_left)?;
         let value_right = self.expr(e_right)?;
-
         if op == Op::Assign {
             // TODO move to self.assign ?
             match e_left.def {
@@ -417,6 +415,7 @@ impl<'e> Interpreter<'e> {
             }
         }
 
+        let value_left = self.expr(e_left)?;
         // TODO remove multiple "self.expr(e_right)" calls
         use {Op::*, Value::*};
         Ok(match (value_left, value_right) {

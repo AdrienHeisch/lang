@@ -68,13 +68,11 @@ fn parse_statement<'e, 't>(
         match expr.def {
             ExprDef::FnDecl { .. } | ExprDef::VarDecl(_, _, _) => (),
             ExprDef::End => (),
-            _ => {
-                push_error(
-                    errors,
-                    format!("Unexpected non-declaration statement : {:?}", expr.def),
-                    expr.pos,
-                )
-            }
+            _ => push_error(
+                errors,
+                format!("Unexpected non-declaration statement : {:?}", expr.def),
+                expr.pos,
+            ),
         }
     }
 
@@ -308,10 +306,13 @@ fn parse_expr_next<'e, 't>(
         TokenDef::Op(op) => {
             next(tokens);
             let e_ = parse_expr(arena, tokens, env, statik, errors);
+            #[allow(clippy::let_and_return)]
             let expr = make_binop(arena, op, e, e_);
-            if let Err(err) = eval_type(expr, env, errors) {
+            //TODO type checking should be done after parsing
+            //HACK
+            /* if let Err(err) = eval_type(expr, env, errors) {
                 push_error(errors, err.msg, err.pos);
-            }
+            } */
             expr
         }
         TokenDef::DelimOpen(Delimiter::SqBr) => {
@@ -1012,8 +1013,16 @@ fn declare(env: &mut Environment, errors: &mut Vec<Error>, t: &Type, id: &Identi
             if id_ == id {
                 match t_ {
                     Type::Fn(_, _) if t_ == t => (),
-                    Type::Fn(_, _) => push_error(errors, "Mismatched function signatures".to_string(), Position::zero()), //TODO position
-                    _ => push_error(errors, format!("Redefinition of global variable {}", id.to_string()), Position::zero()), //TODO position
+                    Type::Fn(_, _) => push_error(
+                        errors,
+                        "Mismatched function signatures".to_string(),
+                        Position::zero(),
+                    ), //TODO position
+                    _ => push_error(
+                        errors,
+                        format!("Redefinition of global variable {}", id.to_string()),
+                        Position::zero(),
+                    ), //TODO position
                 }
             }
         }
@@ -1035,8 +1044,16 @@ fn declare(env: &mut Environment, errors: &mut Vec<Error>, t: &Type, id: &Identi
             if id_ == id && depth >= &env.scope_depth {
                 match t_ {
                     Type::Fn(_, _) if t_ == t => (),
-                    Type::Fn(_, _) => push_error(errors, "Mismatched function signatures".to_string(), Position::zero()), //TODO position
-                    _ => push_error(errors, format!("Redefinition of local variable {}", id.to_string()), Position::zero()), //TODO position
+                    Type::Fn(_, _) => push_error(
+                        errors,
+                        "Mismatched function signatures".to_string(),
+                        Position::zero(),
+                    ), //TODO position
+                    _ => push_error(
+                        errors,
+                        format!("Redefinition of local variable {}", id.to_string()),
+                        Position::zero(),
+                    ), //TODO position
                 }
             }
         }
@@ -1187,11 +1204,42 @@ fn eval_type(expr: &Expr, env: &mut Environment, errors: &mut Vec<Error>) -> Res
             }
         }
         ExprDef::BinOp { op, left, right } => {
+            let t_right = unwrap_or_return!(eval_type(right, env, errors));
+
+            if *op == Op::Assign {
+                match left.def {
+                    ExprDef::UnOp {
+                        op: Op::MultOrDeref,
+                        e,
+                    } => {
+                        if let Pointer(t) = eval_type(e, env, errors)? {
+                            if t_right == *t {
+                                return Ok(Type::Void);
+                            }
+                        }
+                    }
+                    ExprDef::BinOp {
+                        op: Op::Index,
+                        left,
+                        right,
+                    } => {
+                        if let Array { .. } = eval_type(left, env, errors)? {
+                            if let Int = eval_type(right, env, errors)? {
+                                return Ok(Type::Void);
+                            } else {
+                                panic!()
+                            }
+                        } else {
+                            panic!()
+                        }
+                    }
+                    _ => (),
+                }
+            }
+
+            let t_left = unwrap_or_return!(eval_type(left, env, errors));
             use {Op::*, Type::*};
-            match (
-                unwrap_or_return!(eval_type(left, env, errors)),
-                unwrap_or_return!(eval_type(right, env, errors)),
-            ) {
+            match (t_left, t_right) {
                 (Pointer(_), Pointer(_)) => match op {
                     Assign => Type::Void,
                     _ => {

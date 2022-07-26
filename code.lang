@@ -1,11 +1,1 @@
-int add(int a, int b) {
-    return a + b;
-}
-
-int x = 7;
-
-int main () {
-    int w = 6;
-    print(add(x, w));
-    return 0;
-}
+int main () { int i = 6; int j = 7; int *p = &j; int **pp = &p; **pp = 9; int k = **pp; return 0; }
