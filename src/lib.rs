@@ -11,6 +11,7 @@ mod vm;
 
 use ast::Ast;
 use interpreter::Interpreter;
+use value::Value;
 use vm::Chunk;
 
 //TODO linker
@@ -33,11 +34,18 @@ pub fn build_ast<'a>(program: &str) -> Result<Ast<'a>, String> {
     }
 }
 
-pub fn walk_ast(ast: &Ast) -> Result<(), String> {
+pub fn walk_ast(ast: &Ast) -> Result<i32, String> {
     let mut interpreter = Interpreter::new();
+    let result = interpreter.run(&ast.top_level);
 
-    match interpreter.run(&ast.top_level) {
-        Ok(()) => Ok(()),
+    if cfg!(not(lang_benchmark)) {
+        println!("Program stdout :");
+        println!("{}", interpreter.stdout);
+    }
+
+    match result {
+        Ok(Value::Int(i)) => Ok(i),
+        Ok(_) => todo!(),
         Err(error) => Err(format!(
             "{} -> {}",
             error.pos.get_full(&ast.source),
@@ -54,9 +62,9 @@ pub fn compile_ast(ast: &Ast) -> Result<Chunk, String> {
     }
 }
 
-pub fn run_bytecode(chunk: &Chunk) -> Result<(), String> {
-    if let Ok(()) = vm::interpreter::interpret(chunk) {
-        Ok(())
+pub fn run_bytecode(chunk: &Chunk) -> Result<i32, String> {
+    if let Ok(i) = vm::interpreter::interpret(chunk) {
+        Ok(i)
     } else {
         Err("Error handling unimplemented.".to_string())
     }

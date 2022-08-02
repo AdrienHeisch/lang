@@ -111,17 +111,20 @@ impl RawMemory {
         &mut self.ram[ptr.pos..(ptr.pos + ptr.len)]
     }
 
-    pub fn print_ram(&self) {
-        if cfg!(lang_benchmark) {
-            return;
+    pub fn print_ram(&self) -> String {
+        use std::fmt::Write;
+        
+        let mut buf = String::new();
+        if cfg!(not(lang_benchmark)) {
+            writeln!(buf, "RAM: {:?}", crate::utils::slice_to_string(&self.ram)).unwrap();
+            writeln!(buf, 
+                "MAP: \"{:?}\"",
+                self.allocation_map
+                    .iter()
+                    .map::<u8, _>(|b| (*b).into())
+                    .collect::<Vec<_>>()
+            ).unwrap();
         }
-        println!("RAM: {:?}", crate::utils::slice_to_string(&self.ram));
-        println!(
-            "MAP: \"{:?}\"",
-            self.allocation_map
-                .iter()
-                .map::<u8, _>(|b| (*b).into())
-                .collect::<Vec<_>>()
-        );
+        buf
     }
 }

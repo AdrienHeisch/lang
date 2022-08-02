@@ -1,3 +1,5 @@
+use std::fmt::Write;
+
 use crate::{
     ast::{Error, Expr, ExprDef, Identifier, IdentifierTools, Op, Position, WithPosition},
     env::{Context, Environment, Local},
@@ -13,6 +15,7 @@ const F32_EQ_THRESHOLD: f32 = 1e-6;
 const STACK_SIZE: usize = 8;
 
 pub struct Interpreter<'e> {
+    pub stdout: String,
     memory: RawMemory,
     stack: [Reference<'e>; STACK_SIZE],
     frame_ptr: u8,
@@ -43,36 +46,31 @@ impl<'e> Interpreter<'e> {
             frame_ptr: 0,
             globals: Vec::new(),
             env: Environment::new(Context::TopLevel),
+            stdout: String::new(),
         }
     }
 
     // ----- INTERP
 
-    pub fn run(&mut self, top_level: &[&Expr<'e>]) -> Result<(), Error> {
-        if cfg!(not(lang_benchmark)) {
-            println!("Program stdout :");
-        }
-
+    pub fn run(&mut self, top_level: &[&Expr<'e>]) -> Result<Value, Error> {
         for e in top_level {
             if let Err(ResultErr::Error(error)) = self.expr(e) {
                 return Err(error);
             }
         }
 
-        if let Err(ResultErr::Error(error)) =
-            self.call_id(&IdentifierTools::make("main"), &[], Position::zero())
+        let return_value = match self.call_id(&IdentifierTools::make("main"), &[], Position::zero())
         {
-            return Err(error);
-        }
+            Ok(val) => val,
+            Err(ResultErr::Error(error)) => return Err(error),
+            _ => panic!(),
+        };
 
-        if cfg!(not(lang_benchmark)) {
-            println!();
-        }
         if cfg!(lang_print_interpreter) {
             self.print_locals();
         }
 
-        Ok(())
+        Ok(return_value)
     }
 
     #[allow(dead_code)]
@@ -539,7 +537,8 @@ impl<'e> Interpreter<'e> {
                 match id {
                     b"print\0\0\0" => {
                         if cfg!(not(lang_benchmark)) {
-                            println!("> {}", self.expr(args[0])?);
+                            let value = self.expr(args[0])?;
+                            writeln!(self.stdout, "> {}", value).unwrap();
                             // Implementation for any number of arguments
                             /* args.iter()
                             .map(|arg| self.expr(arg))
@@ -551,7 +550,7 @@ impl<'e> Interpreter<'e> {
                     }
                     b"printmem" => {
                         if cfg!(not(lang_benchmark)) {
-                            println!("> Memory :");
+                            write!(self.stdout, "> Memory :").unwrap(); //TODO wrap in a method
                             self.print_locals();
                         }
                         Value::Void
@@ -734,7 +733,7 @@ impl<'e> Interpreter<'e> {
     }
 
     #[allow(dead_code)]
-    pub fn print_locals(&self) {
+    pub fn print_locals(&mut self) {
         if cfg!(lang_benchmark) {
             return;
         }
@@ -750,7 +749,7 @@ impl<'e> Interpreter<'e> {
 
             if current_depth > depth {
                 current_depth = depth;
-                println!("----- Depth: {} -----", current_depth);
+                writeln!(self.stdout, "----- Depth: {} -----", current_depth).unwrap();
             }
 
             let id_str = String::from_utf8(id.iter().take_while(|i| **i != 0).cloned().collect())
@@ -759,9 +758,10 @@ impl<'e> Interpreter<'e> {
             match self.get_ref(&id).unwrap() {
                 Reference::Var(ptr) => {
                     let value = self.memory.get_var(&ptr);
-                    print!("{id_str} => {ptr:?} => {value}");
+                    write!(self.stdout, "{id_str} => {ptr:?} => {value}").unwrap();
                     match value {
-                        Value::Pointer(addr, t) => println!(
+                        Value::Pointer(addr, t) => writeln!(
+                            self.stdout,
                             " => {}",
                             self.memory.get_var(&Variable {
                                 t: *t.clone(),
@@ -770,8 +770,10 @@ impl<'e> Interpreter<'e> {
                                     len: t.get_size(),
                                 },
                             })
-                        ),
-                        Value::Array { addr, len, t } => println!(
+                        )
+                        .unwrap(),
+                        Value::Array { addr, len, t } => writeln!(
+                            self.stdout,
                             " => [{}]",
                             (0..len)
                                 .into_iter()
@@ -789,18 +791,18 @@ impl<'e> Interpreter<'e> {
                                 })
                                 .reduce(|acc, str| format!("{acc}, {str}"))
                                 .unwrap_or_default()
-                        ),
-                        _ => println!(),
+                        )
+                        .unwrap(),
+                        _ => writeln!(self.stdout).unwrap(),
                     }
                 }
                 Reference::Fn(params, ret_t, _) => {
-                    println!("{id_str} => {params:?} => {ret_t}");
+                    writeln!(self.stdout, "{id_str} => {params:?} => {ret_t}").unwrap()
                 }
             };
         }
 
-        println!();
-        self.memory.print_ram();
+        write!(self.stdout, "\n{}", self.memory.print_ram()).unwrap();
     }
 }
 

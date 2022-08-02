@@ -134,7 +134,7 @@ fn parse_expr<'e, 't>(
             let expr = match e.def {
                 ExprDef::BinOp { ref mut left, .. } => {
                     while errors.len() > n_errs {
-                        //HACK
+                        //HACK error vulnerability here : expr is not type checked
                         errors.pop();
                     }
                     *left = arena.alloc(Expr {
@@ -309,7 +309,7 @@ fn parse_expr_next<'e, 't>(
             #[allow(clippy::let_and_return)]
             let expr = make_binop(arena, op, e, e_);
             //TODO type checking should be done after parsing
-            //HACK
+            //HACK error vulnerability here : expr is not type checked
             /* if let Err(err) = eval_type(expr, env, errors) {
                 push_error(errors, err.msg, err.pos);
             } */

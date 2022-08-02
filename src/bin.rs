@@ -11,20 +11,20 @@ fn main() -> Result<(), std::io::Error> {
 
     let program = std::fs::read_to_string("./code.lang")?;
 
-    if let Err(error) = run_lang(&program) {
-        println!("{}", error);
+    match run_lang(&program) {
+        Ok(val) => println!("\nProgram finished with exit code {}", val),
+        Err(error) => println!("{}", error),
     }
 
     Ok(())
 }
 
-fn run_lang(program: &str) -> Result<(), String> {
+fn run_lang(program: &str) -> Result<i32, String> {
     let ast = lang::build_ast(program)?;
     if cfg!(lang_use_vm) {
         let bytecode = lang::compile_ast(&ast)?;
-        lang::run_bytecode(&bytecode)?;
+        lang::run_bytecode(&bytecode)
     } else {
-        lang::walk_ast(&ast)?;
+        lang::walk_ast(&ast)
     }
-    Ok(())
 }

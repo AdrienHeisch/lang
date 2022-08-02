@@ -1,7 +1,7 @@
 use super::*;
 use std::num::Wrapping;
 
-pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
+pub fn interpret (chunk: &Chunk) -> Result<i32, ()> {
     if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
         /* print!("BYTECODE: ");
         for s in chunk.iter().map(|el| format!("{:04X}", el)) {
@@ -57,7 +57,7 @@ pub fn interpret (chunk: &Chunk) -> Result<(), ()> {
         println!("\nMEMORY: {:?}\n", memory);
     }
 
-    Ok(())
+    Ok(0)
 }
 
 fn compute (instruction: Instruction, a: u16, d: u16, a_: u16) -> u16 {
