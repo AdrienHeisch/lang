@@ -14,7 +14,7 @@ macro_rules! test_assert_eq {
             if cfg!(lang_test_interpreter) {
                 let mut interpreter = Interpreter::new();
                 match interpreter.run(&ast.top_level) {
-                    Ok(()) => {
+                    Ok(_) => {
                         assert_eq!(interpreter.get_var_by_name($id).unwrap(), $value)
                     }
                     Err(error) => panic!(
@@ -33,7 +33,7 @@ macro_rules! test_assert_eq {
 
                 if cfg!(lang_test_vm_compiler) {
                     match crate::run_bytecode(&bytecode) {
-                        Ok(()) => {
+                        Ok(_) => {
                             todo!() // assert_eq!(interpreter.get_var_by_name($id).unwrap(), $value)
                         }
                         Err(error) => panic!("VM INTERPRETER ERROR : {}", error),
@@ -78,7 +78,7 @@ macro_rules! test_should_panic {
                     interpreter.run(&ast.top_level)
                 })) {
                     Ok(result) => match result {
-                        Ok(()) => panic!("Test code didn't panic."),
+                        Ok(_) => panic!("Test code didn't panic."),
                         Err(error) => println!("Interpreter error as expected : {}", error),
                     },
                     Err(_) => println!("Interpreter panic as expected."),
@@ -107,7 +107,7 @@ macro_rules! test_should_panic {
                         crate::run_bytecode(&bytecode)
                     })) {
                         Ok(result) => match result {
-                            Ok(()) => panic!("Test code didn't panic."),
+                            Ok(_) => panic!("Test code didn't panic."),
                             Err(error) => println!("VM interpreter error as expected : {}", error),
                         },
                         Err(_) => println!("VM interpreter panic as expected."),
@@ -471,3 +471,67 @@ test_assert_eq!(
     "c",
     Value::Char('l')
 );
+
+#[test]
+fn test_anything() -> Result<(), std::io::Error> {
+    let files: Vec<_> = std::fs::read_dir("./tests/")?
+        .filter_map(|el| match el {
+            Ok(dir_entry) if dir_entry.path().is_file() => Some(dir_entry),
+            _ => None,
+        })
+        .collect();
+
+    let files_iter_l: std::slice::Iter<std::fs::DirEntry> = files.iter();
+    let files_iter_r: std::slice::Iter<std::fs::DirEntry> = files.iter();
+    let tests: Vec<_> = (files_iter_l.filter(|el| {
+        if let Some(s) = el.path().extension() {
+            let s = s.to_str().unwrap();
+            s == "c"
+        } else {
+            false
+        }
+    }))
+    .zip(files_iter_r.filter(|el| {
+        if let Some(s) = el.path().extension() {
+            let s = s.to_str().unwrap();
+            s == "expected"
+        } else {
+            false
+        }
+    }))
+    .collect();
+
+    for (test, expectation) in tests {
+        print!("{:?}", test.file_name());
+        let test = std::fs::read_to_string(test.path())?;
+        let expectation = std::fs::read_to_string(expectation.path())?;
+
+        match {
+            let program: &str = &test;
+            let ast = match crate::build_ast(program) {
+                Ok(it) => it,
+                Err(err) => panic!("{err}"),
+            };
+            {
+                let ast = &ast;
+                let mut interpreter = crate::interpreter::Interpreter::new();
+                if let Err(err) = interpreter.run(&ast.top_level) {
+                    Err(err)
+                } else {
+                    Ok(interpreter.stdout)
+                }
+            }
+        } {
+            Ok(stdout) => {
+                println!("   PASSED");
+                assert_eq!(expectation, stdout)
+            }
+            Err(error) => {
+                println!("   FAILED");
+                panic!("{error}")
+            }
+        }
+    }
+
+    Ok(())
+}
