@@ -22,3 +22,33 @@ fn sum (bool, a, b) {
 }
 
 var s = sum(true, 3, 2);
+
+
+
+
+
+
+
+int
+main()
+{
+	int x = 127;
+	int *p = &x;
+	int **pp = &p;
+
+	//x = 127;
+	//p = &x;
+	//pp = &p;
+
+	if(*p!=127)
+		{return 1;}
+	if(**pp!=127)
+		{return 1;}
+	else
+		**pp = 1;
+
+	if(x!=127)
+		{return 0;}
+	else
+		{return 1;}
+}

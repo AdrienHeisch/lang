@@ -55,17 +55,19 @@ pub fn walk_ast(ast: &Ast) -> Result<i32, String> {
 }
 
 pub fn compile_ast(ast: &Ast) -> Result<Chunk, String> {
-    if let Ok((chunk, _)) = vm::compiler::compile(&ast.top_level) {
-        Ok(chunk)
-    } else {
-        Err("Error handling unimplemented.".to_string())
+    match vm::compiler::compile(&ast.top_level) {
+        Ok((chunk, _)) => Ok(chunk),
+        Err(error) => Err(format!(
+            "{} -> {}",
+            error.pos.get_full(&ast.source),
+            error.msg
+        )),
     }
 }
 
 pub fn run_bytecode(chunk: &Chunk) -> Result<i32, String> {
-    if let Ok(i) = vm::interpreter::interpret(chunk) {
-        Ok(i)
-    } else {
-        Err("Error handling unimplemented.".to_string())
+    match vm::interpreter::interpret(chunk) {
+        Ok(i) => Ok(i),
+        Err(_) => Err("Error handling unimplemented.".to_string()),
     }
 }

@@ -14,7 +14,7 @@ pub fn interpret (chunk: &Chunk) -> Result<i32, ()> {
     let mut a = 0_u16;
     let mut d = 0_u16;
     let mut memory: Memory = [0_u16; MEM_SIZE];
-    memory[0] = SP_INIT;
+    memory[SP as usize] = SP_INIT;
     let mut dummy_memory = 0;
 
     let mut offset = 0;
@@ -50,6 +50,10 @@ pub fn interpret (chunk: &Chunk) -> Result<i32, ()> {
             println!("A: {:>3} | D: {:>3} | A*: {:>3}", a as i16, d as i16, *in_mem as i16);
         }
         offset += 1;
+
+        if cfg!(lang_vm_step) {
+            std::io::stdin().read_line(&mut String::new()).ok();
+        }
     }
     
     if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {

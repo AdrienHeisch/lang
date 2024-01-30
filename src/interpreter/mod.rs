@@ -726,7 +726,7 @@ impl<'e> Interpreter<'e> {
     }
 
     fn free_unused_stack(&mut self) {
-        match &self.stack[(self.frame_ptr as usize + self.env.locals_count as usize)] {
+        match &self.stack[self.frame_ptr as usize + self.env.locals_count as usize] {
             Reference::Var(ptr) => self.memory.free_from(ptr.raw.pos),
             Reference::Fn(_, _, _) => (),
         }
@@ -776,7 +776,6 @@ impl<'e> Interpreter<'e> {
                             self.stdout,
                             " => [{}]",
                             (0..len)
-                                .into_iter()
                                 .map(|i| {
                                     format!(
                                         "{}",

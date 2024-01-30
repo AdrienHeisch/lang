@@ -4,8 +4,12 @@ pub mod interpreter;
 pub const MEM_SIZE: usize = 64;
 pub type Memory = [u16; MEM_SIZE];
 
-const SP_ADDRESS: u16 = 0;
+const SP: u16 = 0;
 const SP_INIT: u16 = 16;
+const ARGS: u16 = 1;
+const LOCALS: u16 = 2;
+const RETVAL: u16 = 3;
+const TEMP_0: u16 = 4;
 
 const JMP_ADDRESS: u16 = 1;
 
@@ -16,7 +20,7 @@ fn check_bit(instruction: Instruction, n: u8) -> bool {
     instruction & 1 << n != 0
 }
 
-trait InstructionTools {
+trait InstructionTools { //TODO useless trait ?
     fn to_asm(&self) -> String;
 }
 
@@ -26,10 +30,10 @@ impl InstructionTools for Instruction {
             return format!("A = {}", *self as i16);
         }
 
-        let sm = if (self & 0b1000000000000) == 0 {
-            "A"
-        } else {
+        let sm = if check_bit(*self, 12) {
             "*A"
+        } else {
+            "A"
         };
 
         #[allow(clippy::useless_format)]
@@ -53,7 +57,7 @@ impl InstructionTools for Instruction {
             0b110111 => format!("{}+1", sm),
             0b001110 => format!("D-1"),
             0b110010 => format!("{}-1", sm),
-            unknown => panic!("{:b}", unknown),
+            unknown => format!("{:b} (code unknown)", unknown),
         };
 
         let target = match (self & 0b111000) >> 3 {

@@ -68,11 +68,12 @@ fn parse_statement<'e, 't>(
         match expr.def {
             ExprDef::FnDecl { .. } | ExprDef::VarDecl(_, _, _) => (),
             ExprDef::End => (),
-            _ => push_error(
+            _ if !cfg!(lang_allow_no_function) => push_error(
                 errors,
                 format!("Unexpected non-declaration statement : {:?}", expr.def),
                 expr.pos,
             ),
+            _ => ()
         }
     }
 
@@ -784,7 +785,7 @@ fn make_args_list<'t>(
         let tk_0 = next(tokens);
         let t = match tk_0.def {
             TokenDef::Id(id) if matches!(&id, type_id_pattern!()) => {
-                let id = id;
+                // let id = id;
                 Type::from_identifier(&id)
             }
             _ => {
@@ -873,7 +874,7 @@ fn make_types_list<'t>(
         let tk_0 = next(tokens);
         let t = match tk_0.def {
             TokenDef::Id(id) if matches!(&id, type_id_pattern!()) => {
-                let id = id;
+                // let id = id;
                 Type::from_identifier(&id)
             }
             _ => {

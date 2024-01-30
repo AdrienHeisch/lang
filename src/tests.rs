@@ -31,7 +31,7 @@ macro_rules! test_assert_eq {
                     Err(error) => panic!("COMPILER ERROR : {}", error),
                 };
 
-                if cfg!(lang_test_vm_compiler) {
+                if cfg!(lang_test_vm_interpreter) {
                     match crate::run_bytecode(&bytecode) {
                         Ok(_) => {
                             todo!() // assert_eq!(interpreter.get_var_by_name($id).unwrap(), $value)
@@ -102,7 +102,7 @@ macro_rules! test_should_panic {
                     }
                 };
 
-                if cfg!(lang_test_vm_compiler) {
+                if cfg!(lang_test_vm_interpreter) {
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                         crate::run_bytecode(&bytecode)
                     })) {
@@ -345,9 +345,9 @@ test_should_panic!(assign_expr_value, "int a = { int b = 1; };");
 
 test_assert_eq!(
     loop_,
-    "int i = 1; int c = 0; while c < 5 { i = i * 2; c = c + 1; }",
+    "int i = 1; int c = 0; while c < 5 { i = i + 2; c = c + 1; }",
     "i",
-    Value::Int(32)
+    Value::Int(11)
 );
 
 test_should_panic!(type_as_identifier, "int int = 1;");

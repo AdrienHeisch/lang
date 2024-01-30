@@ -1,6 +1,6 @@
 use crate::{
     ast::Identifier,
-    value::{Type},
+    value::Type,
 };
 
 #[derive(Clone)]
