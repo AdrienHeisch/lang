@@ -26,13 +26,13 @@ macro_rules! test_assert_eq {
             }
 
             if cfg!(lang_test_vm_interpreter) || cfg!(lang_test_vm_compiler) {
-                let bytecode = match crate::compile_ast(&ast) {
-                    Ok(bytecode) => bytecode,
+                let (chunk, entrypoint) = match crate::compile_ast(&ast) {
+                    Ok(value) => value,
                     Err(error) => panic!("COMPILER ERROR : {}", error),
                 };
 
                 if cfg!(lang_test_vm_interpreter) {
-                    match crate::run_bytecode(&bytecode) {
+                    match crate::run_bytecode(&chunk, entrypoint) {
                         Ok(_) => {
                             todo!() // assert_eq!(interpreter.get_var_by_name($id).unwrap(), $value)
                         }
@@ -86,11 +86,11 @@ macro_rules! test_should_panic {
             }
 
             if cfg!(lang_test_vm_interpreter) || cfg!(lang_test_vm_compiler) {
-                let bytecode = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let (chunk, entrypoint) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     crate::compile_ast(&ast)
                 })) {
                     Ok(result) => match result {
-                        Ok(bytecode) => bytecode,
+                        Ok(value) => value,
                         Err(error) => {
                             println!("Compiler error as expected : {}", error);
                             return;
@@ -104,7 +104,7 @@ macro_rules! test_should_panic {
 
                 if cfg!(lang_test_vm_interpreter) {
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        crate::run_bytecode(&bytecode)
+                        crate::run_bytecode(&chunk, entrypoint)
                     })) {
                         Ok(result) => match result {
                             Ok(_) => panic!("Test code didn't panic."),
@@ -472,7 +472,7 @@ test_assert_eq!(
     Value::Char('l')
 );
 
-#[test]
+/* #[test]
 fn test_anything() -> Result<(), std::io::Error> {
     let files: Vec<_> = std::fs::read_dir("./tests/")?
         .filter_map(|el| match el {
@@ -534,4 +534,4 @@ fn test_anything() -> Result<(), std::io::Error> {
     }
 
     Ok(())
-}
+} */

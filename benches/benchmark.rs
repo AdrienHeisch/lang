@@ -27,9 +27,9 @@ fn compile_bytecode(c: &mut Criterion) {
 fn run_bytecode(c: &mut Criterion) {
     let program = std::fs::read_to_string("./code.lang").unwrap();
     let ast = lang::build_ast(&program).unwrap();
-    let bytecode = lang::compile_ast(&ast).unwrap();
+    let (chunk, entrypoint) = lang::compile_ast(&ast).unwrap();
     c.bench_function("run_bytecode", |b| {
-        b.iter(|| lang::run_bytecode(&bytecode).unwrap())
+        b.iter(|| lang::run_bytecode(&chunk, entrypoint).unwrap())
     });
 }
 

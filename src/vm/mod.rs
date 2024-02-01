@@ -1,44 +1,60 @@
+use crate::ast::Position;
+
 pub mod compiler;
 pub mod interpreter;
 
 pub const MEM_SIZE: usize = 64;
-pub type Memory = [u16; MEM_SIZE];
+pub type Memory = [u16; MEM_SIZE]; // type MemoryCell = u16 ?
 
-const SP: u16 = 0;
+const SP: Address = 0;
 const SP_INIT: u16 = 16;
-const ARGS: u16 = 1;
-const LOCALS: u16 = 2;
-const RETVAL: u16 = 3;
-const TEMP_0: u16 = 4;
-
-const JMP_ADDRESS: u16 = 1;
+const JMP_ADDRESS: Address = 1;
+const ARGS: Address = 2;
+const LOCALS: Address = 3;
+const RETVAL: Address = 4;
+const TEMP_0: Address = 5;
 
 pub type Chunk = Vec<Instruction>;
-type Instruction = u16; //TODO use i16 ?
+pub type Address = u16;
 
-fn check_bit(instruction: Instruction, n: u8) -> bool {
-    instruction & 1 << n != 0
+#[derive(Clone)]
+pub struct Instruction {
+    code: u16,
+    #[cfg(lang_debug)]
+    debug_info: InstructionDebugInfo
+}
+
+#[cfg(lang_debug)]
+#[derive(Debug, Clone)]
+struct InstructionDebugInfo {
+    pos: Position,
+    def: String
+}
+
+fn check_bit(instruction: &Instruction, n: u8) -> bool {
+    instruction.code & 1_u16 << n != 0
 }
 
 trait InstructionTools { //TODO useless trait ?
     fn to_asm(&self) -> String;
+    // fn get_debug_info(&self) -> InstructionDebugInfo;
 }
 
 impl InstructionTools for Instruction {
     fn to_asm(&self) -> String {
-        if !check_bit(*self, 15) {
-            return format!("A = {}", *self as i16);
+        if !check_bit(self, 15) {
+            return format!("A = {}", self.code);
         }
 
-        let sm = if check_bit(*self, 12) {
+        let sm = if check_bit(self, 12) {
             "*A"
         } else {
             "A"
         };
 
         #[allow(clippy::useless_format)]
-        let opcode = match (self & 0b111111000000) >> 6 {
-            _ if self & 0b111 == 0b111 => format!(""),
+        let opcode = match (self.code & 0b111111000000) >> 6 {
+            _ if self.code & 0b111 == 0b111 => format!(""),
             0b001010 | 0b001100 => format!("D"),
             0b100010 | 0b110000 => format!("{}", sm),
             0b000000 => format!("D&{}", sm),
@@ -60,7 +76,7 @@ impl InstructionTools for Instruction {
             unknown => format!("{:b} (code unknown)", unknown),
         };
 
-        let target = match (self & 0b111000) >> 3 {
+        let target = match (self.code & 0b111000) >> 3 {
             0b000 => "",
             0b001 => "*A = ",
             0b010 => "D = ",
@@ -72,7 +88,7 @@ impl InstructionTools for Instruction {
             _ => panic!(),
         };
 
-        let cond = match self & 0b111 {
+        let cond = match self.code & 0b111 {
             0b000 => "",
             0b001 => "; JGT",
             0b010 => "; JEQ",
@@ -87,7 +103,22 @@ impl InstructionTools for Instruction {
         format!("{}{}{}", target, opcode, cond)
     }
 
+
+    /* #[cfg(not(lang_debug))]
+    fn get_debug_info(&self) -> InstructionDebugInfo {}
+
+    #[cfg(lang_debug)]
+    fn get_debug_info(&self) -> InstructionDebugInfo {
+        self.debug_info
+    } */
+
     //TODO from_asm ?
+}
+
+impl From<Instruction> for u16 {
+    fn from (instruction: Instruction) -> Self {
+        instruction.code
+    }
 }
 
 pub struct DebugInfo {
