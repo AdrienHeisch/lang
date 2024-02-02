@@ -1,24 +1,47 @@
 use super::*;
 use crate::ast::{Error, Expr, ExprDef, Identifier, IdentifierTools, Op};
 use crate::value::Value;
-use std::collections::HashMap;
+use crate::env::{Context, Environment, Local};
 
-#[derive(Debug)]
-struct IdentifierValue {
-    address: u16,
-    args: Option<Vec<Identifier>>
+#[derive(Debug, Clone)]
+enum IdentifierValue {
+    Var(u16),
+    Fn {
+        offset: u16,
+        args: Option<Vec<Identifier>> //TODO if not needed replace identifiervalue by address/reference
+    }
 }
 
-pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, DebugInfo), Error> {
+type IdentifierList = Vec<(Identifier, IdentifierValue)>;
+
+trait IdentifierListTools {
+    fn get_value (&self, id: Identifier) -> Option<IdentifierValue>;
+}
+
+impl IdentifierListTools for IdentifierList {
+    fn get_value (&self, id: Identifier) -> Option<IdentifierValue> {
+        self.iter().rev().find(|(id_, _)| id == *id_).map(|(_, value)| value.clone() )
+    }
+}
+
+pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, Vec<Instruction>, DebugInfo), Error> {
     let mut chunk = Chunk::new();
-    let mut identifiers = HashMap::<Identifier, IdentifierValue>::new();
-    let mut sp = SP_INIT; // necessary to keep track of variables on the stack at compile time
+    let mut identifiers = IdentifierList::new();
+    let mut env = Environment::new(Context::TopLevel);
+    let mut debug_info = DebugInfo::new();
 
     for s in statements {
-        expr(s, &mut chunk, &mut identifiers, &mut sp)?;
+        expr(s, &mut chunk, &mut env, &mut identifiers, false)?;
     }
 
-    let entrypoint = identifiers.get(&Identifier::make("main")).map(|id_val| id_val.address);
+    let entrypoint: Option<Address> = IdentifierListTools::get_value(&identifiers, Identifier::make("main")).map(
+        |val| {
+            match val {
+                IdentifierValue::Var(address) => address,
+                IdentifierValue::Fn { offset: address, .. } => address
+            }
+        }
+    );
 
     if cfg!(lang_print_vm_compiler) && !cfg!(lang_benchmark) {
         println!("========= ASM =========");
@@ -34,18 +57,31 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, DebugInf
             println!();
         }
         println!("=======================");
-        println!();
-        println!("{:?}", identifiers);
+        // println!();
+        // println!("{:?}", env);
         println!();
         println!("Entrypoint: {:?}", entrypoint);
         println!();
     }
 
-    let identifiers: HashMap<Identifier, u16> = identifiers.into_iter().map(|(k, v)| (k, v.address)).collect();
-    Ok((chunk, entrypoint, DebugInfo { identifiers }))
+    let mut globals = vec![];
+    for global in env.globals {
+        globals.push(Instruction {
+            code: IdentifierListTools::get_value(&identifiers, global.id).map(|value| {
+                match value {
+                    IdentifierValue::Var(value) => value,
+                    IdentifierValue::Fn { offset, .. } => offset
+                }
+            }).unwrap(),
+            debug_info: InstructionDebugInfo { def: String::default(), pos: Position::zero() }
+        })
+    }
+
+    // let identifiers: HashMap<Identifier, u16> = identifiers.into_iter().map(|(k, v)| (k, v.address)).collect();
+    Ok((chunk, entrypoint, globals, debug_info))
 }
 
-fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, IdentifierValue>, sp: &mut u16) -> Result<(), Error>{
+fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Vec<(Identifier, IdentifierValue)>, mut main: bool) -> Result<(), Error>{
     macro_rules! instr {
         ($e: expr) => {
             chunk.push(Instruction { code: $e, debug_info: InstructionDebugInfo { pos: e.pos, def: format!("{:?}", e.def) } })
@@ -68,7 +104,6 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
             instr!(0b1000001100001000); // *A = D
             instr!(SP);                 // A = SP
             instr!(0b1001110111001000); // *A = *A + 1
-            *sp += 1;
         };
     }
 
@@ -78,7 +113,6 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
             instr!(0b1001110010001000); // *A = *A - 1
             instr!(0b1001110000100000); // A = *A
             instr!(0b1001110000010000); // D = *A
-            *sp -= 1;
         };
     }
 
@@ -88,7 +122,6 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
             instr!(0b1001110010001000); // *A = *A - 1
             instr!(0b1001110000100000); // A = *A
             instr!(0b1001110000100000); // A = *A
-            *sp -= 1;
         };
     }
     
@@ -128,12 +161,29 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
             instr!(instruction);
         }
         Id(id) => {
-            if let Some(IdentifierValue { address, .. }) = identifiers.get(id) {
-                println!("Get identifier {id:?} -> {address}");
-                instr!(*address);           // A = address
-                instr!(0b1001110000100000); // A = *A
-            } else {
-                panic!("Unknown identifier : {}", id.to_string())
+            match IdentifierListTools::get_value(identifiers, *id) {
+                Some(IdentifierValue::Var(address)) => {
+                    match env.get_from_id(id) {
+                        Some(local) if local.depth > 0 => {
+                            println!("Get identifier {id:?} -> {address}");
+                            instr!(LOCALS);             // A = LOCALS
+                            instr!(0b1001110000010000); // D = *A
+                            instr!(address);            // A = address
+                            instr!(0b1000000010100000); // A = D + A
+                            instr!(0b1001110000100000); // A = *A
+                        }
+                        Some(_) => todo!("Gloval variables not implemented yet"),
+                        None => panic!("Corrupted environment, can't find identifier : {}", id.to_string()),
+                    }
+                }
+                Some(IdentifierValue::Fn { offset: address, .. }) => {
+                    instr!(address);           // A = address
+                    match env.get_from_id(id) {
+                        Some(Local { t: crate::value::Type::Fn(_, _), .. }) => {}
+                        _ => panic!("Corrupted environment, can't find identifier : {}", id.to_string()),
+                    }
+                }
+                None => panic!("Unknown identifier : {}", id.to_string()),
             }
         }
         ArrayLit { .. } => todo!("Array literals are not implemented yet."),
@@ -141,8 +191,8 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
         If { cond, then, elze } => {
             let before_if = chunk.len();
             instr!(0); // A = tbd
-            expr(cond, chunk, identifiers, sp)?;
-            expr(then, chunk, identifiers, sp)?;
+            expr(cond, chunk, env, identifiers, main)?;
+            expr(then, chunk, env, identifiers, main)?;
 
             let skip_else = chunk.len();
             if elze.is_some() {
@@ -153,22 +203,22 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
             chunk[before_if].code = (chunk.len() - 1) as u16; // A =
 
             if let Some(elze) = elze {
-                expr(elze, chunk, identifiers, sp)?;
+                expr(elze, chunk, env, identifiers, main)?;
                 chunk[skip_else].code = (chunk.len() - 1) as u16;
             }
         }
         While { cond, body } => {
             let loop_start = chunk.len();
             instr!(0);
-            expr(cond, chunk, identifiers, sp)?;
-            expr(body, chunk, identifiers, sp)?;
+            expr(cond, chunk, env, identifiers, main)?;
+            expr(body, chunk, env, identifiers, main)?;
             instr!((loop_start - 1) as u16);
             instr!(0b1000000000000111);     // JMP
 
             chunk[loop_start].code = (chunk.len() - 1) as u16;
         }
         UnOp { op, e } => {
-            expr(e, chunk, identifiers, sp)?;   // A = e
+            expr(e, chunk, env, identifiers, main)?;   // A = e
             match *op {
                 Op::SubOrNeg =>     instr!(0b100001101001000),  // D = -A
                 Op::Not =>          instr!(0b1000001100010000), // D = ~D
@@ -180,9 +230,9 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
         BinOp { op, left, right } => {
             macro_rules! simple_binop {
                 () => {
-                    expr(left, chunk, identifiers, sp)?;    // A = left
+                    expr(left, chunk, env, identifiers, main)?;    // A = left
                     instr!(0b1000110000010000);         // D = A
-                    expr(right, chunk, identifiers, sp)?;   // A = right
+                    expr(right, chunk, env, identifiers, main)?;   // A = right
                 };
             }
 
@@ -191,9 +241,9 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
                     instr!(0b1000110000010000);         // D = A
                     instr!(JMP_ADDRESS);                // A = JMP_ADDRESS
                     instr!(0b1000001100001000);         // *A = D
-                    expr(left, chunk, identifiers, sp)?;    // A = left
+                    expr(left, chunk, env, identifiers, main)?;    // A = left
                     instr!(0b1000110000010000);         // D = A
-                    expr(right, chunk, identifiers, sp)?;   // A = right
+                    expr(right, chunk, env, identifiers, main)?;   // A = right
                     instr!(0b1000010011010000);         // D = D - A
                     instr!(JMP_ADDRESS);                // A = JMP_ADDRESS
                     instr!(0b1001110000100000);         // A = *A
@@ -204,16 +254,17 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
                 Op::Assign => {
                     match &left.def {
                         Id(id) => {
-                            let address = if let Some(IdentifierValue { address, .. }) = identifiers.get(id) {
-                                *address
-                            } else {
-                                panic!(
-                                    "Unkown identifier : {}",
-                                    String::from_utf8(Vec::from(id)).unwrap()
-                                );
+                            let address = match IdentifierListTools::get_value(identifiers, *id) {
+                                Some(IdentifierValue::Var(address) | IdentifierValue::Fn { offset: address, .. }) => address,
+                                None => {
+                                    panic!(
+                                        "Unkown identifier : {}",
+                                        String::from_utf8(Vec::from(id)).unwrap()
+                                    );
+                                }
                             };
 
-                            expr(right, chunk, identifiers, sp)?;
+                            expr(right, chunk, env, identifiers, main)?;
                             if let Const(_) = right.def {
                                 instr!(0b1000110000010000); // D = A
                             }
@@ -221,12 +272,11 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
                             instr!(0b1000001100001000);     // *A = D
                         }
                         UnOp { op: Op::MultOrDeref, e } => {
-
-                            expr(right, chunk, identifiers, sp)?;
+                            expr(right, chunk, env, identifiers, main)?;
                             if let Const(_) = right.def {
                                 instr!(0b1000110000010000); // D = A
                             }
-                            expr(e, chunk, identifiers, sp)?;   // A = address
+                            expr(e, chunk, env, identifiers, main)?;   // A = address
                             instr!(0b1000001100001000);     // *A = D
                         }
                         _ => {
@@ -294,7 +344,7 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
             instr!(ARGS);               // A = ARGS
             instr!(0b1000001100001000); // *A = D
 
-            expr(function, chunk, identifiers, sp)?;
+            expr(function, chunk, env, identifiers, main)?;
             instr!(0b1000000000000111); // JMP
             chunk[return_label].code = chunk.len() as u16;
 
@@ -322,17 +372,54 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
         },
         Field(_, _) => todo!("Field access is not implemented yet."),
         VarDecl(.., None) => todo!("Uninitialized variables are not implemented yet."), //TODO uninitialized var ?
-        VarDecl(id, _, Some(assign_expr)) => { //TODO type checking ?
-            identifiers.insert(*id, IdentifierValue { address: *sp, args: None });
-            expr(assign_expr, chunk, identifiers, sp)?;
+        VarDecl(id, t, Some(assign_expr)) => { //TODO type checking ? //TODO global var ?
+            if let Context::TopLevel = env.context {
+                todo!()
+            } else {
+                env.locals[env.locals_count as usize] = Local {
+                    id: *id,
+                    t: t.clone(),
+                    depth: env.scope_depth,
+                };
+
+                identifiers.push((*id, IdentifierValue::Var(env.locals_count as u16)));
+
+                if let Some(n) = env.locals_count.checked_add(1) {
+                    env.locals_count = n;
+                } else {
+                    return Err(Error { msg: "Too many locals.".to_owned(), pos: e.pos });
+                }
+            }
+            // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+            // identifiers.push((*id, IdentifierValue::Var(*sp)));
+            // println!("Pushing var {:?} at {}", id);
+
+            expr(assign_expr, chunk, env, identifiers, main)?;
             if let Const(_) = assign_expr.def {
                 instr!(0b1000110000010000); // D = A
             }
             PUSH_D!();
         }
-        FnDecl { id, params, return_t: _, body } => {
-            println!("{}", chunk.len());
-            identifiers.insert(*id, IdentifierValue { address: chunk.len() as u16, args: None/* Some(params.iter().map(|(_, v)| *v).collect()) */ });
+        FnDecl { id, params, return_t, body } => {
+            main = id == b"main\0\0\0\0";
+            if let Context::TopLevel = env.context {
+                env.globals.push(Local {
+                    id: *id,
+                    t: crate::value::Type::Fn(
+                        params.iter().map(|param| param.0.clone()).collect(),
+                        Box::new(return_t.clone()),
+                    ),
+                    depth: env.scope_depth,
+                });
+            } else {
+                unimplemented!()
+            }
+
+            env.context = Context::Function;
+            
+            let address = chunk.len() as u16;
+            identifiers.push((*id, IdentifierValue::Fn { offset: address, args: None/* Some(params.iter().map(|(_, v)| *v).collect()) */ }));
+
             instr!(SP);                 // A = SP
             instr!(0b1001110000010000); // D = *A
             instr!(LOCALS);             // A = LOCALS
@@ -341,32 +428,40 @@ fn expr(e: &Expr, chunk: &mut Chunk, identifiers: &mut HashMap<Identifier, Ident
             instr!(0b1000000010010000); // D = D + A
             instr!(SP);                 // A = SP
             instr!(0b1000001100001000); // *A = D
-            expr(body, chunk, identifiers, sp)?;
+            expr(body, chunk, env, identifiers, main)?;
         },
         StructDecl { .. } => todo!("Structure declarations are not implemented yet."),
         Block(exprs) => {
             // let sp_now = *sp;
+            env.open_scope();
             for e in exprs.iter() {
-                expr(e, chunk, identifiers, sp)?;
+                expr(e, chunk, env, identifiers, main)?;
+            }
+            for _ in 0..env.close_scope() {
+                identifiers.pop();
             }
             // *sp = sp_now;
         }
         Parent(e) => {
-            expr(e, chunk, identifiers, sp)?;
+            expr(e, chunk, env, identifiers, main)?;
         }
         Return(return_expr) => {
             //HACK assuming return expr puts the return value in register A
-            expr(return_expr, chunk, identifiers, sp)?;
+            expr(return_expr, chunk, env, identifiers, main)?;
             instr!(0b1000110000010000); // D = A
             instr!(RETVAL);             // A = RETVAL
             instr!(0b1000001100001000); // *A = D
-            instr!(LOCALS);             // A = LOCALS
-            instr!(0b1001110000010000); // D = *A
-            instr!(SP);                 // A = SP
-            instr!(0b1000001100001000); // *A = D
-            POP_A!();                   // POP_A
-            instr!(SP);
+            if main {
+                instr!(0x7FFF);             // A = -1
+            } else {
+                instr!(LOCALS);             // A = LOCALS
+                instr!(0b1001110000010000); // D = *A
+                instr!(SP);                 // A = SP
+                instr!(0b1000001100001000); // *A = D
+                POP_A!();                   // POP_A
+            }
             instr!(0b1000000000000111); // JMP
+            env.context = Context::TopLevel;
         },
         End => (),
         Invalid => unimplemented!(),

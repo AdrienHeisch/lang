@@ -26,13 +26,13 @@ macro_rules! test_assert_eq {
             }
 
             if cfg!(lang_test_vm_interpreter) || cfg!(lang_test_vm_compiler) {
-                let (chunk, entrypoint) = match crate::compile_ast(&ast) {
+                let (chunk, entrypoint, globals) = match crate::compile_ast(&ast) {
                     Ok(value) => value,
                     Err(error) => panic!("COMPILER ERROR : {}", error),
                 };
 
                 if cfg!(lang_test_vm_interpreter) {
-                    match crate::run_bytecode(&chunk, entrypoint) {
+                    match crate::run_bytecode(&chunk, entrypoint, globals) {
                         Ok(_) => {
                             todo!() // assert_eq!(interpreter.get_var_by_name($id).unwrap(), $value)
                         }
@@ -86,7 +86,7 @@ macro_rules! test_should_panic {
             }
 
             if cfg!(lang_test_vm_interpreter) || cfg!(lang_test_vm_compiler) {
-                let (chunk, entrypoint) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                let (chunk, entrypoint, globals) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                     crate::compile_ast(&ast)
                 })) {
                     Ok(result) => match result {
@@ -104,7 +104,7 @@ macro_rules! test_should_panic {
 
                 if cfg!(lang_test_vm_interpreter) {
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                        crate::run_bytecode(&chunk, entrypoint)
+                        crate::run_bytecode(&chunk, entrypoint, globals)
                     })) {
                         Ok(result) => match result {
                             Ok(_) => panic!("Test code didn't panic."),

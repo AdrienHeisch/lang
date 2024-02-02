@@ -1,7 +1,7 @@
 use super::*;
 use std::num::Wrapping;
 
-pub fn interpret (chunk: &Chunk, entrypoint: Address) -> Result<i32, ()> {
+pub fn interpret (chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>) -> Result<i32, ()> {
     if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
         /* print!("BYTECODE: ");
         for s in chunk.iter().map(|el| format!("{:04X}", el)) {
@@ -13,15 +13,22 @@ pub fn interpret (chunk: &Chunk, entrypoint: Address) -> Result<i32, ()> {
 
     let mut a = 0_u16;
     let mut d = 0_u16;
-    let mut memory: Memory = [0_u16; MEM_SIZE];
-    memory[SP as usize] = SP_INIT;
     let mut dummy_memory = 0;
+    let mut memory: Memory = [0_u16; MEM_SIZE];
+    memory[SP as usize] = STACK;
+
+    if globals.len() > (STACK - GLOBALS) as usize {
+        panic!("Too may globals");
+    }
+    for (i, global) in globals.iter().enumerate() {
+        memory[GLOBALS as usize + i] = global.code
+    }
 
     let mut counter = 0;
-
     let mut offset = entrypoint as usize;
+    
     while offset < chunk.len() {
-        let in_mem = if (a as usize) < memory.len() {
+        let mut in_mem = if (a as usize) < memory.len() {
             &mut memory[a as usize]
         } else {
             &mut dummy_memory
@@ -45,12 +52,21 @@ pub fn interpret (chunk: &Chunk, entrypoint: Address) -> Result<i32, ()> {
             }
             
             if (check_bit(instruction, 0) && (result as i16) > 0) || (check_bit(instruction, 1) && result == 0) || (check_bit(instruction, 2) && (result as i16) < 0) {
+                if a == 0x7FFF {
+                    break;
+                }
                 offset = a as usize;
                 did_jump = true;
             }
         } else {
             a = instruction.code;
         }
+        
+        in_mem = if (a as usize) < memory.len() {
+            &mut memory[a as usize]
+        } else {
+            &mut dummy_memory
+        };
         if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
             println!("A: {:>3} | D: {:>3} | A*: {:>3}   |   SP: {}, ARGS: {}, LOCALS: {}, RETVAL: {}   |   {}, {:?}", a as i16, d as i16, *in_mem as i16, memory[SP as usize], memory[ARGS as usize], memory[LOCALS as usize], memory[RETVAL as usize], format!("{:?}", instruction.debug_info.def).split(['{', '(', '[']).nth(0).unwrap().trim().replace("\"", "").to_string(), instruction.debug_info.pos);
         }
@@ -70,7 +86,7 @@ pub fn interpret (chunk: &Chunk, entrypoint: Address) -> Result<i32, ()> {
             }
         }
 
-        if offset == entrypoint as usize {
+        if memory[SP as usize] < STACK {
             break;
         }
     }

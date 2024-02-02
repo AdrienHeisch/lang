@@ -53,7 +53,7 @@ impl<'ast> Ast<'ast> {
 }
 
 // #region IDENTIFIER
-pub type Identifier = [u8; 8];
+pub type Identifier = [u8; 8]; //TODO should this be [char; 8] ?
 
 pub trait IdentifierTools {
     fn make(id: &str) -> Self;

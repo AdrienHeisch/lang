@@ -3,24 +3,24 @@ use crate::{
     value::Type,
 };
 
-#[derive(Clone)]
-pub struct Environment {
+#[derive(Clone, Debug)]
+pub struct Environment { //TODO make it generic to contain crate::vm::compiler::IdentifierValue
     pub globals: Vec<Local>,
     pub locals: [Local; 256], //TODO max locals ? (u8?)
-    pub locals_count: u8,
-    pub scope_depth: u8,
+    pub locals_count: u8, //TODO usize
+    pub scope_depth: u8, //TODO usize ?
     pub context: Context,
 }
 
 //TODO change name to be more general than "Local" (or create "Globals" ?)
-#[derive(Clone, Default)]
+#[derive(Clone, Default, Debug)]
 pub struct Local {
     pub id: Identifier,
     pub t: Type,
     pub depth: u8,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub enum Context {
     TopLevel,
     Function,

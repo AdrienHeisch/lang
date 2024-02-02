@@ -22,9 +22,9 @@ fn main() -> Result<(), std::io::Error> {
 fn run_lang(program: &str) -> Result<i32, String> {
     let ast = lang::build_ast(program)?;
     if cfg!(lang_use_vm) {
-        let (chunk, entrypoint) = lang::compile_ast(&ast)?;
+        let (chunk, entrypoint, globals) = lang::compile_ast(&ast)?;
         if !cfg!(lang_use_vm_compile_only) {
-            lang::run_bytecode(&chunk, entrypoint)
+            lang::run_bytecode(&chunk, entrypoint, globals)
         } else {
             Ok(0)
         }

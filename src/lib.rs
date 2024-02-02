@@ -12,7 +12,7 @@ mod vm;
 use ast::Ast;
 use interpreter::Interpreter;
 use value::Value;
-use vm::{Address, Chunk};
+use vm::{Address, Chunk, Instruction};
 
 //TODO linker
 //TODO main() function
@@ -54,10 +54,10 @@ pub fn walk_ast(ast: &Ast) -> Result<i32, String> {
     }
 }
 
-pub fn compile_ast(ast: &Ast) -> Result<(Chunk, Address), String> {
+pub fn compile_ast(ast: &Ast) -> Result<(Chunk, Address, Vec<Instruction>), String> {
     match vm::compiler::compile(&ast.top_level) {
-        Ok((chunk, Some(entrypoint), _)) => Ok((chunk, entrypoint)),
-        Ok((_, None, _)) => Err(format!(
+        Ok((chunk, Some(entrypoint), globals, _)) => Ok((chunk, entrypoint, globals)),
+        Ok((_, None, _, _)) => Err(format!(
             "No entrypoint."
         )),
         Err(error) => Err(format!(
@@ -68,8 +68,8 @@ pub fn compile_ast(ast: &Ast) -> Result<(Chunk, Address), String> {
     }
 }
 
-pub fn run_bytecode(chunk: &Chunk, entrypoint: Address) -> Result<i32, String> {
-    match vm::interpreter::interpret(chunk, entrypoint) {
+pub fn run_bytecode(chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>) -> Result<i32, String> {
+    match vm::interpreter::interpret(chunk, entrypoint, globals) {
         Ok(i) => Ok(i),
         Err(_) => Err("Error handling unimplemented.".to_string()),
     }

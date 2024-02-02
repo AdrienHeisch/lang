@@ -4,12 +4,15 @@
 //int i = add(2, 4);
 
 int funct () {
-	int a = 42;
+	int a = 43;
 	return a;
 }
 
 int main () {
 	int i = funct();
-	//i = i + 100;
+	//i = b;
 	return i;
 }
+
+
+//f() + x      -> parse error

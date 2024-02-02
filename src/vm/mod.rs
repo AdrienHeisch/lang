@@ -7,12 +7,14 @@ pub const MEM_SIZE: usize = 64;
 pub type Memory = [u16; MEM_SIZE]; // type MemoryCell = u16 ?
 
 const SP: Address = 0;
-const SP_INIT: u16 = 16;
-const JMP_ADDRESS: Address = 1;
+const JMP_ADDRESS: Address = 1; //HACK can't tell why this is necessary
 const ARGS: Address = 2;
 const LOCALS: Address = 3;
 const RETVAL: Address = 4;
 const TEMP_0: Address = 5;
+
+const GLOBALS: u16 = 16;
+const STACK: u16 = 32;
 
 pub type Chunk = Vec<Instruction>;
 pub type Address = u16;
@@ -21,12 +23,15 @@ pub type Address = u16;
 pub struct Instruction {
     code: u16,
     #[cfg(lang_debug)]
-    debug_info: InstructionDebugInfo
+    debug_info: InstructionDebugInfo //move into DebugIngo
 }
 
 #[cfg(lang_debug)]
+pub type DebugInfo = Vec<InstructionDebugInfo>;
+
+#[cfg(lang_debug)]
 #[derive(Debug, Clone)]
-struct InstructionDebugInfo {
+pub struct InstructionDebugInfo {
     pos: Position,
     def: String
 }
@@ -119,8 +124,4 @@ impl From<Instruction> for u16 {
     fn from (instruction: Instruction) -> Self {
         instruction.code
     }
-}
-
-pub struct DebugInfo {
-    pub identifiers: std::collections::HashMap<crate::ast::Identifier, u16>,
 }

@@ -1,5 +1,5 @@
 fn main() {
-    println!("cargo:rustc-cfg=lang_100_instructions_max");
+    // println!("cargo:rustc-cfg=lang_100_instructions_max");
     // println!("cargo:rustc-cfg=lang_allow_no_function");
     // println!("cargo:rustc-cfg=lang_benchmark");
     println!("cargo:rustc-cfg=lang_use_vm");
