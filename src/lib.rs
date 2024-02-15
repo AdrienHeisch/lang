@@ -66,7 +66,11 @@ pub fn compile_ast(ast: &Ast) -> Result<(Chunk, Address, Vec<Instruction>), Stri
     }
 }
 
-pub fn run_bytecode(chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>) -> Result<i32, String> {
+pub fn run_bytecode(
+    chunk: &Chunk,
+    entrypoint: Address,
+    globals: Vec<Instruction>,
+) -> Result<i32, String> {
     match vm::interpreter::interpret(chunk, entrypoint, globals) {
         Ok(i) => Ok(i),
         Err(_) => Err("Error handling unimplemented.".to_string()),

@@ -23,7 +23,7 @@ pub type Address = u16;
 pub struct Instruction {
     code: u16,
     #[cfg(lang_debug)]
-    debug_info: InstructionDebugInfo //move into DebugIngo
+    debug_info: InstructionDebugInfo, //move into DebugIngo
 }
 
 #[cfg(lang_debug)]
@@ -33,14 +33,15 @@ pub type DebugInfo = Vec<InstructionDebugInfo>;
 #[derive(Debug, Clone)]
 pub struct InstructionDebugInfo {
     pos: Position,
-    def: String
+    def: String,
 }
 
 fn check_bit(instruction: &Instruction, n: u8) -> bool {
     instruction.code & 1_u16 << n != 0
 }
 
-trait InstructionTools { //TODO useless trait ?
+trait InstructionTools {
+    //TODO useless trait ?
     fn to_asm(&self) -> String;
     // fn get_debug_info(&self) -> InstructionDebugInfo;
 }
@@ -51,11 +52,7 @@ impl InstructionTools for Instruction {
             return format!("A = {}", self.code);
         }
 
-        let sm = if check_bit(self, 12) {
-            "*A"
-        } else {
-            "A"
-        };
+        let sm = if check_bit(self, 12) { "*A" } else { "A" };
 
         #[allow(clippy::useless_format)]
         let opcode = match (self.code & 0b111111000000) >> 6 {
@@ -108,7 +105,6 @@ impl InstructionTools for Instruction {
         format!("{}{}{}", target, opcode, cond)
     }
 
-
     /* #[cfg(not(lang_debug))]
     fn get_debug_info(&self) -> InstructionDebugInfo {}
 
@@ -121,7 +117,7 @@ impl InstructionTools for Instruction {
 }
 
 impl From<Instruction> for u16 {
-    fn from (instruction: Instruction) -> Self {
+    fn from(instruction: Instruction) -> Self {
         instruction.code
     }
 }

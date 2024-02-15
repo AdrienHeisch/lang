@@ -243,7 +243,9 @@ fn parse_expr<'e>(
             }
         }
         TokenDef::DelimOpen(Delimiter::Br) => {
-            env.open_scope();
+            if let Err(err) = env.open_scope() {
+                push_error(errors, err.msg, tk.pos);
+            }
 
             let mut statements: Vec<&Expr> = Vec::new();
             while {
@@ -261,7 +263,9 @@ fn parse_expr<'e>(
             }
             next(tokens);
 
-            env.close_scope();
+            if let Err(err) = env.close_scope() {
+                push_error(errors, err.msg, tk.pos);
+            }
 
             sort_functions_first(&mut statements);
             arena.alloc(Expr {
@@ -331,8 +335,7 @@ fn parse_expr_next<'e>(
         }
         TokenDef::DelimOpen(Delimiter::Pr) => {
             next(tokens);
-            let (expr_list, tk_delim_close) =
-                make_expr_list(arena, tokens, env, errors, tk);
+            let (expr_list, tk_delim_close) = make_expr_list(arena, tokens, env, errors, tk);
             let expr = arena.alloc(Expr {
                 def: ExprDef::Call {
                     function: e,
@@ -377,9 +380,12 @@ fn parse_structure<'e>(
 
     match &keyword {
         type_id_pattern!() => {
-            //TODO should basic types be dedicated tokens ?
+            //DESIGN should basic types be dedicated tokens ?
             //TODO pointer of pointer
-            let mut t = Type::from_identifier(&keyword);
+            let mut t = match Type::from_identifier(&keyword) {
+                Ok(t) => t,
+                Err(err) => panic!("{}", err.msg),
+            };
 
             if let TokenDef::DelimOpen(Delimiter::Pr) = peek(tokens).def {
                 next(tokens);
@@ -599,7 +605,10 @@ fn parse_structure<'e>(
                                 match &tk.def {
                                     //TODO could this be a function (merge code with block in parse_expr)
                                     TokenDef::DelimOpen(Delimiter::Br) => {
-                                        env.open_scope();
+                                        if let Err(err) = env.open_scope() {
+                                            push_error(errors, err.msg, tk.pos);
+                                        }
+
                                         for param in params.iter() {
                                             declare(env, errors, &param.0, &param.1);
                                         }
@@ -633,7 +642,9 @@ fn parse_structure<'e>(
                                         }
                                         next(tokens);
 
-                                        env.close_scope();
+                                        if let Err(err) = env.close_scope() {
+                                            push_error(errors, err.msg, tk.pos);
+                                        }
 
                                         sort_functions_first(&mut statements);
                                         Some(arena.alloc(Expr {
@@ -767,7 +778,10 @@ fn make_args_list<'t>(
         let t = match tk_0.def {
             TokenDef::Id(id) if matches!(&id, type_id_pattern!()) => {
                 // let id = id;
-                Type::from_identifier(&id)
+                match Type::from_identifier(&id) {
+                    Ok(t) => t,
+                    Err(err) => panic!("{}", err.msg),
+                }
             }
             _ => {
                 push_error(
@@ -856,7 +870,10 @@ fn make_types_list<'t>(
         let t = match tk_0.def {
             TokenDef::Id(id) if matches!(&id, type_id_pattern!()) => {
                 // let id = id;
-                Type::from_identifier(&id)
+                match Type::from_identifier(&id) {
+                    Ok(t) => t,
+                    Err(err) => panic!("{}", err.msg),
+                }
             }
             _ => {
                 push_error(
@@ -1388,7 +1405,9 @@ fn eval_type(expr: &Expr, env: &mut Environment, errors: &mut Vec<Error>) -> Res
         ExprDef::FnDecl { .. } => Type::Void,
         ExprDef::StructDecl { .. } => Type::Void,
         ExprDef::Block(exprs) => {
-            env.open_scope();
+            if let Err(err) = env.open_scope() {
+                push_error(errors, err.msg, expr.pos);
+            }
             for e in exprs.iter() {
                 match &e.def {
                     ExprDef::VarDecl(id, t, _) => declare(env, errors, t, id),
@@ -1410,7 +1429,9 @@ fn eval_type(expr: &Expr, env: &mut Environment, errors: &mut Vec<Error>) -> Res
                 }
                 unwrap_or_return!(eval_type(e, env, errors)); //TODO is the inner type checking on e needed ?
             }
-            env.close_scope();
+            if let Err(err) = env.close_scope() {
+                push_error(errors, err.msg, expr.pos);
+            }
             Type::Void
         }
         ExprDef::Parent(e) => {

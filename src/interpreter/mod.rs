@@ -82,12 +82,14 @@ impl<'e> Interpreter<'e> {
     }
 
     #[allow(dead_code)] //USED BY TESTS
-    pub fn get_var_by_name(&self, name: &str) -> Option<Value> {
-        if let Some(Reference::Var(ptr)) = self.get_ref(&Identifier::make(name)) {
-            Some(self.memory.get_var(&ptr))
-        } else {
-            None
-        }
+    pub fn get_var_by_name(&self, name: &str) -> Result<Option<Value>, String> {
+        Ok(
+            if let Some(Reference::Var(ptr)) = self.get_ref(&Identifier::make(name)) {
+                Some(self.memory.get_var(&ptr).map_err(|err| err.msg)?)
+            } else {
+                None
+            },
+        )
     }
 
     fn throw(&mut self, msg: String, pos: Position) -> ResultErr {
@@ -107,7 +109,12 @@ impl<'e> Interpreter<'e> {
             Const(value) => value.clone(),
             Id(id) => {
                 match self.get_ref(id) {
-                    Some(Reference::Var(var)) => self.memory.get_var(&var),
+                    Some(Reference::Var(var)) => self.memory.get_var(&var).map_err(|err| {
+                        ResultErr::Error(Error {
+                            msg: err.msg,
+                            pos: expr.pos,
+                        })
+                    })?,
                     Some(Reference::Fn(args, ret_t, _)) => Value::Fn(
                         *id,
                         Type::Fn(
@@ -124,17 +131,29 @@ impl<'e> Interpreter<'e> {
             ArrayLit { items, t } => {
                 let t_len = t.get_size();
                 let arr_len = items.len();
-                let ptr = self.memory.alloc(t_len * arr_len);
+                let ptr = self.memory.alloc(t_len * arr_len).map_err(|err| {
+                    ResultErr::Error(Error {
+                        msg: err.msg,
+                        pos: expr.pos,
+                    })
+                })?;
                 let mut pos = ptr.pos;
                 for item in items.iter() {
                     let value = self.expr(item)?;
-                    self.memory.set_var(
-                        &Variable {
-                            t: *t.clone(),
-                            raw: Address { pos, len: t_len },
-                        },
-                        &value,
-                    );
+                    self.memory
+                        .set_var(
+                            &Variable {
+                                t: *t.clone(),
+                                raw: Address { pos, len: t_len },
+                            },
+                            &value,
+                        )
+                        .map_err(|err| {
+                            ResultErr::Error(Error {
+                                msg: err.msg,
+                                pos: item.pos,
+                            })
+                        })?;
                     pos += t_len;
                 }
                 Value::Array {
@@ -146,17 +165,29 @@ impl<'e> Interpreter<'e> {
             StringLit(chars) => {
                 let t_len = Type::Char.get_size();
                 let arr_len = chars.len();
-                let ptr = self.memory.alloc(t_len * arr_len);
+                let ptr = self.memory.alloc(t_len * arr_len).map_err(|err| {
+                    ResultErr::Error(Error {
+                        msg: err.msg,
+                        pos: expr.pos,
+                    })
+                })?;
                 let mut pos = ptr.pos;
                 for char in chars.iter() {
                     let value = Value::Char(*char);
-                    self.memory.set_var(
-                        &Variable {
-                            t: Type::Char,
-                            raw: Address { pos, len: t_len },
-                        },
-                        &value,
-                    );
+                    self.memory
+                        .set_var(
+                            &Variable {
+                                t: Type::Char,
+                                raw: Address { pos, len: t_len },
+                            },
+                            &value,
+                        )
+                        .map_err(|err| {
+                            ResultErr::Error(Error {
+                                msg: err.msg,
+                                pos: expr.pos,
+                            })
+                        })?;
                     pos += t_len;
                 }
                 Value::Array {
@@ -249,17 +280,37 @@ impl<'e> Interpreter<'e> {
                             self.throw(format!("Can't assign {:?} to {:?}", t, t_), expr.pos)
                         );
                     }
-                    self.memory.set_var(&ptr, &value)
+                    self.memory.set_var(&ptr, &value).map_err(|err| {
+                        ResultErr::Error(Error {
+                            msg: err.msg,
+                            pos: expr.pos,
+                        })
+                    })?
                 } else if let Type::Array { len, t } = &t {
-                    let addr = self.memory.alloc(t.get_size() * *len as usize);
-                    self.memory.set_var(
-                        &ptr,
-                        &Value::Array {
-                            addr: addr.pos as u32,
-                            len: *len,
-                            t: t.clone(),
-                        },
-                    )
+                    let addr = self
+                        .memory
+                        .alloc(t.get_size() * *len as usize)
+                        .map_err(|err| {
+                            ResultErr::Error(Error {
+                                msg: err.msg,
+                                pos: expr.pos,
+                            })
+                        })?;
+                    self.memory
+                        .set_var(
+                            &ptr,
+                            &Value::Array {
+                                addr: addr.pos as u32,
+                                len: *len,
+                                t: t.clone(),
+                            },
+                        )
+                        .map_err(|err| {
+                            ResultErr::Error(Error {
+                                msg: err.msg,
+                                pos: expr.pos,
+                            })
+                        })?
                 }
                 Value::Void
             }
@@ -278,14 +329,18 @@ impl<'e> Interpreter<'e> {
             // --- Others
             Block(exprs) => {
                 if !exprs.is_empty() {
-                    self.env.open_scope();
+                    if let Err(err) = self.env.open_scope() {
+                        return Err(self.throw(err.msg, expr.pos));
+                    }
                     for expr in exprs.iter() {
                         match self.expr(expr) {
                             Ok(val) => val,
                             err @ Err(_) => return err,
                         };
                     }
-                    self.env.close_scope();
+                    if let Err(err) = self.env.close_scope() {
+                        return Err(self.throw(err.msg, expr.pos));
+                    }
                     self.free_unused_stack();
                 }
                 Value::Void
@@ -328,13 +383,21 @@ impl<'e> Interpreter<'e> {
 
         Ok(match value {
             Value::Pointer(addr, t) => match op {
-                Op::MultOrDeref => self.memory.get_var(&Variable {
-                    t: *t.clone(),
-                    raw: Address {
-                        pos: addr.try_into().unwrap(),
-                        len: t.get_size(),
-                    },
-                }),
+                Op::MultOrDeref => self
+                    .memory
+                    .get_var(&Variable {
+                        t: *t.clone(),
+                        raw: Address {
+                            pos: addr.try_into().unwrap(),
+                            len: t.get_size(),
+                        },
+                    })
+                    .map_err(|err| {
+                        ResultErr::Error(Error {
+                            msg: err.msg,
+                            pos: e_right.pos,
+                        })
+                    })?,
                 _ => return Err(ResultErr::Nothing),
             },
             Value::Int(i) => match op {
@@ -365,16 +428,23 @@ impl<'e> Interpreter<'e> {
                 } => {
                     if let Pointer(addr, t) = self.expr(e)? {
                         if value_right.as_type() == *t {
-                            self.memory.set_var(
-                                &Variable {
-                                    t: *t.clone(),
-                                    raw: Address {
-                                        pos: addr.try_into().unwrap(),
-                                        len: t.get_size(),
+                            self.memory
+                                .set_var(
+                                    &Variable {
+                                        t: *t.clone(),
+                                        raw: Address {
+                                            pos: addr.try_into().unwrap(),
+                                            len: t.get_size(),
+                                        },
                                     },
-                                },
-                                &value_right,
-                            );
+                                    &value_right,
+                                )
+                                .map_err(|err| {
+                                    ResultErr::Error(Error {
+                                        msg: err.msg,
+                                        pos: e_left.pos,
+                                    })
+                                })?;
                             return Ok(Value::Void);
                         }
                     }
@@ -391,16 +461,23 @@ impl<'e> Interpreter<'e> {
                                 panic!()
                             }
                             let value = self.expr(e_right)?;
-                            self.memory.set_var(
-                                &Variable {
-                                    t: *t.clone(),
-                                    raw: Address {
-                                        pos: addr as usize + t.get_size() * index as usize,
-                                        len: t.get_size(),
+                            self.memory
+                                .set_var(
+                                    &Variable {
+                                        t: *t.clone(),
+                                        raw: Address {
+                                            pos: addr as usize + t.get_size() * index as usize,
+                                            len: t.get_size(),
+                                        },
                                     },
-                                },
-                                &value,
-                            );
+                                    &value,
+                                )
+                                .map_err(|err| {
+                                    ResultErr::Error(Error {
+                                        msg: err.msg,
+                                        pos: e_right.pos,
+                                    })
+                                })?;
                             return Ok(Value::Void);
                         } else {
                             panic!()
@@ -428,13 +505,20 @@ impl<'e> Interpreter<'e> {
                 Index =>
                 /* Pointer(addr + (i * t.get_size() as i32) as u32, t), */
                 {
-                    self.memory.get_var(&Variable {
-                        t: *t.clone(),
-                        raw: Address {
-                            pos: t.get_size() * i as usize + addr as usize,
-                            len: t.get_size(),
-                        },
-                    })
+                    self.memory
+                        .get_var(&Variable {
+                            t: *t.clone(),
+                            raw: Address {
+                                pos: t.get_size() * i as usize + addr as usize,
+                                len: t.get_size(),
+                            },
+                        })
+                        .map_err(|err| {
+                            ResultErr::Error(Error {
+                                msg: err.msg,
+                                pos: e_left.pos,
+                            })
+                        })?
                 }
                 _ => return Err(ResultErr::Nothing),
             },
@@ -515,14 +599,21 @@ impl<'e> Interpreter<'e> {
     fn assign(&mut self, e_to: &Expr, value: WithPosition<Value>) -> Result<Value, ResultErr> {
         match &e_to.def {
             ExprDef::Id(id) if !matches!(value.def, Value::Void) => {
-                self.memory.set_var(
-                    &if let Reference::Var(ptr) = self.get_ref(id).unwrap() {
-                        ptr
-                    } else {
-                        panic!("Tried to use function as value.") //DESIGN functions as values ?
-                    },
-                    &value.def,
-                );
+                self.memory
+                    .set_var(
+                        &if let Reference::Var(ptr) = self.get_ref(id).unwrap() {
+                            ptr
+                        } else {
+                            panic!("Tried to use function as value.") //DESIGN functions as values ?
+                        },
+                        &value.def,
+                    )
+                    .map_err(|err| {
+                        ResultErr::Error(Error {
+                            msg: err.msg,
+                            pos: value.pos,
+                        })
+                    })?;
             }
             _ => {
                 return Err(self.throw(format!("Can't assign {:?} to {:?}", value, e_to), value.pos))
@@ -589,7 +680,12 @@ impl<'e> Interpreter<'e> {
                         break;
                     }
                     Reference::Var(var) => {
-                        if let Value::Fn(id, _) = self.memory.get_var(&var) {
+                        if let Value::Fn(id, _) = self.memory.get_var(&var).map_err(|err| {
+                            ResultErr::Error(Error {
+                                msg: err.msg,
+                                pos: id_pos,
+                            })
+                        })? {
                             reference = self.get_ref(&id).unwrap();
                         } else {
                             panic!()
@@ -625,7 +721,12 @@ impl<'e> Interpreter<'e> {
                 Ok(ptr) => ptr,
                 Err(message) => return Err(self.throw(message, id_pos)),
             };
-            self.memory.set_var(&ptr, &value);
+            self.memory.set_var(&ptr, &value).map_err(|err| {
+                ResultErr::Error(Error {
+                    msg: err.msg,
+                    pos: id_pos,
+                })
+            })?;
         }
         let out = match self.expr(&body) {
             Ok(val) => val,
@@ -682,7 +783,10 @@ impl<'e> Interpreter<'e> {
     }
 
     fn declare_var(&mut self, t: &Type, id: &Identifier) -> Result<Variable, String> {
-        let ptr = self.memory.make_pointer_for_type(t);
+        let ptr = self
+            .memory
+            .make_pointer_for_type(t)
+            .map_err(|err| err.msg)?;
 
         if let Context::TopLevel = self.env.context {
             self.env.globals.push(Local {
@@ -757,19 +861,21 @@ impl<'e> Interpreter<'e> {
                 .unwrap();
             match self.get_ref(&id).unwrap() {
                 Reference::Var(ptr) => {
-                    let value = self.memory.get_var(&ptr);
+                    let value = self.memory.get_var(&ptr).unwrap();
                     write!(self.stdout, "{id_str} => {ptr:?} => {value}").unwrap();
                     match value {
                         Value::Pointer(addr, t) => writeln!(
                             self.stdout,
                             " => {}",
-                            self.memory.get_var(&Variable {
-                                t: *t.clone(),
-                                raw: Address {
-                                    pos: addr.try_into().unwrap(),
-                                    len: t.get_size(),
-                                },
-                            })
+                            self.memory
+                                .get_var(&Variable {
+                                    t: *t.clone(),
+                                    raw: Address {
+                                        pos: addr.try_into().unwrap(),
+                                        len: t.get_size(),
+                                    },
+                                })
+                                .unwrap()
                         )
                         .unwrap(),
                         Value::Array { addr, len, t } => writeln!(
@@ -779,13 +885,15 @@ impl<'e> Interpreter<'e> {
                                 .map(|i| {
                                     format!(
                                         "{}",
-                                        self.memory.get_var(&Variable {
-                                            t: *t.clone(),
-                                            raw: Address {
-                                                pos: t.get_size() * i as usize + addr as usize,
-                                                len: t.get_size(),
-                                            },
-                                        })
+                                        self.memory
+                                            .get_var(&Variable {
+                                                t: *t.clone(),
+                                                raw: Address {
+                                                    pos: t.get_size() * i as usize + addr as usize,
+                                                    len: t.get_size(),
+                                                },
+                                            })
+                                            .unwrap()
                                     )
                                 })
                                 .reduce(|acc, str| format!("{acc}, {str}"))

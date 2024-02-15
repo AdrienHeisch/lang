@@ -1,30 +1,35 @@
 use super::*;
 use crate::ast::{Error, Expr, ExprDef, Identifier, IdentifierTools, Op};
-use crate::value::Value;
 use crate::env::{Context, Environment, Local};
+use crate::value::Value;
 
 #[derive(Debug, Clone)]
 enum IdentifierValue {
     Var(u16),
     Fn {
         offset: u16,
-        args: Option<Vec<Identifier>> //TODO if not needed replace identifiervalue by address/reference
-    }
+        args: Option<Vec<Identifier>>, //TODO if not needed replace identifiervalue by address/reference
+    },
 }
 
 type IdentifierList = Vec<(Identifier, IdentifierValue)>;
 
 trait IdentifierListTools {
-    fn get_value (&self, id: Identifier) -> Option<IdentifierValue>;
+    fn get_value(&self, id: Identifier) -> Option<IdentifierValue>;
 }
 
 impl IdentifierListTools for IdentifierList {
-    fn get_value (&self, id: Identifier) -> Option<IdentifierValue> {
-        self.iter().rev().find(|(id_, _)| id == *id_).map(|(_, value)| value.clone() )
+    fn get_value(&self, id: Identifier) -> Option<IdentifierValue> {
+        self.iter()
+            .rev()
+            .find(|(id_, _)| id == *id_)
+            .map(|(_, value)| value.clone())
     }
 }
 
-pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, Vec<Instruction>, DebugInfo), Error> {
+pub fn compile(
+    statements: &[&Expr],
+) -> Result<(Chunk, Option<Address>, Vec<Instruction>, DebugInfo), Error> {
     let mut chunk = Chunk::new();
     let mut identifiers = IdentifierList::new();
     let mut env = Environment::new(Context::TopLevel);
@@ -34,14 +39,15 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, Vec<Inst
         expr(s, &mut chunk, &mut env, &mut identifiers, false)?;
     }
 
-    let entrypoint: Option<Address> = IdentifierListTools::get_value(&identifiers, Identifier::make("main")).map(
-        |val| {
-            match val {
+    let entrypoint: Option<Address> =
+        IdentifierListTools::get_value(&identifiers, Identifier::make("main")).map(
+            |val| match val {
                 IdentifierValue::Var(address) => address,
-                IdentifierValue::Fn { offset: address, .. } => address
-            }
-        }
-    );
+                IdentifierValue::Fn {
+                    offset: address, ..
+                } => address,
+            },
+        );
 
     if cfg!(lang_print_vm_compiler) && !cfg!(lang_benchmark) {
         println!("========= ASM =========");
@@ -51,7 +57,12 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, Vec<Inst
                 offset,
                 instruction.to_asm(),
                 instruction.code,
-                format!("{:?}", instruction.debug_info.def).split(['{', '(', '[']).next().unwrap().trim().replace('\"', ""),
+                format!("{:?}", instruction.debug_info.def)
+                    .split(['{', '(', '['])
+                    .next()
+                    .unwrap()
+                    .trim()
+                    .replace('\"', ""),
                 instruction.debug_info.pos
             );
             println!();
@@ -67,13 +78,16 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, Vec<Inst
     let mut globals = vec![];
     for global in env.globals {
         globals.push(Instruction {
-            code: IdentifierListTools::get_value(&identifiers, global.id).map(|value| {
-                match value {
+            code: IdentifierListTools::get_value(&identifiers, global.id)
+                .map(|value| match value {
                     IdentifierValue::Var(value) => value,
-                    IdentifierValue::Fn { offset, .. } => offset
-                }
-            }).unwrap(),
-            debug_info: InstructionDebugInfo { def: String::default(), pos: Position::zero() }
+                    IdentifierValue::Fn { offset, .. } => offset,
+                })
+                .unwrap(),
+            debug_info: InstructionDebugInfo {
+                def: String::default(),
+                pos: Position::zero(),
+            },
         })
     }
 
@@ -81,35 +95,53 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, Vec<Inst
     Ok((chunk, entrypoint, globals, debug_info))
 }
 
-fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Vec<(Identifier, IdentifierValue)>, mut main: bool) -> Result<(), Error>{
+fn expr(
+    e: &Expr,
+    chunk: &mut Chunk,
+    env: &mut Environment,
+    identifiers: &mut Vec<(Identifier, IdentifierValue)>,
+    mut main: bool,
+) -> Result<(), Error> {
     macro_rules! instr {
         ($e: expr) => {
-            chunk.push(Instruction { code: $e, debug_info: InstructionDebugInfo { pos: e.pos, def: format!("{:?}", e.def) } })
+            chunk.push(Instruction {
+                code: $e,
+                debug_info: InstructionDebugInfo {
+                    pos: e.pos,
+                    def: format!("{:?}", e.def),
+                },
+            })
         };
     }
 
     macro_rules! todo {
         () => {
-            return Err(Error { msg: "Not yet implemented.".to_owned(), pos: e.pos })
+            return Err(Error {
+                msg: "Not yet implemented.".to_owned(),
+                pos: e.pos,
+            })
         };
         ($msg: literal) => {
-            return Err(Error { msg: $msg.to_owned(), pos: e.pos })
-        }
+            return Err(Error {
+                msg: $msg.to_owned(),
+                pos: e.pos,
+            })
+        };
     }
 
     macro_rules! PUSH_D {
         () => {
-            instr!(SP);                 // A = SP
+            instr!(SP); // A = SP
             instr!(0b1001110000100000); // A = *A
             instr!(0b1000001100001000); // *A = D
-            instr!(SP);                 // A = SP
+            instr!(SP); // A = SP
             instr!(0b1001110111001000); // *A = *A + 1
         };
     }
 
     macro_rules! POP_D {
         () => {
-            instr!(SP);                 // A = SP
+            instr!(SP); // A = SP
             instr!(0b1001110010001000); // *A = *A - 1
             instr!(0b1001110000100000); // A = *A
             instr!(0b1001110000010000); // D = *A
@@ -118,26 +150,26 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
 
     macro_rules! POP_A {
         () => {
-            instr!(SP);                 // A = SP
+            instr!(SP); // A = SP
             instr!(0b1001110010001000); // *A = *A - 1
             instr!(0b1001110000100000); // A = *A
             instr!(0b1001110000100000); // A = *A
         };
     }
-    
+
     macro_rules! PUSH_VALUE {
         ($value: literal) => {
-            instr!($value);           // A = ARGS
+            instr!($value); // A = ARGS
             instr!(0b1000110000010000); // D = A
-            PUSH_D!();                             // PUSH_D
+            PUSH_D!(); // PUSH_D
         };
     }
-    
+
     macro_rules! PUSH_STATIC {
         ($address: ident) => {
-            instr!($address);           // A = ARGS
+            instr!($address); // A = ARGS
             instr!(0b1001110000010000); // D = *A
-            PUSH_D!();                             // PUSH_D
+            PUSH_D!(); // PUSH_D
         };
     }
 
@@ -146,7 +178,9 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
         Const(value) => {
             let mut instruction = match value {
                 Value::Fn(_, _) => todo!("Functions as constants are not implemented yet."),
-                Value::Pointer(p, _) if *p <= MEM_SIZE.try_into().unwrap() => todo!("Pointers are not implemented yet."),
+                Value::Pointer(p, _) if *p <= MEM_SIZE.try_into().unwrap() => {
+                    todo!("Pointers are not implemented yet.")
+                }
                 Value::Pointer(_, _) => panic!("Pointer out of range"),
                 Value::Int(i) if *i <= 0x7fff => *i as u16,
                 Value::Int(_) => panic!("Int out of range"),
@@ -166,21 +200,32 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
                     match env.get_from_id(id) {
                         Some(local) if local.depth > 0 => {
                             println!("Get identifier {id:?} -> {address}");
-                            instr!(LOCALS);             // A = LOCALS
+                            instr!(LOCALS); // A = LOCALS
                             instr!(0b1001110000010000); // D = *A
-                            instr!(address);            // A = address
+                            instr!(address); // A = address
                             instr!(0b1000000010100000); // A = D + A
                             instr!(0b1001110000100000); // A = *A
                         }
                         Some(_) => todo!("Gloval variables not implemented yet"),
-                        None => panic!("Corrupted environment, can't find identifier : {}", id.to_string()),
+                        None => panic!(
+                            "Corrupted environment, can't find identifier : {}",
+                            id.to_string()
+                        ),
                     }
                 }
-                Some(IdentifierValue::Fn { offset: address, .. }) => {
-                    instr!(address);           // A = address
+                Some(IdentifierValue::Fn {
+                    offset: address, ..
+                }) => {
+                    instr!(address); // A = address
                     match env.get_from_id(id) {
-                        Some(Local { t: crate::value::Type::Fn(_, _), .. }) => {}
-                        _ => panic!("Corrupted environment, can't find identifier : {}", id.to_string()),
+                        Some(Local {
+                            t: crate::value::Type::Fn(_, _),
+                            ..
+                        }) => {}
+                        _ => panic!(
+                            "Corrupted environment, can't find identifier : {}",
+                            id.to_string()
+                        ),
                     }
                 }
                 None => panic!("Unknown identifier : {}", id.to_string()),
@@ -213,40 +258,40 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
             expr(cond, chunk, env, identifiers, main)?;
             expr(body, chunk, env, identifiers, main)?;
             instr!((loop_start - 1) as u16);
-            instr!(0b1000000000000111);     // JMP
+            instr!(0b1000000000000111); // JMP
 
             chunk[loop_start].code = (chunk.len() - 1) as u16;
         }
         UnOp { op, e } => {
-            expr(e, chunk, env, identifiers, main)?;   // A = e
+            expr(e, chunk, env, identifiers, main)?; // A = e
             match *op {
-                Op::SubOrNeg =>     instr!(0b100001101001000),  // D = -A
-                Op::Not =>          instr!(0b1000001100010000), // D = ~D
-                Op::MultOrDeref =>  instr!(0b1001110000010000), // D = *A
-                Op::Addr =>         instr!(0b1000110000010000), // D = A //TODO should be checked
+                Op::SubOrNeg => instr!(0b100001101001000),     // D = -A
+                Op::Not => instr!(0b1000001100010000),         // D = ~D
+                Op::MultOrDeref => instr!(0b1001110000010000), // D = *A
+                Op::Addr => instr!(0b1000110000010000),        // D = A //TODO should be checked
                 _ => todo!("This unary operator is not implemented yet."),
             };
         }
         BinOp { op, left, right } => {
             macro_rules! simple_binop {
                 () => {
-                    expr(left, chunk, env, identifiers, main)?;    // A = left
-                    instr!(0b1000110000010000);         // D = A
-                    expr(right, chunk, env, identifiers, main)?;   // A = right
+                    expr(left, chunk, env, identifiers, main)?; // A = left
+                    instr!(0b1000110000010000); // D = A
+                    expr(right, chunk, env, identifiers, main)?; // A = right
                 };
             }
 
             macro_rules! cond_binop {
                 () => {
-                    instr!(0b1000110000010000);         // D = A
-                    instr!(JMP_ADDRESS);                // A = JMP_ADDRESS
-                    instr!(0b1000001100001000);         // *A = D
-                    expr(left, chunk, env, identifiers, main)?;    // A = left
-                    instr!(0b1000110000010000);         // D = A
-                    expr(right, chunk, env, identifiers, main)?;   // A = right
-                    instr!(0b1000010011010000);         // D = D - A
-                    instr!(JMP_ADDRESS);                // A = JMP_ADDRESS
-                    instr!(0b1001110000100000);         // A = *A
+                    instr!(0b1000110000010000); // D = A
+                    instr!(JMP_ADDRESS); // A = JMP_ADDRESS
+                    instr!(0b1000001100001000); // *A = D
+                    expr(left, chunk, env, identifiers, main)?; // A = left
+                    instr!(0b1000110000010000); // D = A
+                    expr(right, chunk, env, identifiers, main)?; // A = right
+                    instr!(0b1000010011010000); // D = D - A
+                    instr!(JMP_ADDRESS); // A = JMP_ADDRESS
+                    instr!(0b1001110000100000); // A = *A
                 };
             }
 
@@ -255,7 +300,12 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
                     match &left.def {
                         Id(id) => {
                             let address = match IdentifierListTools::get_value(identifiers, *id) {
-                                Some(IdentifierValue::Var(address) | IdentifierValue::Fn { offset: address, .. }) => address,
+                                Some(
+                                    IdentifierValue::Var(address)
+                                    | IdentifierValue::Fn {
+                                        offset: address, ..
+                                    },
+                                ) => address,
                                 None => {
                                     panic!(
                                         "Unkown identifier : {}",
@@ -268,16 +318,19 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
                             if let Const(_) = right.def {
                                 instr!(0b1000110000010000); // D = A
                             }
-                            instr!(address);                // A = address
-                            instr!(0b1000001100001000);     // *A = D
+                            instr!(address); // A = address
+                            instr!(0b1000001100001000); // *A = D
                         }
-                        UnOp { op: Op::MultOrDeref, e } => {
+                        UnOp {
+                            op: Op::MultOrDeref,
+                            e,
+                        } => {
                             expr(right, chunk, env, identifiers, main)?;
                             if let Const(_) = right.def {
                                 instr!(0b1000110000010000); // D = A
                             }
-                            expr(e, chunk, env, identifiers, main)?;   // A = address
-                            instr!(0b1000001100001000);     // *A = D
+                            expr(e, chunk, env, identifiers, main)?; // A = address
+                            instr!(0b1000001100001000); // *A = D
                         }
                         _ => {
                             panic!("Can't assign {:?} to {:?}", right, left);
@@ -328,51 +381,52 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
             };
         }
         Call { function, args } => {
-            PUSH_STATIC!(ARGS);                    // PUSH_STATIC ARGS
+            PUSH_STATIC!(ARGS); // PUSH_STATIC ARGS
 
-            PUSH_STATIC!(LOCALS);                  // PUSH_STATIC LOCALS
+            PUSH_STATIC!(LOCALS); // PUSH_STATIC LOCALS
 
             let return_label = chunk.len();
-            PUSH_VALUE!(0);                        // PUSH_VALUE RETURN_LABEL
+            PUSH_VALUE!(0); // PUSH_VALUE RETURN_LABEL
 
-            instr!(SP);                 // A = SP
+            instr!(SP); // A = SP
             instr!(0b1001110000010000); // D = *A
-            instr!(args.len() as u16);  // A = args.len()
+            instr!(args.len() as u16); // A = args.len()
             instr!(0b1000010011010000); // D = D - A
-            instr!(0);                  // A = 3
+            instr!(0); // A = 3
             instr!(0b1000010011010000); // D = D - A
-            instr!(ARGS);               // A = ARGS
+            instr!(ARGS); // A = ARGS
             instr!(0b1000001100001000); // *A = D
 
             expr(function, chunk, env, identifiers, main)?;
             instr!(0b1000000000000111); // JMP
             chunk[return_label].code = chunk.len() as u16;
 
-            instr!(ARGS);               // A = ARGS
+            instr!(ARGS); // A = ARGS
             instr!(0b1001110000010000); // D = *A
-            instr!(TEMP_0);             // A = TEMP_0
+            instr!(TEMP_0); // A = TEMP_0
             instr!(0b1000001100001000); // *A = D
 
-            POP_D!();                       // POP_D
-            instr!(LOCALS);             // A = LOCALS
+            POP_D!(); // POP_D
+            instr!(LOCALS); // A = LOCALS
             instr!(0b1000001100001000); // *A = D
 
-            POP_D!();                       // POP_D
-            instr!(ARGS);               // A = ARGS
+            POP_D!(); // POP_D
+            instr!(ARGS); // A = ARGS
             instr!(0b1000001100001000); // *A = D
 
-            instr!(TEMP_0);             // A = TEMP_0
+            instr!(TEMP_0); // A = TEMP_0
             instr!(0b1001110000010000); // D = *A
-            instr!(SP);                 // A = SP
+            instr!(SP); // A = SP
             instr!(0b1000001100001000); // *A = D
 
-            instr!(RETVAL);             // A = RETVAL
+            instr!(RETVAL); // A = RETVAL
             instr!(0b1001110000010000); // D = *A
-            PUSH_D!();                      // PUSH_D
-        },
+            PUSH_D!(); // PUSH_D
+        }
         Field(_, _) => todo!("Field access is not implemented yet."),
         VarDecl(.., None) => todo!("Uninitialized variables are not implemented yet."), //TODO uninitialized var ?
-        VarDecl(id, t, Some(assign_expr)) => { //TODO type checking ? //TODO global var ?
+        VarDecl(id, t, Some(assign_expr)) => {
+            //TODO type checking ? //TODO global var ?
             if let Context::TopLevel = env.context {
                 todo!()
             } else {
@@ -387,7 +441,10 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
                 if let Some(n) = env.locals_count.checked_add(1) {
                     env.locals_count = n;
                 } else {
-                    return Err(Error { msg: "Too many locals.".to_owned(), pos: e.pos });
+                    return Err(Error {
+                        msg: "Too many locals.".to_owned(),
+                        pos: e.pos,
+                    });
                 }
             }
             // !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -400,7 +457,12 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
             }
             PUSH_D!();
         }
-        FnDecl { id, params, return_t, body } => {
+        FnDecl {
+            id,
+            params,
+            return_t,
+            body,
+        } => {
             main = id == b"main\0\0\0\0";
             if let Context::TopLevel = env.context {
                 env.globals.push(Local {
@@ -416,28 +478,50 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
             }
 
             env.context = Context::Function;
-            
-            let address = chunk.len() as u16;
-            identifiers.push((*id, IdentifierValue::Fn { offset: address, args: None/* Some(params.iter().map(|(_, v)| *v).collect()) */ }));
 
-            instr!(SP);                 // A = SP
+            let address = chunk.len() as u16;
+            identifiers.push((
+                *id,
+                IdentifierValue::Fn {
+                    offset: address,
+                    args: None, /* Some(params.iter().map(|(_, v)| *v).collect()) */
+                },
+            ));
+
+            instr!(SP); // A = SP
             instr!(0b1001110000010000); // D = *A
-            instr!(LOCALS);             // A = LOCALS
+            instr!(LOCALS); // A = LOCALS
             instr!(0b1000001100001000); // *A = D
             instr!(0); // A = localsCount ????
             instr!(0b1000000010010000); // D = D + A
-            instr!(SP);                 // A = SP
+            instr!(SP); // A = SP
             instr!(0b1000001100001000); // *A = D
             expr(body, chunk, env, identifiers, main)?;
-        },
+        }
         StructDecl { .. } => todo!("Structure declarations are not implemented yet."),
         Block(exprs) => {
             // let sp_now = *sp;
-            env.open_scope();
+            if let Err(err) = env.open_scope() {
+                return Err(Error {
+                    msg: err.msg,
+                    pos: e.pos,
+                });
+            }
+
             for e in exprs.iter() {
                 expr(e, chunk, env, identifiers, main)?;
             }
-            for _ in 0..env.close_scope() {
+
+            let n_locals = match env.close_scope() {
+                Ok(n_locals) => n_locals,
+                Err(err) => {
+                    return Err(Error {
+                        msg: err.msg,
+                        pos: e.pos,
+                    })
+                }
+            };
+            for _ in 0..n_locals {
                 identifiers.pop();
             }
             // *sp = sp_now;
@@ -449,20 +533,20 @@ fn expr(e: &Expr, chunk: &mut Chunk, env: &mut Environment, identifiers: &mut Ve
             //HACK assuming return expr puts the return value in register A
             expr(return_expr, chunk, env, identifiers, main)?;
             instr!(0b1000110000010000); // D = A
-            instr!(RETVAL);             // A = RETVAL
+            instr!(RETVAL); // A = RETVAL
             instr!(0b1000001100001000); // *A = D
             if main {
-                instr!(0x7FFF);             // A = -1
+                instr!(0x7FFF); // A = -1
             } else {
-                instr!(LOCALS);             // A = LOCALS
+                instr!(LOCALS); // A = LOCALS
                 instr!(0b1001110000010000); // D = *A
-                instr!(SP);                 // A = SP
+                instr!(SP); // A = SP
                 instr!(0b1000001100001000); // *A = D
-                POP_A!();                   // POP_A
+                POP_A!(); // POP_A
             }
             instr!(0b1000000000000111); // JMP
             env.context = Context::TopLevel;
-        },
+        }
         End => (),
         Invalid => unimplemented!(),
     }

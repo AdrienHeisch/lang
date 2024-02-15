@@ -1,6 +1,11 @@
 //IN BYTES
 const MEMORY_SIZE: usize = 64;
 
+#[derive(Debug)]
+pub struct MemoryError {
+    pub msg: String,
+}
+
 //TODO retry other types of memory with fixed benchmarking
 //TODO stack, faster heap allocator ?
 //RESEARCH look at C stack heap implementations (stack growing from the end)
@@ -10,7 +15,8 @@ pub struct RawMemory {
 }
 
 #[derive(Debug, Copy, Clone, Default, PartialEq)]
-pub struct Address { //TODO refactor to integer
+pub struct Address {
+    //TODO refactor to integer
     pub pos: usize,
     pub len: usize,
 }
@@ -33,12 +39,14 @@ impl RawMemory {
         }
     }
 
-    pub fn alloc(&mut self, len: usize) -> Address {
+    pub fn alloc(&mut self, len: usize) -> Result<Address, MemoryError> {
         if len > MEMORY_SIZE {
-            panic!(
-                "Tried to allocate more bytes than the memory can contain : {} / {}",
-                len, MEMORY_SIZE
-            );
+            return Err(MemoryError {
+                msg: format!(
+                    "Tried to allocate more bytes than the memory can contain : {} / {}",
+                    len, MEMORY_SIZE
+                ),
+            });
         }
 
         let mut pos = 0;
@@ -46,13 +54,9 @@ impl RawMemory {
             while self.allocation_map[pos] {
                 //TODO RETURN ERROR INSTEAD
                 if pos + len > MEMORY_SIZE - 1 {
-                    eprintln!("----------");
-                    eprintln!("OUT OF MEMORY !");
-                    eprintln!("Tried to allocate {} bytes at index {}", len, pos);
-                    eprintln!("----------");
-                    self.print_ram();
-                    eprintln!("----------");
-                    panic!("OUT OF MEMORY !");
+                    return Err(MemoryError {
+                        msg: format!("----------\nOUT OF MEMORY !\nTried to allocate {} bytes at index {}\n----------\n{}\n----------\nOUT OF MEMORY !", len, pos, self.print_ram())
+                    });
                 }
                 pos += 1;
             }
@@ -81,7 +85,7 @@ impl RawMemory {
             //pos..(pos + len) {
             *is_allocated = true;
         }
-        ptr
+        Ok(ptr)
     }
 
     pub fn free(&mut self, ptr: Address)
@@ -98,7 +102,7 @@ impl RawMemory {
         }
     }
 
-    pub fn realloc(&mut self, ptr: Address, new_len: usize) -> Address {
+    pub fn realloc(&mut self, ptr: Address, new_len: usize) -> Result<Address, MemoryError> {
         self.free(ptr);
         self.alloc(new_len)
     }
@@ -113,17 +117,19 @@ impl RawMemory {
 
     pub fn print_ram(&self) -> String {
         use std::fmt::Write;
-        
+
         let mut buf = String::new();
         if cfg!(not(lang_benchmark)) {
             writeln!(buf, "RAM: {:?}", crate::utils::slice_to_string(&self.ram)).unwrap();
-            writeln!(buf, 
+            writeln!(
+                buf,
                 "MAP: \"{:?}\"",
                 self.allocation_map
                     .iter()
                     .map::<u8, _>(|b| (*b).into())
                     .collect::<Vec<_>>()
-            ).unwrap();
+            )
+            .unwrap();
         }
         buf
     }

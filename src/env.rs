@@ -1,14 +1,16 @@
-use crate::{
-    ast::Identifier,
-    value::Type,
-};
+use crate::{ast::Identifier, value::Type};
+
+pub struct EnvError {
+    pub msg: String,
+}
 
 #[derive(Clone, Debug)]
-pub struct Environment { //TODO make it generic to contain crate::vm::compiler::IdentifierValue
+pub struct Environment {
+    //TODO make it generic to contain crate::vm::compiler::IdentifierValue
     pub globals: Vec<Local>,
     pub locals: [Local; 256], //TODO max locals ? (u8?)
-    pub locals_count: u8, //TODO usize
-    pub scope_depth: u8, //TODO usize ?
+    pub locals_count: u8,     //TODO usize
+    pub scope_depth: u8,      //TODO usize ?
     pub context: Context,
 }
 
@@ -41,15 +43,12 @@ impl Environment {
         match id {
             b"print\0\0\0" => Some(Local {
                 id: *id,
-                t: Type::Fn(
-                    Box::new([Type::Int]),
-                    Box::new(Type::Void),
-                ),
+                t: Type::Fn(Box::new([Type::Int]), Box::new(Type::Void)),
                 depth: 0,
             }),
             b"printmem" => Some(Local {
                 id: *id,
-                t: Type::Fn(Box::new([]), Box::new(Type::Void),),
+                t: Type::Fn(Box::new([]), Box::new(Type::Void)),
                 depth: 0,
             }),
             id => {
@@ -70,19 +69,24 @@ impl Environment {
         }
     }
 
-    pub fn open_scope(&mut self) {
+    pub fn open_scope(&mut self) -> Result<(), EnvError> {
         if let Some(n) = self.scope_depth.checked_add(1) {
             self.scope_depth = n;
+            Ok(())
         } else {
-            panic!("Too many locals.");
+            Err(EnvError {
+                msg: "Too many locals.".to_string(),
+            })
         }
     }
 
-    pub fn close_scope(&mut self) -> u8 {
+    pub fn close_scope(&mut self) -> Result<u8, EnvError> {
         if let Some(n) = self.scope_depth.checked_sub(1) {
             self.scope_depth = n;
         } else {
-            panic!("No scope to close.");
+            return Err(EnvError {
+                msg: "No scope to close.".to_string(),
+            });
         }
 
         let n_locals = self.locals_count;
@@ -94,7 +98,7 @@ impl Environment {
                 break;
             }
         }
-        n_locals - self.locals_count
+        Ok(n_locals - self.locals_count)
     }
 
     #[allow(dead_code)]

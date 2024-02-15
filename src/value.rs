@@ -26,6 +26,10 @@ pub enum Type {
     Void,
 }
 
+pub struct TypeError {
+    pub msg: String,
+}
+
 impl Value {
     pub fn as_type(&self) -> Type {
         match self {
@@ -68,21 +72,25 @@ macro_rules! type_id_pattern {
 pub(crate) use type_id_pattern;
 
 impl Type {
-    pub fn from_identifier(id: &Identifier) -> Self {
+    pub fn from_identifier(id: &Identifier) -> Result<Self, TypeError> {
         use Type::*;
-        match id {
+        Ok(match id {
             b"int\0\0\0\0\0" => Int,
             b"char\0\0\0\0" => Char,
             b"float\0\0\0" => Float,
             b"bool\0\0\0\0" => Bool,
             b"void\0\0\0\0" => Void,
-            _ => panic!("Invalid type identifier : {}", id.to_string()),
-        }
+            _ => {
+                return Err(TypeError {
+                    msg: format!("Invalid type identifier : {}", id.to_string()),
+                })
+            }
+        })
     }
 
-    pub fn to_value(&self) -> Value {
+    pub fn to_value(&self) -> Result<Value, TypeError> {
         use Type::*;
-        match self {
+        Ok(match self {
             Pointer(t) => Value::Pointer(0, Box::new(*t.clone())),
             Array { len, t } => Value::Array {
                 addr: 0,
@@ -93,9 +101,13 @@ impl Type {
             Char => Value::Char(Default::default()),
             Float => Value::Float(Default::default()),
             Bool => Value::Bool(Default::default()),
-            Fn(_, _) => panic!(),
+            Fn(_, _) => {
+                return Err(TypeError {
+                    msg: "".to_string(),
+                })
+            }
             Void => Value::Void,
-        }
+        })
     }
 
     pub fn get_size(&self) -> usize {

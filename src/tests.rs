@@ -15,7 +15,7 @@ macro_rules! test_assert_eq {
                 let mut interpreter = Interpreter::new();
                 match interpreter.run(&ast.top_level) {
                     Ok(_) => {
-                        assert_eq!(interpreter.get_var_by_name($id).unwrap(), $value)
+                        assert_eq!(interpreter.get_var_by_name($id).unwrap().unwrap(), $value)
                     }
                     Err(error) => panic!(
                         "INTERPRETER ERROR : {} -> {}",
@@ -86,21 +86,22 @@ macro_rules! test_should_panic {
             }
 
             if cfg!(lang_test_vm_interpreter) || cfg!(lang_test_vm_compiler) {
-                let (chunk, entrypoint, globals) = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    crate::compile_ast(&ast)
-                })) {
-                    Ok(result) => match result {
-                        Ok(value) => value,
+                let (chunk, entrypoint, globals) =
+                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                        crate::compile_ast(&ast)
+                    })) {
+                        Ok(result) => match result {
+                            Ok(value) => value,
+                            Err(error) => {
+                                println!("Compiler error as expected : {}", error);
+                                return;
+                            }
+                        },
                         Err(error) => {
-                            println!("Compiler error as expected : {}", error);
+                            println!("Compiler panic as expected : {:?}", error);
                             return;
                         }
-                    },
-                    Err(error) => {
-                        println!("Compiler panic as expected : {:?}", error);
-                        return;
-                    }
-                };
+                    };
 
                 if cfg!(lang_test_vm_interpreter) {
                     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

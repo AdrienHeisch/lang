@@ -7,8 +7,7 @@ use std::collections::VecDeque;
 
 type LexErr = (String, LexErrCode);
 
-pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>>
-{
+pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> {
     let mut tokens = VecDeque::new();
     let mut errors = Vec::new();
     let mut pos: usize = 0;
@@ -34,9 +33,9 @@ pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>>
 
                 if cfg!(lang_panic_on_error) {
                     panic!("{}", error);
-                } else {
-                    errors.push(error);
                 }
+
+                errors.push(error);
                 pos += len;
             }
         }
@@ -146,24 +145,25 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                         LexErrCode::UnexpectedChar,
                     )),
                     len,
-                )
+                );
             }
             len += 1;
             TokenDef::Const(Value::Char(char))
         }
         '"' => {
             pos += 1;
-            loop
-            {
+            loop {
                 let c = get_char!();
-                if c == '"' { break; }
+                if c == '"' {
+                    break;
+                }
                 len += 1;
             }
             // let tk = TokenDef::Const(Value::Str(String::from(read_cursor!())));
             let tk = TokenDef::StringLit(read_cursor!().chars().collect());
             len += 2;
             tk
-        },
+        }
         '/' if { get_char!() == '/' } => {
             //COMMENT
             while get_char!() != '\n' && get_char!() != EOF {
@@ -174,7 +174,7 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
         c @ op_chars_pattern!() => {
             len = Op::MAX_LENGTH;
             let mut op = None;
-            'while_len : while len > 0 {
+            'while_len: while len > 0 {
                 let str = read_cursor!();
                 for byte in str.as_bytes() {
                     if let op_chars_pattern!() = *byte as char {
@@ -192,17 +192,27 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
             if let Some(op) = op {
                 TokenDef::Op(op)
             } else {
-                return (Err(collect_unexpected_chars( //TODO len is always zero here
-                    program,
-                    c,
-                    &mut pos,
-                    &mut len,
-                    LexErrCode::UnexpectedChar,
-                )), len);
+                return (
+                    Err(collect_unexpected_chars(
+                        //TODO len is always zero here
+                        program,
+                        c,
+                        &mut pos,
+                        &mut len,
+                        LexErrCode::UnexpectedChar,
+                    )),
+                    len,
+                );
             }
         }
-        c @ '(' | c @ '[' | c @ '{' => TokenDef::DelimOpen(Delimiter::from_char(c)),
-        c @ ')' | c @ ']' | c @ '}' => TokenDef::DelimClose(Delimiter::from_char(c)),
+        c @ '(' | c @ '[' | c @ '{' => TokenDef::DelimOpen(match Delimiter::from_char(c) {
+            Ok(delimiter) => delimiter,
+            Err(err) => return (Err(err), len),
+        }),
+        c @ ')' | c @ ']' | c @ '}' => TokenDef::DelimClose(match Delimiter::from_char(c) {
+            Ok(delimiter) => delimiter,
+            Err(err) => return (Err(err), len),
+        }),
         ',' => TokenDef::Comma,
         '.' => TokenDef::Dot,
         ';' => TokenDef::Semicolon,
@@ -253,6 +263,7 @@ fn collect_unexpected_chars(
 
 enum LexErrCode {
     UnexpectedChar,
+    InvalidDelimiter,
     IdTooLong,
 }
 
@@ -261,19 +272,20 @@ impl LexErrCode {
         use LexErrCode::*;
         match self {
             UnexpectedChar => "Unexpected character",
+            InvalidDelimiter => "Invalid delimiter",
             IdTooLong => "Id too long",
         }
     }
 }
 
 impl Delimiter {
-    fn from_char(c: char) -> Delimiter {
-        match c {
+    fn from_char(c: char) -> Result<Delimiter, LexErr> {
+        Ok(match c {
             '(' | ')' => Delimiter::Pr,
             '{' | '}' => Delimiter::Br,
             '[' | ']' => Delimiter::SqBr,
-            _ => panic!("Invalid delimiter : {}", c),
-        }
+            _ => return Err((c.to_string(), LexErrCode::InvalidDelimiter)),
+        })
     }
 }
 
