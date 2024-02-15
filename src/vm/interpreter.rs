@@ -1,7 +1,7 @@
 use super::*;
 use std::num::Wrapping;
 
-pub fn interpret (chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>) -> Result<i32, ()> {
+pub fn interpret(chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>) -> Result<i32, ()> {
     if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
         /* print!("BYTECODE: ");
         for s in chunk.iter().map(|el| format!("{:04X}", el)) {
@@ -26,7 +26,7 @@ pub fn interpret (chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>)
 
     let mut counter = 0;
     let mut offset = entrypoint as usize;
-    
+
     while offset < chunk.len() {
         let mut in_mem = if (a as usize) < memory.len() {
             &mut memory[a as usize]
@@ -40,18 +40,21 @@ pub fn interpret (chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>)
         if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
             print!("{:04} {:>12}   -->   ", offset, instruction.to_asm());
         }
-        if check_bit(&instruction, 15) {
+        if check_bit(instruction, 15) {
             let result = compute(instruction, a, d, *in_mem);
 
-            if check_bit(&instruction, 5) {
+            if check_bit(instruction, 5) {
                 a = result;
             } else if check_bit(instruction, 4) {
                 d = result;
             } else if check_bit(instruction, 3) {
                 *in_mem = result;
             }
-            
-            if (check_bit(instruction, 0) && (result as i16) > 0) || (check_bit(instruction, 1) && result == 0) || (check_bit(instruction, 2) && (result as i16) < 0) {
+
+            if (check_bit(instruction, 0) && (result as i16) > 0)
+                || (check_bit(instruction, 1) && result == 0)
+                || (check_bit(instruction, 2) && (result as i16) < 0)
+            {
                 if a == 0x7FFF {
                     break;
                 }
@@ -61,14 +64,14 @@ pub fn interpret (chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>)
         } else {
             a = instruction.code;
         }
-        
+
         in_mem = if (a as usize) < memory.len() {
             &mut memory[a as usize]
         } else {
             &mut dummy_memory
         };
         if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
-            println!("A: {:>3} | D: {:>3} | A*: {:>3}   |   SP: {}, ARGS: {}, LOCALS: {}, RETVAL: {}   |   {}, {:?}", a as i16, d as i16, *in_mem as i16, memory[SP as usize], memory[ARGS as usize], memory[LOCALS as usize], memory[RETVAL as usize], format!("{:?}", instruction.debug_info.def).split(['{', '(', '[']).nth(0).unwrap().trim().replace("\"", "").to_string(), instruction.debug_info.pos);
+            println!("A: {:>3} | D: {:>3} | A*: {:>3}   |   SP: {}, ARGS: {}, LOCALS: {}, RETVAL: {}   |   {}, {:?}", a as i16, d as i16, *in_mem as i16, memory[SP as usize], memory[ARGS as usize], memory[LOCALS as usize], memory[RETVAL as usize], format!("{:?}", instruction.debug_info.def).split(['{', '(', '[']).next().unwrap().trim().replace('\"', ""), instruction.debug_info.pos);
         }
 
         if !did_jump {
@@ -90,7 +93,7 @@ pub fn interpret (chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>)
             break;
         }
     }
-    
+
     if cfg!(lang_print_vm_interpreter) && !cfg!(lang_benchmark) {
         println!("===================================================");
         println!("\nMEMORY: {:?}\n", memory);
@@ -99,7 +102,7 @@ pub fn interpret (chunk: &Chunk, entrypoint: Address, globals: Vec<Instruction>)
     Ok(memory[RETVAL as usize] as i32) //TODO shouldn't be i32
 }
 
-fn compute (instruction: &Instruction, a: u16, d: u16, a_: u16) -> u16 {
+fn compute(instruction: &Instruction, a: u16, d: u16, a_: u16) -> u16 {
     let mut d_val = Wrapping(d);
     if check_bit(instruction, 11) {
         d_val.0 = 0;

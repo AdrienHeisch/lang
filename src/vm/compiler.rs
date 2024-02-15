@@ -51,7 +51,7 @@ pub fn compile(statements: &[&Expr]) -> Result<(Chunk, Option<Address>, Vec<Inst
                 offset,
                 instruction.to_asm(),
                 instruction.code,
-                format!("{:?}", instruction.debug_info.def).split(['{', '(', '[']).nth(0).unwrap().trim().replace("\"", "").to_string(),
+                format!("{:?}", instruction.debug_info.def).split(['{', '(', '[']).next().unwrap().trim().replace('\"', ""),
                 instruction.debug_info.pos
             );
             println!();

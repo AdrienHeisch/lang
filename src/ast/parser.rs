@@ -22,9 +22,9 @@ struct StaticMem {
 
 // ----- PARSING -----
 
-pub fn parse<'e, 't>(
+pub fn parse<'e>(
     arena: &'e Arena<Expr<'e>>,
-    tokens: &'t VecDeque<Token>,
+    tokens: &VecDeque<Token>,
 ) -> Result<Vec<&'e Expr<'e>>, Vec<Error>> {
     let mut tokens_iter = tokens.iter().peekable();
     let mut env = Environment::new(Context::TopLevel);
@@ -55,9 +55,9 @@ pub fn parse<'e, 't>(
     }
 }
 
-fn parse_statement<'e, 't>(
+fn parse_statement<'e>(
     arena: &'e Arena<Expr<'e>>,
-    tokens: &mut TkIter<'t>,
+    tokens: &mut TkIter<'_>,
     env: &mut Environment,
     statik: &mut StaticMem,
     errors: &mut Vec<Error>,
@@ -73,7 +73,7 @@ fn parse_statement<'e, 't>(
                 format!("Unexpected non-declaration statement : {:?}", expr.def),
                 expr.pos,
             ),
-            _ => ()
+            _ => (),
         }
     }
 
@@ -97,9 +97,9 @@ fn parse_statement<'e, 't>(
     expr
 }
 
-fn parse_expr<'e, 't>(
+fn parse_expr<'e>(
     arena: &'e Arena<Expr<'e>>,
-    tokens: &mut TkIter<'t>,
+    tokens: &mut TkIter<'_>,
     env: &mut Environment,
     statik: &mut StaticMem,
     errors: &mut Vec<Error>,
@@ -294,9 +294,9 @@ fn parse_expr<'e, 't>(
     }
 }
 
-fn parse_expr_next<'e, 't>(
+fn parse_expr_next<'e>(
     arena: &'e Arena<Expr<'e>>,
-    tokens: &mut TkIter<'t>,
+    tokens: &mut TkIter<'_>,
     env: &mut Environment,
     statik: &mut StaticMem,
     errors: &mut Vec<Error>,
@@ -377,9 +377,9 @@ fn parse_expr_next<'e, 't>(
     }
 }
 
-fn parse_structure<'e, 't>(
+fn parse_structure<'e>(
     arena: &'e Arena<Expr<'e>>,
-    tokens: &mut TkIter<'t>,
+    tokens: &mut TkIter<'_>,
     env: &mut Environment,
     statik: &mut StaticMem,
     errors: &mut Vec<Error>,

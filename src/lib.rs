@@ -57,9 +57,7 @@ pub fn walk_ast(ast: &Ast) -> Result<i32, String> {
 pub fn compile_ast(ast: &Ast) -> Result<(Chunk, Address, Vec<Instruction>), String> {
     match vm::compiler::compile(&ast.top_level) {
         Ok((chunk, Some(entrypoint), globals, _)) => Ok((chunk, entrypoint, globals)),
-        Ok((_, None, _, _)) => Err(format!(
-            "No entrypoint."
-        )),
+        Ok((_, None, _, _)) => Err("No entrypoint.".to_string()),
         Err(error) => Err(format!(
             "{} -> {}",
             error.pos.get_full(&ast.source),
