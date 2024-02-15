@@ -13,13 +13,6 @@ use typed_arena::Arena;
 
 type TkIter<'t> = std::iter::Peekable<std::collections::vec_deque::Iter<'t, Token>>;
 
-#[allow(dead_code)]
-#[derive(Default)]
-struct StaticMem {
-    values: Vec<Option<Value>>,
-    len: u32,
-}
-
 // ----- PARSING -----
 
 pub fn parse<'e>(
@@ -31,14 +24,12 @@ pub fn parse<'e>(
     let mut errors = Vec::new();
 
     let mut top_level = Vec::new();
-    let mut statik: StaticMem = Default::default(); //TODO remove this
 
     loop {
         top_level.push(parse_statement(
             arena,
             &mut tokens_iter,
             &mut env,
-            &mut statik,
             &mut errors,
         ));
         if tokens_iter.peek().is_none() {
@@ -59,10 +50,9 @@ fn parse_statement<'e>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'_>,
     env: &mut Environment,
-    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
 ) -> &'e Expr<'e> {
-    let expr = parse_expr(arena, tokens, env, statik, errors);
+    let expr = parse_expr(arena, tokens, env, errors);
 
     if let Context::TopLevel = env.context {
         match expr.def {
@@ -101,7 +91,6 @@ fn parse_expr<'e>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'_>,
     env: &mut Environment,
-    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
 ) -> &'e mut Expr<'e> {
     let tk = next(tokens);
@@ -110,19 +99,17 @@ fn parse_expr<'e>(
             arena,
             tokens,
             env,
-            statik,
             errors,
             arena.alloc(Expr {
                 def: ExprDef::Const(value.clone()),
                 pos: tk.pos,
             }),
         ),
-        TokenDef::Id(_) => parse_structure(arena, tokens, env, statik, errors, tk),
+        TokenDef::Id(_) => parse_structure(arena, tokens, env, errors, tk),
         TokenDef::StringLit(chars) => parse_expr_next(
             arena,
             tokens,
             env,
-            statik,
             errors,
             arena.alloc(Expr {
                 def: ExprDef::StringLit(chars.clone()),
@@ -131,7 +118,7 @@ fn parse_expr<'e>(
         ),
         TokenDef::Op(op) => {
             let n_errs = errors.len();
-            let e = parse_expr(arena, tokens, env, statik, errors);
+            let e = parse_expr(arena, tokens, env, errors);
             let expr = match e.def {
                 ExprDef::BinOp { ref mut left, .. } => {
                     while errors.len() > n_errs {
@@ -155,14 +142,14 @@ fn parse_expr<'e>(
             expr
         }
         TokenDef::If => {
-            let cond = parse_expr(arena, tokens, env, statik, errors);
-            let then = parse_expr(arena, tokens, env, statik, errors);
+            let cond = parse_expr(arena, tokens, env, errors);
+            let then = parse_expr(arena, tokens, env, errors);
             let mut pos = tk.pos + cond.pos + then.pos;
 
             let elze = match peek(tokens).def {
                 TokenDef::Id(next_id) if &next_id == b"else\0\0\0\0" => {
                     next(tokens);
-                    Some(parse_expr(arena, tokens, env, statik, errors) as &Expr)
+                    Some(parse_expr(arena, tokens, env, errors) as &Expr)
                 }
                 _ => None,
             };
@@ -176,8 +163,8 @@ fn parse_expr<'e>(
             })
         }
         TokenDef::While => {
-            let cond = parse_expr(arena, tokens, env, statik, errors);
-            let body = parse_expr(arena, tokens, env, statik, errors);
+            let cond = parse_expr(arena, tokens, env, errors);
+            let body = parse_expr(arena, tokens, env, errors);
             arena.alloc(Expr {
                 def: ExprDef::While { cond, body },
                 pos: tk.pos + cond.pos + body.pos,
@@ -187,7 +174,7 @@ fn parse_expr<'e>(
             if let Context::TopLevel = env.context {
                 push_error(errors, "Can't return from top level.".to_string(), tk.pos);
             }
-            let e = parse_expr(arena, tokens, env, statik, errors);
+            let e = parse_expr(arena, tokens, env, errors);
             arena.alloc(Expr {
                 def: ExprDef::Return(e),
                 pos: tk.pos + e.pos,
@@ -233,14 +220,13 @@ fn parse_expr<'e>(
         }
         } */
         TokenDef::DelimOpen(Delimiter::Pr) => {
-            let e = parse_expr(arena, tokens, env, statik, errors);
+            let e = parse_expr(arena, tokens, env, errors);
             let tk = next(tokens);
             if let TokenDef::DelimClose(Delimiter::Pr) = tk.def {
                 parse_expr_next(
                     arena,
                     tokens,
                     env,
-                    statik,
                     errors,
                     arena.alloc(Expr {
                         def: ExprDef::Parent(e),
@@ -271,7 +257,7 @@ fn parse_expr<'e>(
                     _ => true,
                 }
             } {
-                statements.push(parse_statement(arena, tokens, env, statik, errors));
+                statements.push(parse_statement(arena, tokens, env, errors));
             }
             next(tokens);
 
@@ -298,7 +284,6 @@ fn parse_expr_next<'e>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'_>,
     env: &mut Environment,
-    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
     e: &'e mut Expr<'e>,
 ) -> &'e mut Expr<'e> {
@@ -306,7 +291,7 @@ fn parse_expr_next<'e>(
     match tk.def {
         TokenDef::Op(op) => {
             next(tokens);
-            let e_ = parse_expr(arena, tokens, env, statik, errors);
+            let e_ = parse_expr(arena, tokens, env, errors);
             #[allow(clippy::let_and_return)]
             let expr = make_binop(arena, op, e, e_);
             //TODO type checking should be done after parsing
@@ -318,7 +303,7 @@ fn parse_expr_next<'e>(
         }
         TokenDef::DelimOpen(Delimiter::SqBr) => {
             next(tokens);
-            let e_ = parse_expr(arena, tokens, env, statik, errors);
+            let e_ = parse_expr(arena, tokens, env, errors);
             if let TokenDef::DelimClose(Delimiter::SqBr) = peek(tokens).def {
                 next(tokens);
             } else {
@@ -328,7 +313,6 @@ fn parse_expr_next<'e>(
                 arena,
                 tokens,
                 env,
-                statik,
                 errors,
                 make_binop(
                     arena,
@@ -348,7 +332,7 @@ fn parse_expr_next<'e>(
         TokenDef::DelimOpen(Delimiter::Pr) => {
             next(tokens);
             let (expr_list, tk_delim_close) =
-                make_expr_list(arena, tokens, env, statik, errors, tk);
+                make_expr_list(arena, tokens, env, errors, tk);
             let expr = arena.alloc(Expr {
                 def: ExprDef::Call {
                     function: e,
@@ -365,7 +349,7 @@ fn parse_expr_next<'e>(
         TokenDef::Dot => {
             next(tokens);
             let expr = arena.alloc(Expr {
-                def: ExprDef::Field(e, parse_expr(arena, tokens, env, statik, errors)),
+                def: ExprDef::Field(e, parse_expr(arena, tokens, env, errors)),
                 pos: tk.pos,
             });
             if let Err(err) = eval_type(expr, env, errors) {
@@ -381,7 +365,6 @@ fn parse_structure<'e>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'_>,
     env: &mut Environment,
-    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
     tk_identifier: &Token,
 ) -> &'e mut Expr<'e> {
@@ -497,7 +480,7 @@ fn parse_structure<'e>(
                                 if let TokenDef::DelimOpen(Delimiter::Br) = &tk.def {
                                     next(tokens);
                                     let (items, tk_close) =
-                                        make_expr_list(arena, tokens, env, statik, errors, tk);
+                                        make_expr_list(arena, tokens, env, errors, tk);
                                     if array_len_tdb {
                                         *len = items.len() as u32;
                                     }
@@ -533,7 +516,6 @@ fn parse_structure<'e>(
                                         arena,
                                         tokens,
                                         env,
-                                        statik,
                                         errors,
                                         arena.alloc(Expr {
                                             def: ExprDef::ArrayLit {
@@ -544,7 +526,7 @@ fn parse_structure<'e>(
                                         }),
                                     )
                                 } else if **t_arr == Type::Char {
-                                    let expr = parse_expr(arena, tokens, env, statik, errors);
+                                    let expr = parse_expr(arena, tokens, env, errors);
                                     if let ExprDef::StringLit(chars) = &expr.def {
                                         if array_len_tdb {
                                             *len = chars.len() as u32;
@@ -570,7 +552,7 @@ fn parse_structure<'e>(
                                     })
                                 }
                             } else {
-                                parse_expr(arena, tokens, env, statik, errors)
+                                parse_expr(arena, tokens, env, errors)
                             };
                             let t = match eval_type(value, env, errors) {
                                 Ok(t_) => {
@@ -639,7 +621,7 @@ fn parse_structure<'e>(
                                             }
                                         } {
                                             let statement =
-                                                parse_statement(arena, tokens, env, statik, errors);
+                                                parse_statement(arena, tokens, env, errors);
 
                                             if let Err(error) =
                                                 look_for_return_in(statement, env, errors, &t)
@@ -695,7 +677,7 @@ fn parse_structure<'e>(
                             } else {
                                 //TODO create function header expression
                                 //TODO LINKER
-                                parse_expr(arena, tokens, env, statik, errors)
+                                parse_expr(arena, tokens, env, errors)
                             }
                         }
                         _ => {
@@ -727,7 +709,6 @@ fn parse_structure<'e>(
                 arena,
                 tokens,
                 env,
-                statik,
                 errors,
                 arena.alloc(Expr {
                     def: ExprDef::Id(*id),
@@ -934,7 +915,6 @@ fn make_expr_list<'e, 't>(
     arena: &'e Arena<Expr<'e>>,
     tokens: &mut TkIter<'t>,
     env: &mut Environment,
-    statik: &mut StaticMem,
     errors: &mut Vec<Error>,
     tk_delim_open: &Token,
 ) -> (Vec<&'e Expr<'e>>, &'t Token) {
@@ -951,7 +931,7 @@ fn make_expr_list<'e, 't>(
     }
 
     loop {
-        list.push(parse_expr(arena, tokens, env, statik, errors));
+        list.push(parse_expr(arena, tokens, env, errors));
 
         let tk = peek(tokens);
         match tk.def {
