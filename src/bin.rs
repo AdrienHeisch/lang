@@ -1,9 +1,4 @@
 //TODO PROFILING
-//TODO use a logging framework
-//TODO find a name and push to github ?
-//TODO use Result instead of panic! on error
-//TODO custom types ?
-//TODO rework modules cyclic dependencies
 fn main() -> Result<(), std::io::Error> {
     //TODO console arguments
     // let args:Vec<String> = std::env::args().collect();

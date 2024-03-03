@@ -19,7 +19,7 @@ const STACK: u16 = 32;
 pub type Chunk = Vec<Instruction>;
 pub type Address = u16;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Instruction {
     code: u16,
     #[cfg(lang_debug)]
@@ -87,7 +87,7 @@ impl InstructionTools for Instruction {
             0b101 => "A, *A = ",
             0b110 => "A, D = ",
             0b111 => "A, D, *A = ",
-            _ => panic!(),
+            _ => panic!("Invalid instruction : {self:?}"),
         };
 
         let cond = match self.code & 0b111 {
@@ -99,7 +99,7 @@ impl InstructionTools for Instruction {
             0b101 => "; JNE",
             0b110 => "; JLE",
             0b111 => "JMP",
-            _ => panic!(),
+            _ => panic!("Invalid instruction : {self:?}"),
         };
 
         format!("{}{}{}", target, opcode, cond)

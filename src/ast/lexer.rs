@@ -14,7 +14,7 @@ pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> {
 
     while pos < program.len() {
         match get_token(program, pos) {
-            (Ok(token_def), len) => {
+            Ok((token_def, len)) => {
                 match token_def {
                     TokenDef::Eof => break,
                     TokenDef::Nil => (),
@@ -25,7 +25,7 @@ pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> {
                 }
                 pos += len;
             }
-            (Err((chars, err_code)), len) => {
+            Err(((chars, err_code), len)) => {
                 let error = Error {
                     msg: format!("{} : {:?}", err_code.to_string(), chars),
                     pos: Position(pos, pos + len),
@@ -55,7 +55,7 @@ pub fn lex(program: &str) -> Result<VecDeque<Token>, Vec<Error>> {
 
 // #[inline(never)] //used for profiling
 #[allow(clippy::cognitive_complexity)]
-fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize) {
+fn get_token(program: &str, mut pos: usize) -> Result<(TokenDef, usize), (LexErr, usize)> {
     let mut len: usize = 1;
     let bytes = program.as_bytes();
 
@@ -96,7 +96,7 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                     if id.len() <= 8 {
                         TokenDef::Id(Identifier::make(id))
                     } else {
-                        return (Err((id.to_owned(), LexErrCode::IdTooLong)), len);
+                        return Err(((id.to_owned(), LexErrCode::IdTooLong), len));
                     }
                 }
             }
@@ -109,26 +109,54 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
                     if !is_float {
                         is_float = true;
                     } else {
-                        return (
-                            Err(collect_unexpected_chars(
+                        return Err((collect_unexpected_chars(
                                 program,
                                 c,
                                 &mut pos,
                                 &mut len,
                                 LexErrCode::UnexpectedChar,
-                            )),
-                            len,
-                        );
+                            ),
+                            len
+                        ));
                     }
                 } else if !c.is_numeric() {
                     break;
                 }
                 len += 1;
             }
+
+            let cursor = &read_cursor!();
+            let c = cursor.chars().next().ok_or((
+                (cursor.to_string(), LexErrCode::InvalidCursor),
+                len
+            ))?;
+
             if is_float {
-                TokenDef::Const(Value::Float(read_cursor!().parse().unwrap()))
+                TokenDef::Const(Value::Float(cursor.parse::<f32>().map_err(|_| {
+                    (
+                        collect_unexpected_chars(
+                            program,
+                            c,
+                            &mut pos,
+                            &mut len,
+                            LexErrCode::UnexpectedChar,
+                        ),
+                        len
+                    )
+                })?))
             } else {
-                TokenDef::Const(Value::Int(read_cursor!().parse().unwrap()))
+                TokenDef::Const(Value::Int(cursor.parse::<i32>().map_err(|_| {
+                    (
+                        collect_unexpected_chars(
+                            program,
+                            c,
+                            &mut pos,
+                            &mut len,
+                            LexErrCode::UnexpectedChar,
+                        ),
+                        len
+                    )
+                })?))
             }
         }
         '\'' => {
@@ -136,16 +164,15 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
             len += 1;
             let c = get_char!();
             if c != '\'' {
-                return (
-                    Err(collect_unexpected_chars(
+                return Err((collect_unexpected_chars(
                         program,
                         c,
                         &mut pos,
                         &mut len,
                         LexErrCode::UnexpectedChar,
-                    )),
-                    len,
-                );
+                    ),
+                    len
+                ));
             }
             len += 1;
             TokenDef::Const(Value::Char(char))
@@ -192,26 +219,25 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
             if let Some(op) = op {
                 TokenDef::Op(op)
             } else {
-                return (
-                    Err(collect_unexpected_chars(
+                return Err((collect_unexpected_chars(
                         //TODO len is always zero here
                         program,
                         c,
                         &mut pos,
                         &mut len,
                         LexErrCode::UnexpectedChar,
-                    )),
-                    len,
-                );
+                    ),
+                    len
+                ));
             }
         }
         c @ '(' | c @ '[' | c @ '{' => TokenDef::DelimOpen(match Delimiter::from_char(c) {
             Ok(delimiter) => delimiter,
-            Err(err) => return (Err(err), len),
+            Err(err) => return Err((err, len)),
         }),
         c @ ')' | c @ ']' | c @ '}' => TokenDef::DelimClose(match Delimiter::from_char(c) {
             Ok(delimiter) => delimiter,
-            Err(err) => return (Err(err), len),
+            Err(err) => return Err((err, len)),
         }),
         ',' => TokenDef::Comma,
         '.' => TokenDef::Dot,
@@ -228,20 +254,19 @@ fn get_token(program: &str, mut pos: usize) -> (Result<TokenDef, LexErr>, usize)
             TokenDef::Nil //TODO remove this for optimization ? (maybe recursive get_token call)
         }
         c => {
-            return (
-                Err(collect_unexpected_chars(
+            return Err((collect_unexpected_chars(
                     program,
                     c,
                     &mut pos,
                     &mut len,
                     LexErrCode::UnexpectedChar,
-                )),
+                ),
                 len,
-            )
+            ))
         }
     };
 
-    (Ok(token), len)
+    Ok((token, len))
 }
 
 fn collect_unexpected_chars(
@@ -253,7 +278,7 @@ fn collect_unexpected_chars(
 ) -> LexErr {
     let mut chars = first_char.to_string();
     *pos += 1;
-    while let (Err((chars_, _)), len_) = get_token(program, *pos) {
+    while let Err(((chars_, _), len_)) = get_token(program, *pos) {
         chars += &chars_;
         *pos += 1;
         *len += len_;
@@ -265,6 +290,8 @@ enum LexErrCode {
     UnexpectedChar,
     InvalidDelimiter,
     IdTooLong,
+    NumberParseError,
+    InvalidCursor
 }
 
 impl LexErrCode {
@@ -274,6 +301,8 @@ impl LexErrCode {
             UnexpectedChar => "Unexpected character",
             InvalidDelimiter => "Invalid delimiter",
             IdTooLong => "Id too long",
+            NumberParseError => "Number parse error",
+            InvalidCursor => "Invalid cursor"
         }
     }
 }

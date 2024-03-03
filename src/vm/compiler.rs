@@ -100,7 +100,7 @@ fn expr(
     chunk: &mut Chunk,
     env: &mut Environment,
     identifiers: &mut Vec<(Identifier, IdentifierValue)>,
-    mut main: bool,
+    mut main: bool, //HACK find a better way to store entrypoint
 ) -> Result<(), Error> {
     macro_rules! instr {
         ($e: expr) => {
@@ -181,14 +181,14 @@ fn expr(
                 Value::Pointer(p, _) if *p <= MEM_SIZE.try_into().unwrap() => {
                     todo!("Pointers are not implemented yet.")
                 }
-                Value::Pointer(_, _) => panic!("Pointer out of range"),
+                Value::Pointer(_, _) => return Err(Error { msg: format!("Pointer out of range"), pos: e.pos }),
                 Value::Int(i) if *i <= 0x7fff => *i as u16,
-                Value::Int(_) => panic!("Int out of range"),
+                Value::Int(_) => return Err(Error { msg: format!("Int out of range"), pos: e.pos }),
                 Value::Char(c) => *c as u16,
                 Value::Float(_) => todo!("Floats are not implemented yet."), //TODO two's complement
                 Value::Bool(false) => 0,
                 Value::Bool(true) => 0x7fff_u16,
-                Value::Void => panic!(),
+                Value::Void => return Err(Error { msg: format!("Tried to use void as value"), pos: e.pos }),
                 Value::Array { .. } => todo!("Arrays are not implemented yet."),
             };
             instruction &= !(1 << 15); // make sure bit 15 is 0 (data instruction)
@@ -207,10 +207,10 @@ fn expr(
                             instr!(0b1001110000100000); // A = *A
                         }
                         Some(_) => todo!("Gloval variables not implemented yet"),
-                        None => panic!(
+                        None => return Err(Error { msg: format!(
                             "Corrupted environment, can't find identifier : {}",
                             id.to_string()
-                        ),
+                        ), pos: e.pos }),
                     }
                 }
                 Some(IdentifierValue::Fn {
@@ -222,13 +222,13 @@ fn expr(
                             t: crate::value::Type::Fn(_, _),
                             ..
                         }) => {}
-                        _ => panic!(
+                        _ => return Err(Error { msg: format!(
                             "Corrupted environment, can't find identifier : {}",
                             id.to_string()
-                        ),
+                        ), pos: e.pos }),
                     }
                 }
-                None => panic!("Unknown identifier : {}", id.to_string()),
+                None => return Err(Error { msg: format!("Unknown identifier : {}", id.to_string()), pos: e.pos }),
             }
         }
         ArrayLit { .. } => todo!("Array literals are not implemented yet."),
@@ -306,12 +306,10 @@ fn expr(
                                         offset: address, ..
                                     },
                                 ) => address,
-                                None => {
-                                    panic!(
+                                None => return Err(Error { msg: format!(
                                         "Unkown identifier : {}",
-                                        String::from_utf8(Vec::from(id)).unwrap()
-                                    );
-                                }
+                                        id.to_string()
+                                    ), pos: e.pos })
                             };
 
                             expr(right, chunk, env, identifiers, main)?;
@@ -332,9 +330,7 @@ fn expr(
                             expr(e, chunk, env, identifiers, main)?; // A = address
                             instr!(0b1000001100001000); // *A = D
                         }
-                        _ => {
-                            panic!("Can't assign {:?} to {:?}", right, left);
-                        }
+                        _ => return Err(Error { msg: format!("Can't assign {:?} to {:?}", right, left), pos: e.pos })
                     }
                 }
                 Op::Add => {
@@ -474,7 +470,7 @@ fn expr(
                     depth: env.scope_depth,
                 });
             } else {
-                unimplemented!()
+                todo!("Local functions not implemented")
             }
 
             env.context = Context::Function;
@@ -548,7 +544,10 @@ fn expr(
             env.context = Context::TopLevel;
         }
         End => (),
-        Invalid => unimplemented!(),
+        Invalid => return Err(Error {
+            msg: format!("Found invalid expression"),
+            pos: e.pos,
+        })
     }
 
     Ok(())

@@ -14,10 +14,9 @@ use interpreter::Interpreter;
 use value::Value;
 use vm::{Address, Chunk, Instruction};
 
+//TODO multiple files
 //TODO linker
-//TODO main() function
 //TODO main() function parameters
-//TODO top level
 //TODO use real C compiler tests
 //TODO hunt unwrap / clone / panic!
 
@@ -45,7 +44,10 @@ pub fn walk_ast(ast: &Ast) -> Result<i32, String> {
 
     match result {
         Ok(Value::Int(i)) => Ok(i),
-        Ok(_) => todo!(),
+        Ok(value) => Err(format!(
+            "Invalid return code : {}",
+            value
+        )),
         Err(error) => Err(format!(
             "{} -> {}",
             error.pos.get_full(&ast.source),

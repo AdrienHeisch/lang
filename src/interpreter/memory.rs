@@ -26,13 +26,13 @@ impl Memory for RawMemory {
     fn get_var(&self, var: &Variable) -> Result<Value, MemoryError> {
         Ok(match var.t {
             Type::Pointer(ref t) => Value::Pointer(
-                u32::from_ne_bytes(self.access(var.raw).try_into().unwrap()),
+                u32::from_ne_bytes(self.access(var.raw).try_into().map_err(|_| MemoryError { msg: format!("Error creating u32 from memory") })?),
                 t.clone(),
             ),
             Type::Array { len, ref t } => {
                 let raw = self.access(var.raw);
-                let addr = u32::from_ne_bytes(raw[0..4].try_into().unwrap());
-                let len_ = u32::from_ne_bytes(raw[4..8].try_into().unwrap());
+                let addr = u32::from_ne_bytes(raw[0..4].try_into().map_err(|_| MemoryError { msg: format!("Error creating u32 from memory") })?);
+                let len_ = u32::from_ne_bytes(raw[4..8].try_into().map_err(|_| MemoryError { msg: format!("Error creating u32 from memory") })?);
                 if len != len_ {
                     return Err(MemoryError {
                         msg: "Unmatched array lengths: ".to_string(),
@@ -44,13 +44,13 @@ impl Memory for RawMemory {
                     t: t.clone(),
                 }
             }
-            Type::Int => Value::Int(i32::from_ne_bytes(self.access(var.raw).try_into().unwrap())),
+            Type::Int => Value::Int(i32::from_ne_bytes(self.access(var.raw).try_into().map_err(|_| MemoryError { msg: format!("Error creating i32 from memory") })?)),
             Type::Char => Value::Char(self.access(var.raw)[0] as char),
             Type::Float => {
-                Value::Float(f32::from_ne_bytes(self.access(var.raw).try_into().unwrap()))
+                Value::Float(f32::from_ne_bytes(self.access(var.raw).try_into().map_err(|_| MemoryError { msg: format!("Error creating f32 from memory") })?))
             }
             Type::Bool => Value::Bool(self.access(var.raw)[0] == 1),
-            Type::Fn(_, _) => Value::Fn(self.access(var.raw).try_into().unwrap(), var.t.clone()),
+            Type::Fn(_, _) => Value::Fn(self.access(var.raw).try_into().map_err(|_| MemoryError { msg: format!("Error creating [u32; 8] from memory") })?, var.t.clone()),
             Type::Void => Value::Void,
         })
     }

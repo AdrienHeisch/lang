@@ -68,6 +68,7 @@ impl IdentifierTools for Identifier {
     }
 
     fn to_string(&self) -> String {
+        //unwrap accepted because this is only used for error handling
         std::str::from_utf8(self).unwrap().to_owned()
     }
 }
@@ -392,6 +393,10 @@ where
 impl Position {
     pub fn zero() -> Self {
         Position(0, 0)
+    }
+
+    pub fn join(&self, other:Self) -> Self {
+        Position(usize::min(self.0, other.0), usize::max(self.1, other.1))
     }
 
     pub fn get_full(self, source: &str) -> FullPosition {

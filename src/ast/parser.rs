@@ -384,7 +384,10 @@ fn parse_structure<'e>(
             //TODO pointer of pointer
             let mut t = match Type::from_identifier(&keyword) {
                 Ok(t) => t,
-                Err(err) => panic!("{}", err.msg),
+                Err(err) => {
+                    push_error(errors, err.msg, pos);
+                    Type::Void
+                }
             };
 
             if let TokenDef::DelimOpen(Delimiter::Pr) = peek(tokens).def {
@@ -392,7 +395,7 @@ fn parse_structure<'e>(
                 if let TokenDef::Op(Op::MultOrDeref) = peek(tokens).def {
                     next(tokens);
                 } else {
-                    panic!();
+                    push_error(errors, format!("Unexpeted operator {:?}", peek(tokens).def), pos);
                 }
                 t = Type::Fn(Box::new([]), Box::new(t));
             } else {
@@ -500,7 +503,13 @@ fn parse_structure<'e>(
                                         return make_invalid(arena, pos);
                                     }
 
-                                    let t = t.unwrap();
+                                    let t = match t {
+                                        Ok(t) => t,
+                                        Err(err) => {
+                                            push_error(errors, err.msg, err.pos);
+                                            Type::Void
+                                        },
+                                    };
                                     for item in &items[1..] {
                                         match eval_type(item, env, errors) {
                                             Ok(t_) => {
@@ -766,7 +775,8 @@ fn make_args_list<'t>(
     let delimiter = if let TokenDef::DelimOpen(delimiter) = tk_delim_open.def {
         delimiter
     } else {
-        panic!("Only a TokenDef::DelimOpen should be passed here.");
+        push_error(errors, format!("Only a TokenDef::DelimOpen should be passed here."), tk_delim_open.pos);
+        Delimiter::Pr
     };
 
     if peek(tokens).def == TokenDef::DelimClose(delimiter) {
@@ -780,7 +790,10 @@ fn make_args_list<'t>(
                 // let id = id;
                 match Type::from_identifier(&id) {
                     Ok(t) => t,
-                    Err(err) => panic!("{}", err.msg),
+                    Err(err) => {
+                        push_error(errors, err.msg, tk_0.pos);
+                        Type::Void
+                    }
                 }
             }
             _ => {
@@ -872,7 +885,10 @@ fn make_types_list<'t>(
                 // let id = id;
                 match Type::from_identifier(&id) {
                     Ok(t) => t,
-                    Err(err) => panic!("{}", err.msg),
+                    Err(err) => {
+                        push_error(errors, err.msg, tk_0.pos);
+                        Type::Void
+                    },
                 }
             }
             _ => {
@@ -1064,8 +1080,7 @@ fn declare(env: &mut Environment, errors: &mut Vec<Error>, t: &Type, id: &Identi
         if let Some(n_locals) = n_locals.checked_add(1) {
             env.locals_count = n_locals;
         } else {
-            // push_error("Too many locals.", tk.pos);
-            panic!("Too many locals.");
+            push_error(errors, format!("Too many locals."), Position::zero()); //TODO position
         }
     }
 }
@@ -1141,7 +1156,7 @@ fn eval_type(expr: &Expr, env: &mut Environment, errors: &mut Vec<Error>) -> Res
         },
         ExprDef::If { .. } => Type::Void,
         ExprDef::While { .. } => Type::Void,
-        ExprDef::Field(_, _) => todo!(),
+        ExprDef::Field(_, _) => todo!("Structs not implemented"),
         ExprDef::UnOp { op, e } => {
             use {Op::*, Type::*};
             let t = unwrap_or_return!(eval_type(e, env, errors));
@@ -1225,10 +1240,16 @@ fn eval_type(expr: &Expr, env: &mut Environment, errors: &mut Vec<Error>) -> Res
                             if let Int = eval_type(right, env, errors)? {
                                 return Ok(Type::Void);
                             } else {
-                                panic!()
+                                return Err(Error {
+                                    msg: format!("Arrays can only be indexed by an integer"),
+                                    pos: left.pos.join(right.pos),
+                                });
                             }
                         } else {
-                            panic!()
+                            return Err(Error {
+                                msg: format!("Only arrays can be indexed"),
+                                pos: left.pos.join(right.pos),
+                            });
                         }
                     }
                     _ => (),
@@ -1471,7 +1492,7 @@ fn look_for_return_in(
             unwrap_or_return!(look_for_return_in(cond, env, errors, return_type));
             unwrap_or_return!(look_for_return_in(body, env, errors, return_type));
         }
-        Field(_, _) => unimplemented!(),
+        Field(_, _) => todo!("Structs not implemented"),
         UnOp { e, .. } => {
             unwrap_or_return!(look_for_return_in(e, env, errors, return_type));
         }
@@ -1485,7 +1506,7 @@ fn look_for_return_in(
                 unwrap_or_return!(look_for_return_in(arg, env, errors, return_type));
             }
         }
-        StructDecl { .. } => unimplemented!(),
+        StructDecl { .. } => todo!("Structs not implemented"),
         Block(exprs) => {
             for e in exprs.iter() {
                 unwrap_or_return!(look_for_return_in(e, env, errors, return_type));

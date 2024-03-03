@@ -110,10 +110,7 @@ impl<'e> Interpreter<'e> {
             Id(id) => {
                 match self.get_ref(id) {
                     Some(Reference::Var(var)) => self.memory.get_var(&var).map_err(|err| {
-                        ResultErr::Error(Error {
-                            msg: err.msg,
-                            pos: expr.pos,
-                        })
+                        self.throw(err.msg, expr.pos)
                     })?,
                     Some(Reference::Fn(args, ret_t, _)) => Value::Fn(
                         *id,
@@ -132,10 +129,7 @@ impl<'e> Interpreter<'e> {
                 let t_len = t.get_size();
                 let arr_len = items.len();
                 let ptr = self.memory.alloc(t_len * arr_len).map_err(|err| {
-                    ResultErr::Error(Error {
-                        msg: err.msg,
-                        pos: expr.pos,
-                    })
+                    self.throw(err.msg, expr.pos)
                 })?;
                 let mut pos = ptr.pos;
                 for item in items.iter() {
@@ -149,10 +143,7 @@ impl<'e> Interpreter<'e> {
                             &value,
                         )
                         .map_err(|err| {
-                            ResultErr::Error(Error {
-                                msg: err.msg,
-                                pos: item.pos,
-                            })
+                            self.throw(err.msg, item.pos)
                         })?;
                     pos += t_len;
                 }
@@ -166,10 +157,7 @@ impl<'e> Interpreter<'e> {
                 let t_len = Type::Char.get_size();
                 let arr_len = chars.len();
                 let ptr = self.memory.alloc(t_len * arr_len).map_err(|err| {
-                    ResultErr::Error(Error {
-                        msg: err.msg,
-                        pos: expr.pos,
-                    })
+                    self.throw(err.msg, expr.pos)
                 })?;
                 let mut pos = ptr.pos;
                 for char in chars.iter() {
@@ -183,10 +171,7 @@ impl<'e> Interpreter<'e> {
                             &value,
                         )
                         .map_err(|err| {
-                            ResultErr::Error(Error {
-                                msg: err.msg,
-                                pos: expr.pos,
-                            })
+                            self.throw(err.msg, expr.pos)
                         })?;
                     pos += t_len;
                 }
@@ -255,7 +240,7 @@ impl<'e> Interpreter<'e> {
                 err @ Err(_) => return err,
             },
             Call { function: id, args } => self.call(id, args)?,
-            Field(_, _) => unimplemented!(),
+            Field(_, _) => todo!("Structs not implemented"),
             // --- Declarations
             VarDecl(id, t, assign_expr) => {
                 //TODO should already be checked by parser (test)
@@ -281,20 +266,14 @@ impl<'e> Interpreter<'e> {
                         );
                     }
                     self.memory.set_var(&ptr, &value).map_err(|err| {
-                        ResultErr::Error(Error {
-                            msg: err.msg,
-                            pos: expr.pos,
-                        })
+                        self.throw(err.msg, expr.pos)
                     })?
                 } else if let Type::Array { len, t } = &t {
                     let addr = self
                         .memory
                         .alloc(t.get_size() * *len as usize)
                         .map_err(|err| {
-                            ResultErr::Error(Error {
-                                msg: err.msg,
-                                pos: expr.pos,
-                            })
+                            self.throw(err.msg, expr.pos)
                         })?;
                     self.memory
                         .set_var(
@@ -306,10 +285,7 @@ impl<'e> Interpreter<'e> {
                             },
                         )
                         .map_err(|err| {
-                            ResultErr::Error(Error {
-                                msg: err.msg,
-                                pos: expr.pos,
-                            })
+                            self.throw(err.msg, expr.pos)
                         })?
                 }
                 Value::Void
@@ -325,7 +301,7 @@ impl<'e> Interpreter<'e> {
                 }
                 Value::Void
             }
-            StructDecl { .. } => unimplemented!(),
+            StructDecl { .. } => todo!("Structs not implemented"),
             // --- Others
             Block(exprs) => {
                 if !exprs.is_empty() {
@@ -364,11 +340,11 @@ impl<'e> Interpreter<'e> {
                 match self.get_ref(&id) {
                     Some(Reference::Var(var)) => {
                         return Ok(Value::Pointer(
-                            var.raw.pos.try_into().unwrap(),
+                            var.raw.pos.try_into().map_err(|_| self.throw(format!("Error converting usize to u32"), e_right.pos))?,
                             Box::new(var.t),
                         ))
                     }
-                    Some(Reference::Fn(_, _, _)) => todo!(),
+                    Some(Reference::Fn(_, _, _)) => todo!("Function pointers not implemented"),
                     None => {
                         return Err(self.throw(
                             format!("Unknown identifier : {}", id.to_string()),
@@ -383,21 +359,21 @@ impl<'e> Interpreter<'e> {
 
         Ok(match value {
             Value::Pointer(addr, t) => match op {
-                Op::MultOrDeref => self
-                    .memory
-                    .get_var(&Variable {
-                        t: *t.clone(),
-                        raw: Address {
-                            pos: addr.try_into().unwrap(),
-                            len: t.get_size(),
-                        },
-                    })
-                    .map_err(|err| {
-                        ResultErr::Error(Error {
-                            msg: err.msg,
-                            pos: e_right.pos,
+                Op::MultOrDeref => {
+                    let address = Address {
+                        pos: addr.try_into().map_err(|_| self.throw(format!("Error creating [u32; 8] from memory"), e_right.pos))?,
+                        len: t.get_size(),
+                    };
+                    self
+                        .memory
+                        .get_var(&Variable {
+                            t: *t.clone(),
+                            raw: address,
                         })
-                    })?,
+                        .map_err(|err| {
+                            self.throw(err.msg, e_right.pos)
+                        })?
+                },
                 _ => return Err(ResultErr::Nothing),
             },
             Value::Int(i) => match op {
@@ -428,22 +404,20 @@ impl<'e> Interpreter<'e> {
                 } => {
                     if let Pointer(addr, t) = self.expr(e)? {
                         if value_right.as_type() == *t {
+                            let address = Address {
+                                pos: addr.try_into().map_err(|_| self.throw(format!("Error creating [u32; 8] from memory"), e_right.pos))?,
+                                len: t.get_size(),
+                            };
                             self.memory
                                 .set_var(
                                     &Variable {
                                         t: *t.clone(),
-                                        raw: Address {
-                                            pos: addr.try_into().unwrap(),
-                                            len: t.get_size(),
-                                        },
+                                        raw: address,
                                     },
                                     &value_right,
                                 )
                                 .map_err(|err| {
-                                    ResultErr::Error(Error {
-                                        msg: err.msg,
-                                        pos: e_left.pos,
-                                    })
+                                    self.throw(err.msg, e_left.pos.join(e_right.pos))
                                 })?;
                             return Ok(Value::Void);
                         }
@@ -458,7 +432,10 @@ impl<'e> Interpreter<'e> {
                         if let Int(index) = self.expr(right)? {
                             let index = index as u32;
                             if index >= len {
-                                panic!()
+                                return Err(self.throw(
+                                    format!("Index out of bounds"),
+                                    left.pos.join(right.pos),
+                                ))
                             }
                             let value = self.expr(e_right)?;
                             self.memory
@@ -473,17 +450,20 @@ impl<'e> Interpreter<'e> {
                                     &value,
                                 )
                                 .map_err(|err| {
-                                    ResultErr::Error(Error {
-                                        msg: err.msg,
-                                        pos: e_right.pos,
-                                    })
+                                    self.throw(err.msg, e_left.pos.join(e_right.pos))
                                 })?;
                             return Ok(Value::Void);
                         } else {
-                            panic!()
+                            return Err(self.throw(
+                                format!("Arrays can only be indexed by an integer"),
+                                left.pos.join(right.pos),
+                            ))
                         }
                     } else {
-                        panic!()
+                        return Err(self.throw(
+                            format!("Only arrays can be indexed"),
+                            left.pos.join(right.pos),
+                        ))
                     }
                 }
                 _ => (),
@@ -514,10 +494,7 @@ impl<'e> Interpreter<'e> {
                             },
                         })
                         .map_err(|err| {
-                            ResultErr::Error(Error {
-                                msg: err.msg,
-                                pos: e_left.pos,
-                            })
+                            self.throw(err.msg, e_left.pos.join(e_right.pos))
                         })?
                 }
                 _ => return Err(ResultErr::Nothing),
@@ -601,18 +578,23 @@ impl<'e> Interpreter<'e> {
             ExprDef::Id(id) if !matches!(value.def, Value::Void) => {
                 self.memory
                     .set_var(
-                        &if let Reference::Var(ptr) = self.get_ref(id).unwrap() {
-                            ptr
-                        } else {
-                            panic!("Tried to use function as value.") //DESIGN functions as values ?
+                        &match self.get_ref(id) {
+                            Some(Reference::Var(ptr)) => ptr,
+                            Some(Reference::Fn(_, _, _)) => {
+                                return Err(self.throw(
+                                    format!("Tried to use function as value"),
+                                    e_to.pos,
+                                )) //DESIGN functions as values ?
+                            },
+                            None => return Err(self.throw(
+                                format!("Unknown identifier : {:?}", id),
+                                e_to.pos,
+                            ))
                         },
                         &value.def,
                     )
                     .map_err(|err| {
-                        ResultErr::Error(Error {
-                            msg: err.msg,
-                            pos: value.pos,
-                        })
+                        self.throw(err.msg, value.pos)
                     })?;
             }
             _ => {
@@ -680,15 +662,18 @@ impl<'e> Interpreter<'e> {
                         break;
                     }
                     Reference::Var(var) => {
-                        if let Value::Fn(id, _) = self.memory.get_var(&var).map_err(|err| {
-                            ResultErr::Error(Error {
-                                msg: err.msg,
-                                pos: id_pos,
-                            })
-                        })? {
-                            reference = self.get_ref(&id).unwrap();
+                        let value = self.memory.get_var(&var).map_err(|err| {
+                            self.throw(err.msg, id_pos)
+                        })?;
+                        if let Value::Fn(id, _) = value {
+                            reference = self.get_ref(&id).ok_or(
+                                self.throw(format!("Unknown identifier : {}", id.to_string()), id_pos)
+                            )?;
                         } else {
-                            panic!()
+                            return Err(self.throw(
+                                format!("Tried to call a value"),
+                                id_pos,
+                            ))
                         }
                     }
                 }
@@ -712,7 +697,6 @@ impl<'e> Interpreter<'e> {
         let prev_context = self.env.context;
         self.env.context = Context::Function;
         if params.len() != args.len() {
-            // panic!("Invalid number of arguments.");
             return Err(self.throw("Invalid number of arguments.".to_owned(), args_pos));
         }
         for (value, param) in values_and_params {
@@ -722,10 +706,7 @@ impl<'e> Interpreter<'e> {
                 Err(message) => return Err(self.throw(message, id_pos)),
             };
             self.memory.set_var(&ptr, &value).map_err(|err| {
-                ResultErr::Error(Error {
-                    msg: err.msg,
-                    pos: id_pos,
-                })
+                self.throw(err.msg, id_pos)
             })?;
         }
         let out = match self.expr(&body) {
