@@ -448,7 +448,7 @@ fn expr(
             // println!("Pushing var {:?} at {}", id);
 
             expr(assign_expr, chunk, env, identifiers, main)?;
-            if let Const(_) = assign_expr.def {
+            if let Const(_) | Id(_) = assign_expr.def {
                 instr!(0b1000110000010000); // D = A
             }
             PUSH_D!();
